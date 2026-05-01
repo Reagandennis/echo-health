@@ -1,0 +1,23 @@
+export const appwriteConfig = {
+  endpoint: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!,
+  projectId: process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!,
+  databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+  storageBucketId: process.env.NEXT_PUBLIC_APPWRITE_STORAGE_BUCKET_ID!,
+  collections: {
+    profiles:       process.env.NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION_ID!,
+    sessions:       process.env.NEXT_PUBLIC_APPWRITE_SESSIONS_COLLECTION_ID!,
+    messages:       process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID!,
+    therapists:     process.env.NEXT_PUBLIC_APPWRITE_THERAPISTS_COLLECTION_ID!,
+    moodLogs:       process.env.NEXT_PUBLIC_APPWRITE_MOOD_LOGS_COLLECTION_ID    ?? "mood_logs",
+    journalEntries: process.env.NEXT_PUBLIC_APPWRITE_JOURNAL_COLLECTION_ID      ?? "journal_entries",
+    goals:          process.env.NEXT_PUBLIC_APPWRITE_GOALS_COLLECTION_ID        ?? "goals",
+    chatSessions:   process.env.NEXT_PUBLIC_APPWRITE_CHAT_SESSIONS_COLLECTION_ID  ?? "chat_sessions",
+    chatMessages:   process.env.NEXT_PUBLIC_APPWRITE_CHAT_MESSAGES_COLLECTION_ID  ?? "chat_messages",
+    notifications:  process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID    ?? "notifications",
+    clinicalNotes:  process.env.NEXT_PUBLIC_APPWRITE_CLINICAL_NOTES_COLLECTION_ID     ?? "clinical_notes",
+    sessionFeedback:process.env.NEXT_PUBLIC_APPWRITE_SESSION_FEEDBACK_COLLECTION_ID ?? "session_feedback",
+    matchConflicts: process.env.NEXT_PUBLIC_APPWRITE_MATCH_CONFLICTS_COLLECTION_ID  ?? "match_conflicts",
+    riskAlerts:     process.env.NEXT_PUBLIC_APPWRITE_RISK_ALERTS_COLLECTION_ID      ?? "risk_alerts",
+    promos:         process.env.NEXT_PUBLIC_APPWRITE_PROMOS_COLLECTION_ID           ?? "promos",
+  },
+} as const;

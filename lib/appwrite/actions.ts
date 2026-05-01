@@ -19,8 +19,19 @@ function createClientFromSecret(secret: string) {
   };
 }
 
+/** Helper to create a clean, unauthenticated client for login */
+function createGuestClient() {
+  const client = new Client()
+    .setEndpoint(appwriteConfig.endpoint)
+    .setProject(appwriteConfig.projectId);
+
+  return {
+    get account() { return new Account(client); },
+  };
+}
+
 export async function createSession(email: string, password: string) {
-  const { account } = createAdminClient();
+  const { account } = createGuestClient();
 
   try {
     const session = await account.createEmailPasswordSession(email, password);
@@ -58,7 +69,8 @@ export async function syncSession(secret: string) {
 }
 
 export async function signUpAction(email: string, password: string, name: string, goal?: string) {
-  const { users, account, databases } = createAdminClient();
+  const { users, databases } = createAdminClient();
+  const { account } = createGuestClient();
 
   try {
     const userId = ID.unique();

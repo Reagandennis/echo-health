@@ -18,7 +18,7 @@ import {
   Lock,
   Settings,
   ChevronDown,
-  LogOut,
+  ArrowLeft,
   PanelLeftClose,
   PanelLeft,
   Stethoscope,
@@ -218,14 +218,19 @@ export default function AdminSidebar({ userName, userLabel }: AdminSidebarProps)
       <div className={`border-t border-stone-800 p-2 space-y-1 ${collapsed ? "px-2" : ""}`}>
         <Link
           href="/dashboard"
-          title={collapsed ? "Exit Admin" : undefined}
+          title={collapsed ? "Client Dashboard" : undefined}
           className={`flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-800 transition-colors text-stone-500 hover:text-stone-300 ${
             collapsed ? "justify-center" : ""
           }`}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Exit Admin</span>}
+          <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span className="text-sm font-medium">Client Dashboard</span>}
         </Link>
+
+        <SignOutButton
+          variant="sidebar"
+          className="text-stone-500 hover:bg-stone-800 hover:text-stone-300"
+        />
 
         {!collapsed && (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-stone-900 mt-1">

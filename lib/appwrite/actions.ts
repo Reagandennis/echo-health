@@ -31,7 +31,7 @@ function createGuestClient() {
 }
 
 export async function createSession(email: string, password: string) {
-  const { account } = createGuestClient();
+  const { account } = createAdminClient();
 
   try {
     const session = await account.createEmailPasswordSession(email, password);
@@ -69,8 +69,7 @@ export async function syncSession(secret: string) {
 }
 
 export async function signUpAction(email: string, password: string, name: string, goal?: string) {
-  const { users, databases } = createAdminClient();
-  const { account } = createGuestClient();
+  const { users, databases, account } = createAdminClient();
 
   try {
     const userId = ID.unique();

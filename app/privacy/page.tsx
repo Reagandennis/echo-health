@@ -18,7 +18,9 @@ const sections = [
 
 We are committed to maintaining the confidentiality, integrity, and security of your personal and health information in accordance with the Health Insurance Portability and Accountability Act of 1996 (HIPAA), the General Data Protection Regulation (GDPR), the California Consumer Privacy Act (CCPA)/California Privacy Rights Act (CPRA), and other applicable laws.
 
-By accessing or using Echo Health's website, mobile application, or services (collectively, the "Platform"), you acknowledge that you have read and understood this Privacy Policy.`,
+By accessing or using Echo Health's website, mobile application, or services (collectively, the "Platform"), you acknowledge that you have read and understood this Privacy Policy.
+
+This Privacy Policy also applies to TechGetAfrica apps and digital products that link to, incorporate, or reference this Privacy Policy.`,
   },
   {
     id: "hipaa",
@@ -297,6 +299,9 @@ export default function PrivacyPolicyPage() {
           <p className="mt-6 text-base leading-7 text-slate-500 max-w-2xl">
             Your privacy and the confidentiality of your mental-health
             information are fundamental to who we are. This policy covers your
+            use of Echo Health and TechGetAfrica apps that reference this
+            policy, along with your
+            {" "}
             rights under{" "}
             <strong className="text-slate-700 font-semibold">HIPAA</strong>,{" "}
             <strong className="text-slate-700 font-semibold">GDPR</strong>,{" "}

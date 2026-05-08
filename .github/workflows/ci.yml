@@ -61,7 +61,7 @@ jobs:
     env:
       DEPLOY_HOST: 100.76.238.9
       DEPLOY_USER: reagan
-      DEPLOY_PATH: ~/echohealth
+      DEPLOY_PATH: ~/echo-health
       PM2_PROCESS: echohealth
 
     steps:

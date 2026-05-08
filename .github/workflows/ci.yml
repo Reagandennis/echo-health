@@ -98,7 +98,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -euo pipefail; whoami; hostname; test -d $DEPLOY_PATH; pm2 describe $PM2_PROCESS >/dev/null"
+            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; whoami; hostname; test -d \"$DEPLOY_PATH\"; command -v pm2 >/dev/null; pm2 describe \"$PM2_PROCESS\" >/dev/null'"
 
       - name: Pull latest code and restart PM2
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
@@ -109,4 +109,4 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -euo pipefail; cd $DEPLOY_PATH; git pull origin main; pm2 restart $PM2_PROCESS"
+            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; command -v pm2 >/dev/null; cd \"$DEPLOY_PATH\"; git pull origin main; pm2 restart \"$PM2_PROCESS\"'"

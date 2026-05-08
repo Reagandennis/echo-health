@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      run_deploy:
+        description: Run the production deploy job
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint test setup
+        run: npx eslint jest.config.js jest.setup.js __tests__
+
+      - name: Run unit tests
+        run: npm test -- --runInBand
+
+  deploy:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: test
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_deploy == true)
+    timeout-minutes: 10
+
+    env:
+      DEPLOY_HOST: 100.76.238.9
+      DEPLOY_USER: reagan
+      DEPLOY_PATH: ~/echohealth
+      PM2_PROCESS: echohealth
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          ping: ${{ env.DEPLOY_HOST }}
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/echohealth_deploy_key
+          chmod 600 ~/.ssh/echohealth_deploy_key
+
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          fi
+
+      - name: Pull latest code and restart PM2
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/echohealth_deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail; cd $DEPLOY_PATH; git pull origin main; pm2 restart $PM2_PROCESS"

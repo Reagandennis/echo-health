@@ -61,7 +61,7 @@ jobs:
     env:
       DEPLOY_HOST: 100.76.238.9
       DEPLOY_USER: reagan
-      DEPLOY_PATH: ~/echo-health
+      DEPLOY_PATH: /home/reagan/echo-health
       PM2_PROCESS: echo-health
       PM2_BIN: /home/reagan/.nvm/versions/node/v20.20.2/bin/pm2
 

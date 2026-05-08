@@ -62,7 +62,8 @@ jobs:
       DEPLOY_HOST: 100.76.238.9
       DEPLOY_USER: reagan
       DEPLOY_PATH: ~/echo-health
-      PM2_PROCESS: echohealth
+      PM2_PROCESS: echo-health
+      PM2_BIN: /home/reagan/.nvm/versions/node/v20.20.2/bin/pm2
 
     steps:
       - name: Connect to Tailscale
@@ -98,7 +99,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; whoami; hostname; test -d \"$DEPLOY_PATH\"; command -v pm2 >/dev/null; pm2 describe \"$PM2_PROCESS\" >/dev/null'"
+            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; whoami; hostname; test -d \"$DEPLOY_PATH\"; test -x \"$PM2_BIN\"; \"$PM2_BIN\" describe \"$PM2_PROCESS\" >/dev/null'"
 
       - name: Pull latest code and restart PM2
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
@@ -109,4 +110,4 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; command -v pm2 >/dev/null; cd \"$DEPLOY_PATH\"; git pull origin main; pm2 restart \"$PM2_PROCESS\"'"
+            "bash -lc 'set -euo pipefail; source ~/.profile >/dev/null 2>&1 || true; source ~/.bashrc >/dev/null 2>&1 || true; test -x \"$PM2_BIN\"; cd \"$DEPLOY_PATH\"; git pull origin main; \"$PM2_BIN\" restart \"$PM2_PROCESS\"'"

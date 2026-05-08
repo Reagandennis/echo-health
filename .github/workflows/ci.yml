@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      dry_run:
+        description: Only verify Tailscale and SSH connectivity without deploying
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -84,7 +89,19 @@ jobs:
             ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
           fi
 
+      - name: Verify remote access
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/echohealth_deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail; whoami; hostname; test -d $DEPLOY_PATH; pm2 describe $PM2_PROCESS >/dev/null"
+
       - name: Pull latest code and restart PM2
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         run: |
           set -euo pipefail
           ssh \

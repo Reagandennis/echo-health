@@ -20,7 +20,7 @@ We are committed to maintaining the confidentiality, integrity, and security of 
 
 By accessing or using Echo Health's website, mobile application, or services (collectively, the "Platform"), you acknowledge that you have read and understood this Privacy Policy.
 
-This Privacy Policy also applies to TechGetAfrica apps and digital products that link to, incorporate, or reference this Privacy Policy.`,
+This Privacy Policy also applies to TechGetAfrica apps and digital products that link to, incorporate, or reference this Privacy Policy, including FlameUp (flameup.com), a productivity app.`,
   },
   {
     id: "hipaa",
@@ -300,7 +300,8 @@ export default function PrivacyPolicyPage() {
             Your privacy and the confidentiality of your mental-health
             information are fundamental to who we are. This policy covers your
             use of Echo Health and TechGetAfrica apps that reference this
-            policy, along with your
+            policy, including FlameUp (flameup.com), a productivity app, along
+            with your
             {" "}
             rights under{" "}
             <strong className="text-slate-700 font-semibold">HIPAA</strong>,{" "}

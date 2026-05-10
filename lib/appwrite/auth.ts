@@ -2,7 +2,7 @@
 
 import { ID, OAuthProvider } from "appwrite";
 import { account } from "./client";
-import { createSession, signUpAction, deleteSession } from "./actions";
+import { createSession, signUpAction, deleteSession, createGoogleOAuthTokenAction } from "./actions";
 
 const SITE_URL =
   globalThis.window === undefined
@@ -68,17 +68,9 @@ export async function signOut() {
 
 /**
  * Kick off Google OAuth — must be called from a browser click handler.
- * After OAuth completes Appwrite redirects to /dashboard (or /signin on failure).
+ * Uses Server Action to create the OAuth2 token URL and redirects the browser.
  */
-export function signInWithGoogle() {
-  const origin =
-    globalThis.window === undefined
-      ? SITE_URL
-      : globalThis.window.location.origin;
-
-  account.createOAuth2Session({
-    provider: OAuthProvider.Google,
-    success: `${origin}/dashboard`,
-    failure: `${origin}/signin`,
-  });
+export async function signInWithGoogle() {
+  const url = await createGoogleOAuthTokenAction();
+  window.location.assign(url);
 }

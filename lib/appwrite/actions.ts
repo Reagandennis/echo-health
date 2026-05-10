@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { createAdminClient, createSessionClient } from "./server";
 import { Client, Account } from "node-appwrite";
 import { appwriteConfig } from "./config";
-import { ID, Permission, Role } from "node-appwrite";
+import { ID, Permission, Role, OAuthProvider } from "node-appwrite";
+import { headers } from "next/headers";
 
 /** Helper to create a session client from a known secret (useful when cookies aren't ready) */
 function createClientFromSecret(secret: string) {
@@ -31,7 +32,7 @@ function createGuestClient() {
 }
 
 export async function createSession(email: string, password: string) {
-  const { account } = createGuestClient();
+  const { account } = createAdminClient();
 
   try {
     const session = await account.createEmailPasswordSession(email, password);
@@ -69,8 +70,7 @@ export async function syncSession(secret: string) {
 }
 
 export async function signUpAction(email: string, password: string, name: string, goal?: string) {
-  const { users, databases } = createAdminClient();
-  const { account } = createGuestClient();
+  const { users, databases, account } = createAdminClient();
 
   try {
     const userId = ID.unique();
@@ -131,4 +131,17 @@ export async function deleteSession() {
   cookieStore.delete("appwrite-session");
 
   redirect("/signin");
+}
+
+export async function createGoogleOAuthTokenAction() {
+  const { account } = createAdminClient();
+  const origin = (await headers()).get("origin");
+
+  const redirectUrl = await account.createOAuth2Token(
+    OAuthProvider.Google,
+    `${origin}/api/oauth`, // success URL
+    `${origin}/signin` // failure URL
+  );
+
+  return redirectUrl;
 }

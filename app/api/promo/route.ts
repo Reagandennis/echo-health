@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteException } from "node-appwrite";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? "";
 const COLLECTION_ID = "promos";
@@ -117,6 +118,14 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  const posthog = getPostHogClient();
+  posthog.capture({
+    distinctId: userId,
+    event: "promo_code_redeemed",
+    properties: { code: code.trim().toUpperCase() },
+  });
+  await posthog.shutdown();
 
   return NextResponse.json({ success: true });
 }

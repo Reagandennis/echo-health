@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/database";
 import type { Goal, GoalMilestone } from "@/lib/appwrite/database";
 import { useUser } from "@/app/components/UserProvider";
+import posthog from "posthog-js";
 
 function parseMilestones(raw: string): GoalMilestone[] {
   try { return JSON.parse(raw) as GoalMilestone[]; }
@@ -30,6 +31,13 @@ function GoalCard({ goal, onUpdate }: { readonly goal: Goal; readonly onUpdate: 
         milestones: JSON.stringify(updated),
         completedAt: allDone ? new Date().toISOString() : null,
       });
+      if (allDone) {
+        posthog.capture("goal_completed", {
+          goal_id: goal.$id,
+          milestone_count: updated.length,
+          assigned_by: goal.assignedBy,
+        });
+      }
       onUpdate(g);
     } catch (error) {
       console.error("Update goal error:", error);
@@ -121,6 +129,11 @@ function AddGoalModal({ onClose, onSaved, userId }: {
         milestones: JSON.stringify(ms),
         assignedBy: "self",
         createdAt: new Date().toISOString(),
+      });
+      posthog.capture("goal_created", {
+        goal_id: g.$id,
+        milestone_count: ms.length,
+        assigned_by: "self",
       });
       onSaved(g);
     } catch (error) {

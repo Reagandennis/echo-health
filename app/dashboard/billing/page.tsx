@@ -5,6 +5,7 @@ import { CreditCard, ChevronRight, CheckCircle2, Clock } from "lucide-react";
 import { listPatientSessions } from "@/lib/appwrite/database";
 import { PLAN_LABELS, PLAN_PRICES, PLAN_SESSIONS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
+import posthog from "posthog-js";
 
 type Plan = keyof typeof PLAN_SESSIONS;
 
@@ -91,6 +92,7 @@ export default function BillingPage() {
       {/* Upgrade CTA */}
       {plan !== "plus" && (
         <a href="/onboarding"
+          onClick={() => posthog.capture("plan_upgrade_clicked", { current_plan: plan })}
           className="flex items-center justify-between bg-white rounded-2xl border border-brand/10 hover:border-brand/25 p-5 mb-6 transition-colors group">
           <div>
             <p className="text-sm font-semibold text-brand">Upgrade your plan</p>

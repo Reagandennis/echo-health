@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const VALID_ROLES = ["client", "therapist"] as const;
 type Role = (typeof VALID_ROLES)[number];
@@ -38,6 +39,14 @@ export async function POST(req: NextRequest) {
     // Filter out old roles if we are re-assigning via admin
     const filteredLabels = existingLabels.filter(l => l !== "client" && l !== "therapist");
     await users.updateLabels(userId, [...filteredLabels, role]);
+
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: userId,
+      event: "user_role_selected",
+      properties: { role, set_by_admin: isAdmin ?? false },
+    });
+    await posthog.shutdown();
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {

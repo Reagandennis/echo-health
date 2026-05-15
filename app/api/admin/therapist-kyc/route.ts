@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
 import { appwriteConfig } from "@/lib/appwrite/config";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,6 +40,19 @@ export async function POST(req: NextRequest) {
         // We still return ok: true because the document was updated
       }
     }
+
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: user.$id,
+      event: "therapist_kyc_reviewed",
+      properties: {
+        therapist_doc_id: therapistDocId,
+        therapist_user_id: doc.userId,
+        action,
+        kyc_status: kycStatus,
+      },
+    });
+    await posthog.shutdown();
 
     return NextResponse.json({ ok: true, kycStatus });
   } catch (err: unknown) {

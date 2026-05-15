@@ -6,6 +6,7 @@ import { realtime, databases } from "@/lib/appwrite/client";
 import { appwriteConfig } from "@/lib/appwrite/config";
 import { Query } from "appwrite";
 import { useUser } from "./UserProvider";
+import posthog from "posthog-js";
 
 interface ChatMessage {
   id: string;
@@ -212,6 +213,11 @@ export default function ChatWidget() {
       if (!res.ok) {
         setSendError(true);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      } else {
+        posthog.capture("chat_message_sent", {
+          session_id: sessionId.current,
+          message_length: text.length,
+        });
       }
     } catch {
       setSendError(true);

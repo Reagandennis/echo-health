@@ -7,6 +7,7 @@ import { User, BookOpen, Upload, CheckCircle, ArrowRight, ArrowLeft, Loader2 } f
 import { useUser } from "@/app/components/UserProvider";
 import { uploadFileAction, upsertTherapistProfileAction } from "@/app/actions/database";
 import { appwriteConfig } from "@/lib/appwrite/config";
+import posthog from "posthog-js";
 
 const SPECIALTIES = [
   "Anxiety & Stress", "Depression", "Trauma & PTSD", "Couples Therapy",
@@ -95,8 +96,16 @@ export default function TherapistOnboardingPage() {
 
       await upsertTherapistProfileAction(user.$id, profileData);
 
+      posthog.capture("therapist_onboarding_completed", {
+        specialties: selectedSpecialties,
+        experience_years: Number.parseInt(experience, 10),
+        has_photo: !!photoFile,
+        has_license_doc: !!licenseFile,
+      });
+
       router.push("/therapist");
     } catch (err: unknown) {
+      posthog.captureException(err);
       setError(err instanceof Error ? err.message : "Failed to save profile.");
       setSaving(false);
     }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Mail, Lock, User } from "lucide-react";
 import AuthInput from "../../components/AuthInput";
 import { signInWithGoogle, signUp } from "@/lib/appwrite/auth";
+import posthog from "posthog-js";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -32,13 +33,26 @@ export default function SignUpPage() {
     try {
       const goal = form.get("goal") as string;
       const result = await signUp(email, password, `${firstName} ${lastName}`.trim(), goal);
-      
+
       if (!result.success) {
         throw new Error(result.error || "Could not create account.");
       }
 
+      if (result.user?.$id) {
+        posthog.identify(result.user.$id, {
+          email,
+          name: `${firstName} ${lastName}`.trim(),
+        });
+      }
+      posthog.capture("user_signed_up", {
+        email,
+        goal: goal || null,
+        method: "email",
+      });
+
       router.push("/role-select");
     } catch (err: unknown) {
+      posthog.captureException(err);
       setError(
         err instanceof Error
           ? err.message

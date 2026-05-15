@@ -74,6 +74,7 @@ export const metadata: Metadata = {
 import { getLoggedInUser } from "@/lib/appwrite/server";
 import { Suspense } from "react";
 import { UserProvider } from "./components/UserProvider";
+import PostHogProvider from "./components/PostHogProvider";
 
 export default async function RootLayout({
   children,
@@ -88,12 +89,14 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <UserProvider user={user}>
-          {children}
-          <Suspense fallback={null}>
-            <ChatWidgetWrapper user={user} />
-          </Suspense>
-        </UserProvider>
+        <PostHogProvider user={user}>
+          <UserProvider user={user}>
+            {children}
+            <Suspense fallback={null}>
+              <ChatWidgetWrapper user={user} />
+            </Suspense>
+          </UserProvider>
+        </PostHogProvider>
       </body>
     </html>
   );

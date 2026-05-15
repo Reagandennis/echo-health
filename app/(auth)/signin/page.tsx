@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Mail, Lock } from "lucide-react";
 import AuthInput from "../../components/AuthInput";
 import { getCurrentUser, signIn, signInWithGoogle } from "@/lib/appwrite/auth";
+import posthog from "posthog-js";
 
 function SignInForm() {
   const router = useRouter();
@@ -43,7 +44,7 @@ function SignInForm() {
 
       setRedirecting(true);
       router.refresh();
-      
+
       const u = result.user;
       if (!u) {
         setError("Sign in failed. Could not retrieve user profile.");
@@ -51,6 +52,9 @@ function SignInForm() {
         setRedirecting(false);
         return;
       }
+
+      posthog.identify(u.$id, { email, name: u.name });
+      posthog.capture("user_signed_in", { email, method: "email" });
 
       if (u.labels?.includes("admin")) {
         router.push("/admin");
@@ -70,6 +74,7 @@ function SignInForm() {
 
       router.push("/dashboard");
     } catch (err: unknown) {
+      posthog.captureException(err);
       setError(
         err instanceof Error
           ? err.message

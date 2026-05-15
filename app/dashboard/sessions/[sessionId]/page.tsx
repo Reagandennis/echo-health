@@ -10,6 +10,7 @@ import { getSessionAction } from "@/app/actions/database";
 import appwriteClient from "@/lib/appwrite/client";
 import { appwriteConfig } from "@/lib/appwrite/config";
 import type { TherapySession } from "@/lib/appwrite/database";
+import posthog from "posthog-js";
 
 export default function ClientSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -48,12 +49,22 @@ export default function ClientSessionPage() {
         // Check if therapist is already live (tracks already written)
         const isLive = !!(sess as unknown as Record<string, unknown>).therapistTracks;
         setTherapistLive(isLive);
+        if (isLive) {
+          posthog.capture("video_session_joined", {
+            session_id: sess.$id,
+            scheduled_at: sess.scheduledAt,
+          });
+        }
 
         // Subscribe via Appwrite Realtime to detect when therapist joins
         if (!isLive) {
           const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${sessionId}`;
           unsubscribe = appwriteClient.subscribe(channel, (response: { payload: Record<string, unknown> }) => {
             if (response.payload?.therapistTracks) {
+              posthog.capture("video_session_joined", {
+                session_id: sess.$id,
+                scheduled_at: sess.scheduledAt,
+              });
               setTherapistLive(true);
               unsubscribe?.();
             }

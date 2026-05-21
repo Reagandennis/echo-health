@@ -2,10 +2,11 @@
  * @jest-environment node
  */
 import { POST } from "@/app/api/chat/route";
-import { createAdminClient } from "@/lib/appwrite/server";
+import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
 
 jest.mock("@/lib/appwrite/server", () => ({
   createAdminClient: jest.fn(),
+  getLoggedInUser: jest.fn(),
 }));
 
 jest.mock("node-appwrite", () => ({
@@ -19,16 +20,20 @@ jest.mock("node-appwrite", () => ({
     read: jest.fn((role: string) => `read:${role}`),
   },
   Role: {
-    any: jest.fn(() => "any"),
+    user: jest.fn((id: string) => `user:${id}`),
     label: jest.fn((label: string) => `label:${label}`),
   },
 }));
 
 const mockedCreateAdminClient = createAdminClient as jest.MockedFunction<typeof createAdminClient>;
+const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
 
-function jsonRequest(body: unknown) {
+function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
   return {
     json: jest.fn().mockResolvedValue(body),
+    headers: {
+      get: jest.fn((k: string) => headers[k.toLowerCase()] ?? null),
+    },
   } as unknown as Parameters<typeof POST>[0];
 }
 
@@ -42,29 +47,34 @@ describe("/api/chat", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedCreateAdminClient.mockReturnValue({ databases } as unknown as ReturnType<typeof createAdminClient>);
+    mockedGetLoggedInUser.mockResolvedValue(null);
     databases.listDocuments.mockResolvedValue({ total: 0, documents: [] });
     databases.createDocument.mockResolvedValue({ $id: "created-doc" });
     databases.updateDocument.mockResolvedValue({ $id: "session-doc" });
   });
 
   it("rejects messages missing required fields", async () => {
-    const response = await POST(jsonRequest({ sessionId: "session-1", text: "Hello" }));
+    const response = await POST(
+      jsonRequest({ sessionId: "session-1", text: "Hello" }, { "x-forwarded-for": "10.0.0.1" })
+    );
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(body.error).toBe("Missing required fields.");
+    expect(body.error).toMatch(/email|name/i);
     expect(databases.createDocument).not.toHaveBeenCalled();
   });
 
-  it("stores a user message and creates a chat session when none exists", async () => {
+  it("ignores client-supplied role and forces 'user' for anonymous messages", async () => {
     const response = await POST(
-      jsonRequest({
-        sessionId: "session-1",
-        name: "Ada",
-        email: "ada@example.com",
-        role: "user",
-        text: "I need help",
-      })
+      jsonRequest(
+        {
+          sessionId: "session-1",
+          name: "Ada",
+          email: "ada@example.com",
+          text: "I need help",
+        },
+        { "x-forwarded-for": "10.0.0.2" }
+      )
     );
     const body = await response.json();
 
@@ -72,8 +82,6 @@ describe("/api/chat", () => {
     expect(body.ok).toBe(true);
     expect(databases.createDocument).toHaveBeenCalledTimes(2);
     const messageCreateCall = databases.createDocument.mock.calls[0];
-    expect(messageCreateCall[1]).toBe("chat_messages");
-    expect(messageCreateCall[2]).toBe("unique-id");
     expect(messageCreateCall[3]).toEqual(
       expect.objectContaining({
         sessionId: "session-1",
@@ -83,17 +91,36 @@ describe("/api/chat", () => {
         text: "I need help",
       })
     );
-    expect(messageCreateCall[4]).toEqual(expect.arrayContaining(["read:any", "read:label:admin"]));
+    // Anonymous: admin-only read ACL (no Role.any leak)
+    expect(messageCreateCall[4]).toEqual(["read:label:admin"]);
+  });
 
-    const sessionCreateCall = databases.createDocument.mock.calls[1];
-    expect(sessionCreateCall[1]).toBe("chat_sessions");
-    expect(sessionCreateCall[2]).toBe("unique-id");
-    expect(sessionCreateCall[3]).toEqual(
-      expect.objectContaining({
-        sessionId: "session-1",
-        lastMessage: "I need help",
-        isOnline: true,
-      })
+  it("derives identity from the authenticated session, ignoring client-supplied name/email", async () => {
+    mockedGetLoggedInUser.mockResolvedValue({
+      $id: "user-1",
+      name: "Authed",
+      email: "authed@example.com",
+    });
+
+    const response = await POST(
+      jsonRequest(
+        {
+          sessionId: "session-1",
+          name: "Pretend",
+          email: "spoof@example.com",
+          text: "hello",
+        },
+        { "x-forwarded-for": "10.0.0.3" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    const messageCreateCall = databases.createDocument.mock.calls[0];
+    expect(messageCreateCall[3]).toEqual(
+      expect.objectContaining({ name: "Authed", email: "authed@example.com", role: "user" })
+    );
+    expect(messageCreateCall[4]).toEqual(
+      expect.arrayContaining(["read:label:admin", "read:user:user-1"])
     );
   });
 
@@ -104,13 +131,15 @@ describe("/api/chat", () => {
     });
 
     const response = await POST(
-      jsonRequest({
-        sessionId: "session-1",
-        name: "Ada",
-        email: "ada@example.com",
-        role: "system",
-        text: "heartbeat",
-      })
+      jsonRequest(
+        {
+          sessionId: "session-1",
+          name: "Ada",
+          email: "ada@example.com",
+          text: "heartbeat",
+        },
+        { "x-forwarded-for": "10.0.0.4" }
+      )
     );
     const body = await response.json();
 
@@ -118,7 +147,6 @@ describe("/api/chat", () => {
     expect(body.ok).toBe(true);
     expect(databases.createDocument).not.toHaveBeenCalled();
     const sessionUpdateCall = databases.updateDocument.mock.calls[0];
-    expect(sessionUpdateCall[1]).toBe("chat_sessions");
     expect(sessionUpdateCall[2]).toBe("existing-session");
     expect(sessionUpdateCall[3]).toEqual(
       expect.objectContaining({

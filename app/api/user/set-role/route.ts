@@ -1,50 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
 import { getPostHogClient } from "@/lib/posthog-server";
-
-const VALID_ROLES = ["client", "therapist"] as const;
-type Role = (typeof VALID_ROLES)[number];
+import { parseOrError, setRoleSchema } from "@/lib/validation";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
     const requester = await getLoggedInUser();
-    const { userId, role } = (await req.json()) as { userId: string; role: Role };
-
-    if (!userId || !VALID_ROLES.includes(role)) {
-      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    if (!requester) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify requester has permission to set THIS userId's role
-    const isAdmin = requester?.labels?.includes("admin");
-    if (userId !== requester?.$id && !isAdmin) {
+    const limit = rateLimit(`set-role:${requester.$id ?? clientIp(req)}`, {
+      limit: 5,
+      windowMs: 60_000,
+    });
+    if (!limit.ok) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
+    const parsed = parseOrError(setRoleSchema, await req.json());
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.message }, { status: 400 });
+    }
+    const { userId, role } = parsed.data;
+
+    const isAdmin = requester.labels?.includes("admin") ?? false;
+    if (userId !== requester.$id && !isAdmin) {
       return NextResponse.json({ error: "Forbidden: Cannot set role for another user." }, { status: 403 });
     }
 
-    const { users } = createAdminClient();
+    // SECURITY: only admins may grant the "therapist" label. Self-serve users
+    // selecting "therapist" go through the KYC flow (/therapist/onboarding ->
+    // /api/admin/therapist-kyc) and only get the label on admin approval.
+    if (role === "therapist" && !isAdmin) {
+      return NextResponse.json(
+        { error: "Therapist role requires verification. Please complete KYC." },
+        { status: 403 }
+      );
+    }
 
-    // Verify user exists
+    const { users } = createAdminClient();
     const user = await users.get(userId);
     const existingLabels: string[] = user.labels ?? [];
 
-    // Only allow setting a role if:
-    // 1. The user has no role labels yet (onboarding)
-    // 2. OR the requester is an admin
-    const hasExistingRole = existingLabels.includes("client") || existingLabels.includes("therapist");
-
+    const hasExistingRole =
+      existingLabels.includes("client") || existingLabels.includes("therapist");
     if (hasExistingRole && !isAdmin) {
-      return NextResponse.json({ error: "Unauthorized: Role already set and you are not an admin." }, { status: 403 });
+      return NextResponse.json(
+        { error: "Unauthorized: Role already set and you are not an admin." },
+        { status: 403 }
+      );
     }
 
-    // Preserving any existing labels (e.g. "admin") and add the new role
-    // Filter out old roles if we are re-assigning via admin
-    const filteredLabels = existingLabels.filter(l => l !== "client" && l !== "therapist");
+    const filteredLabels = existingLabels.filter(
+      (l) => l !== "client" && l !== "therapist"
+    );
     await users.updateLabels(userId, [...filteredLabels, role]);
 
     const posthog = getPostHogClient();
     posthog.capture({
       distinctId: userId,
       event: "user_role_selected",
-      properties: { role, set_by_admin: isAdmin ?? false },
+      properties: { role, set_by_admin: isAdmin },
     });
     await posthog.shutdown();
 

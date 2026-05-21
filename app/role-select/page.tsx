@@ -81,15 +81,22 @@ function RoleSelectContent() {
     setError(null);
 
     try {
-      const res = await fetch("/api/user/set-role", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.$id, role: selected }),
-      });
+      // Clients self-assign the "client" label. Therapists do NOT receive a
+      // label here — they complete /therapist/onboarding, an admin reviews
+      // their KYC, and only then does /api/admin/therapist-kyc assign the
+      // "therapist" label. This prevents self-promotion to a role with
+      // access to clinical data.
+      if (selected === "client") {
+        const res = await fetch("/api/user/set-role", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.$id, role: "client" }),
+        });
 
-      if (!res.ok) {
-        const data = await res.json() as { error?: string };
-        throw new Error(data.error ?? "Failed to save role.");
+        if (!res.ok) {
+          const data = await res.json() as { error?: string };
+          throw new Error(data.error ?? "Failed to save role.");
+        }
       }
 
       const target = roles.find((r) => r.id === selected)?.redirectTo ?? "/onboarding";

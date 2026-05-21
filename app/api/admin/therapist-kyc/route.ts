@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
 import { appwriteConfig } from "@/lib/appwrite/config";
 import { getPostHogClient } from "@/lib/posthog-server";
+import { parseOrError, kycReviewSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,11 +11,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { therapistDocId, action } = (await req.json()) as { therapistDocId: string; action: "approve" | "reject" };
-
-    if (!therapistDocId || (action !== "approve" && action !== "reject")) {
+    const parsed = parseOrError(kycReviewSchema, await req.json());
+    if (!parsed.ok) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
+    const { therapistDocId, action } = parsed.data;
 
     const { databases, users } = createAdminClient();
     const kycStatus = action === "approve" ? "verified" : "rejected";

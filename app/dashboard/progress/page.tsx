@@ -1,24 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Plus, X, BookOpen, Pencil, Trash2,
 } from "lucide-react";
 import {
-  ResponsiveContainer, AreaChart, Area,
-  XAxis, YAxis, Tooltip, CartesianGrid,
-} from "recharts";
-import { 
-  listMoodLogsAction, 
-  createMoodLogAction, 
-  listJournalEntriesAction, 
-  createJournalEntryAction, 
-  updateJournalEntryAction, 
-  deleteJournalEntryAction 
+  listMoodLogsAction,
+  createMoodLogAction,
+  listJournalEntriesAction,
+  createJournalEntryAction,
+  updateJournalEntryAction,
+  deleteJournalEntryAction
 } from "@/app/actions/database";
 import type { MoodLog, JournalEntry } from "@/lib/appwrite/database";
 import { MOOD_EMOJIS, MOOD_TAGS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
+
+// PERF: defer the recharts chunk (8.5 MB + d3 transitives) so it isn't pulled
+// into the dashboard's initial bundle / Turbopack compile graph.
+const MoodChart = dynamic(() => import("./_components/MoodChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[180px] flex items-center justify-center">
+      <div className="w-5 h-5 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
+    </div>
+  ),
+});
 
 const JOURNAL_PROMPTS = [
   "What am I grateful for today?",
@@ -328,24 +336,7 @@ export default function ProgressPage() {
                 </button>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                  <defs>
-                    <linearGradient id="moodGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#35858E" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#35858E" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#35858E10" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#35858E80" }} tickLine={false} axisLine={false} />
-                  <YAxis domain={[1, 10]} ticks={[1, 5, 10]} tick={{ fontSize: 10, fill: "#35858E80" }} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: "#fff", border: "1px solid #35858E20", borderRadius: 12, fontSize: 12 }}
-                    formatter={(v) => [v ?? 0, "Mood score"]}
-                  />
-                  <Area type="monotone" dataKey="score" stroke="#35858E" strokeWidth={2} fill="url(#moodGrad)" dot={{ r: 3, fill: "#35858E" }} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <MoodChart data={chartData} />
             )}
           </div>
 

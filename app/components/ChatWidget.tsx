@@ -149,7 +149,11 @@ export default function ChatWidget() {
         window.removeEventListener('beforeunload', handleUnload);
       };
     }
-  }, [stage, name, email]);
+    // PERF: deps were [stage, name, email] which recreated the WebSocket +
+    // heartbeat on every keystroke in the gate form. The heartbeat reads
+    // `name`/`email` from closure each tick, so we don't need them as deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   // Scroll to latest message
   useEffect(() => {

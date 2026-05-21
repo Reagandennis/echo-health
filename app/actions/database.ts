@@ -320,8 +320,12 @@ export async function upsertTherapistProfileAction(userId: string, data: any) {
       appwriteConfig.collections.therapists,
       ID.unique(),
       payload,
+      // SECURITY: directory listing requires authentication (Role.users), not
+      // Role.any. Sensitive fields like licenseNumber and kycStatus should be
+      // stripped from any public-facing therapist directory served from a
+      // server route.
       [
-        Permission.read(Role.any()),
+        Permission.read(Role.users()),
         Permission.update(Role.user(userId)),
         Permission.read(Role.label("admin")),
         Permission.update(Role.label("admin")),

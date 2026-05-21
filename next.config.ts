@@ -44,9 +44,38 @@ const nextConfig: NextConfig = {
   },
 
   // ── Security headers ───────────────────────────────────────────────
-  // CSP intentionally omitted — needs Report-Only rollout to learn what
-  // Appwrite/PostHog/Cloudflare/Unsplash actually load before enforcing.
   async headers() {
+    // Derive Appwrite host (https + wss) from the public endpoint, so the CSP
+    // matches whichever environment we deploy to.
+    const appwriteEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT ?? "";
+    let appwriteHttps = "";
+    let appwriteWss = "";
+    try {
+      const u = new URL(appwriteEndpoint);
+      appwriteHttps = `${u.protocol}//${u.host}`;
+      appwriteWss = `wss://${u.host}`;
+    } catch {
+      // env not set at build time — CSP will still be valid, just without the host.
+    }
+
+    const cspDirectives = [
+      "default-src 'self'",
+      // 'unsafe-inline' is currently required by Next.js for hydration. Tighten
+      // to nonces once we move all inline scripts to React 19's <Script> with
+      // explicit nonce support.
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      `connect-src 'self' ${appwriteHttps} ${appwriteWss}`.trim(),
+      "media-src 'self' blob:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
+    ];
+
     const securityHeaders = [
       {
         key: "Strict-Transport-Security",
@@ -63,6 +92,13 @@ const nextConfig: NextConfig = {
           "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
       },
       { key: "X-DNS-Prefetch-Control", value: "on" },
+      // CSP rolled out in Report-Only first. Watch browser-reported violations
+      // (and any logging endpoint you wire up via `report-to`) for a sprint,
+      // then switch the key to `Content-Security-Policy` to enforce.
+      {
+        key: "Content-Security-Policy-Report-Only",
+        value: cspDirectives.join("; "),
+      },
     ];
 
     return [

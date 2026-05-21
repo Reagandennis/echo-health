@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# scratch / one-off testing scripts (never commit secrets!)
+test_appwrite*.js
+test_node_appwrite.js
+
 # vercel
 .vercel
 

@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
-import { realtime, databases } from "@/lib/appwrite/client";
+import { realtime } from "@/lib/appwrite/client";
 import { appwriteConfig } from "@/lib/appwrite/config";
-import { Query } from "appwrite";
 import { useUser } from "./UserProvider";
 import posthog from "posthog-js";
 
@@ -52,23 +51,23 @@ export default function ChatWidget() {
 
   const fetchHistory = async () => {
     try {
-      const res = await databases.listDocuments(
-        appwriteConfig.databaseId,
-        appwriteConfig.collections.chatMessages,
-        [Query.equal("sessionId", sessionId.current), Query.orderAsc("$createdAt")]
-      );
-      if (res.total > 0) {
-        const history = res.documents.map((doc: any) => ({
-          id: doc.$id,
-          role: doc.role,
-          text: doc.text,
-        }));
-        setMessages(history);
+      const emailForClaim = (user?.email ?? email).trim();
+      const params = new URLSearchParams({ sessionId: sessionId.current });
+      if (emailForClaim) params.set("email", emailForClaim);
+      const res = await fetch(`/api/chat/history?${params.toString()}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { messages?: Array<{ id: string; role: string; text: string }> };
+      if (data.messages && data.messages.length > 0) {
+        setMessages(
+          data.messages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "bot" | "admin" | "system",
+            text: m.text,
+          }))
+        );
       }
-    } catch (e: any) {
-      if (e?.code !== 404) {
-        console.error("History fetch error", e);
-      }
+    } catch (e) {
+      console.error("History fetch error", e);
     }
   };
 

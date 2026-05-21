@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { AppwriteException } from "node-appwrite";
 import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
 import { getPostHogClient } from "@/lib/posthog-server";
+import { parseOrError, promoSchema } from "@/lib/validation";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? "";
 const COLLECTION_ID = "promos";
@@ -46,10 +48,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { code, userId } = (await req.json()) as {
-    code: string;
-    userId: string;
-  };
+  const limit = rateLimit(`promo:${user.$id ?? clientIp(req)}`, {
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
+  const parsed = parseOrError(promoSchema, await req.json());
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.message }, { status: 400 });
+  }
+  const { code, userId } = parsed.data;
 
   if (userId !== user.$id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

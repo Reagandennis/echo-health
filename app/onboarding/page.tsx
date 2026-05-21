@@ -170,8 +170,7 @@ export default function OnboardingPage() {
 
         {/* Trust strip */}
         <div className="mt-14 flex flex-wrap justify-center gap-6 text-xs text-brand/40">
-          <span>🔒 256-bit encryption</span>
-          <span>🛡️ HIPAA compliant</span>
+          <span>🔒 TLS-encrypted in transit</span>
           <span>💳 Secure payments via Stripe</span>
           <span>⭐ 4.9 / 5 average rating</span>
         </div>

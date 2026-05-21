@@ -49,7 +49,8 @@ export async function GET(req: NextRequest) {
 
   const loggedIn = await getLoggedInUser();
   const claimMatches =
-    loggedIn?.email === sessionEmail ||
+    (loggedIn?.email !== undefined &&
+      loggedIn.email.toLowerCase() === sessionEmail.toLowerCase()) ||
     (claimedEmail !== null && claimedEmail.toLowerCase() === sessionEmail.toLowerCase());
 
   if (!claimMatches) {

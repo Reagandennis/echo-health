@@ -1,12 +1,14 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Cookie Settings",
   description:
     "Manage your cookie preferences and learn how Echo Health uses tracking technologies.",
-};
+  path: "/cookies",
+  index: false,
+});
 
 const LAST_UPDATED = "May 1, 2026";
 const EFFECTIVE_DATE = "May 1, 2026";

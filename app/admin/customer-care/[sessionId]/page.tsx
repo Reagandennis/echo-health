@@ -67,9 +67,6 @@ export default function ChatSessionPage({ params }: { params: Promise<{ sessionI
   useEffect(() => {
     fetchSessionData();
 
-    // Fallback polling every 5s
-    const interval = setInterval(fetchSessionData, 5000);
-
     let unsubscribe: any;
 
     try {
@@ -94,7 +91,6 @@ export default function ChatSessionPage({ params }: { params: Promise<{ sessionI
     return () => {
       if (typeof unsubscribe === "function") unsubscribe();
       else if (unsubscribe?.unsubscribe) unsubscribe.unsubscribe();
-      clearInterval(interval);
     };
   }, [sessionId]);
 

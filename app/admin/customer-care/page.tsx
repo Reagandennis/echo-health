@@ -44,9 +44,6 @@ export default function CustomerCarePage() {
   useEffect(() => {
     fetchSessions();
 
-    // Fallback polling every 10s
-    const interval = setInterval(fetchSessions, 10000);
-
     let unsubscribe: any;
     try {
       unsubscribe = realtime.subscribe(
@@ -59,6 +56,8 @@ export default function CustomerCarePage() {
             setSessions((prev) =>
               prev.map((s) => (s.$id === payload.$id ? payload : s))
             );
+          } else if (response.events.includes("databases.*.collections.*.documents.*.delete")) {
+            setSessions((prev) => prev.filter((s) => s.$id !== payload.$id));
           }
         }
       );
@@ -69,7 +68,6 @@ export default function CustomerCarePage() {
     return () => {
       if (typeof unsubscribe === "function") unsubscribe();
       else if (unsubscribe?.unsubscribe) unsubscribe.unsubscribe();
-      clearInterval(interval);
     };
   }, []);
 

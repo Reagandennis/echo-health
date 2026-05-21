@@ -1,6 +1,7 @@
 // Server Component — interactive children (StatCounter, ProgressBar, etc.) are individually "use client"
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   Search,
   CalendarCheck,
@@ -168,12 +169,12 @@ export default function Home() {
             <a href="#pricing" className="hover:text-brand transition-colors">Pricing</a>
           </nav>
           <div className="flex items-center gap-3">
-            <a href="/signin" className="hidden sm:inline text-sm font-medium text-brand hover:opacity-80 transition-opacity">
+            <Link href="/signin" className="hidden sm:inline text-sm font-medium text-brand hover:opacity-80 transition-opacity">
               Sign in
-            </a>
-            <a href="/signup" className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+            </Link>
+            <Link href="/signup" className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
               Get started
-            </a>
+            </Link>
           </div>
         </div>
       </header>
@@ -198,9 +199,9 @@ export default function Home() {
               whenever you need it.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a href="/signup" className="w-full sm:w-auto rounded-full bg-brand px-8 py-3.5 text-sm font-semibold text-white shadow-md hover:opacity-90 transition-opacity">
+              <Link href="/signup" className="w-full sm:w-auto rounded-full bg-brand px-8 py-3.5 text-sm font-semibold text-white shadow-md hover:opacity-90 transition-opacity">
                 Match with a therapist
-              </a>
+              </Link>
               <a href="#how" className="w-full sm:w-auto rounded-full border-2 border-brand bg-cream/30 px-8 py-3.5 text-sm font-semibold text-brand hover:bg-cream/60 transition-colors">
                 Learn how it works
               </a>
@@ -417,14 +418,14 @@ export default function Home() {
                       </li>
                     ))}
                   </ul>
-                  <a
+                  <Link
                     href="/signup"
                     className={`block text-center rounded-full py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${
                       plan.highlighted ? "bg-white text-brand" : "bg-brand text-white"
                     }`}
                   >
                     {plan.cta}
-                  </a>
+                  </Link>
                 </div>
               ))}
             </div>
@@ -441,12 +442,12 @@ export default function Home() {
               Thousands of people have already taken control of their mental
               health with Echo Health. Today can be your day one.
             </p>
-            <a
+            <Link
               href="/signup"
               className="mt-8 inline-block rounded-full bg-white px-10 py-4 text-sm font-semibold text-teal-700 shadow-lg hover:opacity-90 transition-opacity"
             >
               Match with a therapist — it&apos;s free to start
-            </a>
+            </Link>
           </div>
         </section>
 

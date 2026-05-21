@@ -2,8 +2,7 @@
 
 import posthog from "posthog-js";
 import { PostHogProvider as PHProvider, usePostHog } from "posthog-js/react";
-import { useEffect } from "react";
-import type { Models } from "appwrite";
+import { useEffect, useState } from "react";
 
 if (globalThis.window !== undefined) {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -27,38 +26,46 @@ if (globalThis.window !== undefined) {
   }
 }
 
-function PostHogIdentify({
-  user,
-}: {
-  user: Models.User<Models.Preferences> | null;
-}) {
+interface MeUser {
+  $id: string;
+  name?: string;
+  email?: string;
+  labels?: string[];
+}
+
+function PostHogIdentify() {
   const ph = usePostHog();
+  const [me, setMe] = useState<MeUser | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setMe(data?.user ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!ph) return;
-    if (user) {
-      ph.identify(user.$id, {
-        email: user.email,
-        name: user.name,
-      });
+    if (me) {
+      ph.identify(me.$id, { email: me.email, name: me.name });
     } else {
       ph.reset();
     }
-  }, [ph, user]);
+  }, [ph, me]);
 
   return null;
 }
 
-export default function PostHogProvider({
-  user,
-  children,
-}: Readonly<{
-  user: Models.User<Models.Preferences> | null;
-  children: React.ReactNode;
-}>) {
+export default function PostHogProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <PHProvider client={posthog}>
-      <PostHogIdentify user={user} />
+      <PostHogIdentify />
       {children}
     </PHProvider>
   );

@@ -18,6 +18,7 @@ export default function VideoRoom({ sessionId, userId, role, onLeave }: VideoRoo
     isJoined,
     isAudioMuted,
     isVideoMuted,
+    error,
     joinSession,
     leaveSession,
     toggleAudio,
@@ -68,11 +69,14 @@ export default function VideoRoom({ sessionId, userId, role, onLeave }: VideoRoo
         
         <div className="relative z-10 flex flex-col items-center p-8 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10">
           <h2 className="text-white font-semibold mb-4 text-lg">Ready to join?</h2>
+          {error && (
+            <p className="text-red-300 text-sm mb-4 max-w-xs text-center">{error}</p>
+          )}
           <button
             onClick={joinSession}
             className="px-6 py-3 bg-brand text-white font-semibold rounded-xl hover:bg-brand/90 transition-all shadow-lg shadow-brand/20"
           >
-            Join Session
+            {error ? "Try again" : "Join Session"}
           </button>
         </div>
       </div>

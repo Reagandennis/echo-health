@@ -1,6 +1,15 @@
 import { ArrowLeft, Clock, Calendar } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Mental health insights & stories",
+  description:
+    "Articles, expert advice, and personal stories on therapy, anxiety, relationships, and emotional well-being from the Echo Health team.",
+  path: "/blog",
+});
 
 const featuredPost = {
   title: "The Silent Epidemic: High-Functioning Anxiety in the Modern Workplace",
@@ -56,13 +65,13 @@ export default function BlogPage() {
     <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

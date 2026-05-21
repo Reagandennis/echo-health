@@ -42,6 +42,37 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // ── Security headers ───────────────────────────────────────────────
+  // CSP intentionally omitted — needs Report-Only rollout to learn what
+  // Appwrite/PostHog/Cloudflare/Unsplash actually load before enforcing.
+  async headers() {
+    const securityHeaders = [
+      {
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000; includeSubDomains; preload",
+      },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        // Camera / microphone needed for Cloudflare Calls video sessions.
+        // Everything else off by default.
+        key: "Permissions-Policy",
+        value:
+          "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      },
+      { key: "X-DNS-Prefetch-Control", value: "on" },
+    ];
+
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+    ];
+  },
+
   skipTrailingSlashRedirect: true,
 };
 

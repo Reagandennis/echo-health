@@ -1,18 +1,27 @@
 import { AlertTriangle, Phone, MessageSquare, ArrowLeft, Globe } from "lucide-react";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Crisis resources & emergency support",
+  description:
+    "If you are in crisis, immediate help is available. International crisis hotlines, text lines, and emergency resources for mental health emergencies.",
+  path: "/crisis",
+});
 
 export default function CrisisPage() {
   return (
     <div className="flex flex-col flex-1 font-sans bg-slate-50 min-h-screen">
       <header className="sticky top-0 z-50 w-full bg-white border-b border-slate-200">
         <div className="mx-auto flex max-w-4xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

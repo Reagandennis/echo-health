@@ -1,6 +1,6 @@
 "use server";
 
-import { createAdminClient, createSessionClient } from "@/lib/appwrite/server";
+import { createAdminClient, createSessionClient, getLoggedInUser } from "@/lib/appwrite/server";
 import { appwriteConfig } from "@/lib/appwrite/config";
 import { ID, Permission, Role, Query } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
@@ -26,23 +26,85 @@ export async function uploadFileAction(formData: FormData) {
 
 export async function createSessionAction(data: Omit<TherapySession, keyof import("node-appwrite").Models.Document>) {
   const { databases } = createAdminClient();
-  
+
+  // `data.therapistId` is the therapists-collection doc $id, not an auth user $id.
+  // Resolve it to the therapist's auth user $id so the permission grants the right user.
+  let therapistUserId: string | null = null;
+  try {
+    const therapistDoc = await databases.getDocument(
+      appwriteConfig.databaseId,
+      appwriteConfig.collections.therapists,
+      data.therapistId
+    ) as unknown as { userId?: string };
+    therapistUserId = therapistDoc.userId ?? null;
+  } catch {
+    // Therapist doc not resolvable; admin can still manage, but the therapist user
+    // won't be able to read/update via their own session. Logged as a warning below.
+    console.warn(`createSessionAction: could not resolve therapist doc ${data.therapistId} to a userId`);
+  }
+
+  const permissions = [
+    Permission.read(Role.user(data.patientId)),
+    Permission.update(Role.user(data.patientId)),
+    Permission.read(Role.label("admin")),
+    Permission.update(Role.label("admin")),
+  ];
+  if (therapistUserId) {
+    permissions.push(Permission.read(Role.user(therapistUserId)));
+    permissions.push(Permission.update(Role.user(therapistUserId)));
+  }
+
   const session = await databases.createDocument(
     appwriteConfig.databaseId,
     appwriteConfig.collections.sessions,
     ID.unique(),
     data,
-    [
-      Permission.read(Role.user(data.patientId)),
-      Permission.update(Role.user(data.patientId)),
-      Permission.read(Role.user(data.therapistId)),
-      Permission.update(Role.user(data.therapistId)),
-      Permission.read(Role.label("admin")),
-      Permission.update(Role.label("admin")),
-    ]
+    permissions
   );
-  
+
   return JSON.parse(JSON.stringify(session));
+}
+
+/**
+ * Update the WebRTC track-signaling field on a session document.
+ * Authorizes the caller (patient or therapist-by-userId) then writes with admin
+ * privileges — bypasses the doc's update ACL, which has historically been wrong
+ * for the therapist (`Role.user(therapistDocId)` instead of the therapist's userId).
+ */
+export async function updateSessionTracksAction(
+  sessionId: string,
+  role: "client" | "therapist",
+  trackData: string
+) {
+  const user = await getLoggedInUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { databases } = createAdminClient();
+  const sess = await databases.getDocument(
+    appwriteConfig.databaseId,
+    appwriteConfig.collections.sessions,
+    sessionId
+  ) as unknown as { patientId: string; therapistId: string };
+
+  if (role === "client") {
+    if (sess.patientId !== user.$id) throw new Error("Forbidden");
+  } else {
+    const therapistDoc = await databases.getDocument(
+      appwriteConfig.databaseId,
+      appwriteConfig.collections.therapists,
+      sess.therapistId
+    ) as unknown as { userId?: string };
+    if (therapistDoc.userId !== user.$id) throw new Error("Forbidden");
+  }
+
+  const field = role === "therapist" ? "therapistTracks" : "patientTracks";
+  const updated = await databases.updateDocument(
+    appwriteConfig.databaseId,
+    appwriteConfig.collections.sessions,
+    sessionId,
+    { [field]: trackData }
+  );
+  return JSON.parse(JSON.stringify(updated));
 }
 
 export async function listPatientSessionsAction(patientId: string) {

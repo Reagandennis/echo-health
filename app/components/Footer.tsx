@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Footer() {
   return (
     <footer className="border-t border-cream/60 bg-white">
@@ -26,30 +28,30 @@ export default function Footer() {
         <div className="flex flex-col gap-4">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">Platform</h3>
           <ul className="flex flex-col gap-3 text-sm text-slate-400">
-            <li><a href="/#how" className="hover:text-brand transition-colors">How it works</a></li>
-            <li><a href="/#therapists" className="hover:text-brand transition-colors">Find a therapist</a></li>
-            <li><a href="/#pricing" className="hover:text-brand transition-colors">Pricing</a></li>
-            <li><a href="/organizations" className="hover:text-brand transition-colors">For organizations</a></li>
+            <li><Link href="/#how" className="hover:text-brand transition-colors">How it works</Link></li>
+            <li><Link href="/#therapists" className="hover:text-brand transition-colors">Find a therapist</Link></li>
+            <li><Link href="/#pricing" className="hover:text-brand transition-colors">Pricing</Link></li>
+            <li><Link href="/organizations" className="hover:text-brand transition-colors">For organizations</Link></li>
           </ul>
         </div>
 
         <div className="flex flex-col gap-4">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">Resources</h3>
           <ul className="flex flex-col gap-3 text-sm text-slate-400">
-            <li><a href="/blog" className="hover:text-brand transition-colors">Blog</a></li>
-            <li><a href="/guides" className="hover:text-brand transition-colors">Mental health guides</a></li>
-            <li><a href="/crisis" className="hover:text-brand transition-colors">Crisis support</a></li>
-            <li><a href="/faq" className="hover:text-brand transition-colors">FAQ</a></li>
+            <li><Link href="/blog" className="hover:text-brand transition-colors">Blog</Link></li>
+            <li><Link href="/guides" className="hover:text-brand transition-colors">Mental health guides</Link></li>
+            <li><Link href="/crisis" className="hover:text-brand transition-colors">Crisis support</Link></li>
+            <li><Link href="/faq" className="hover:text-brand transition-colors">FAQ</Link></li>
           </ul>
         </div>
 
         <div className="flex flex-col gap-4">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">Company</h3>
           <ul className="flex flex-col gap-3 text-sm text-slate-400">
-            <li><a href="/about" className="hover:text-brand transition-colors">About us</a></li>
-            <li><a href="/careers" className="hover:text-brand transition-colors">Careers</a></li>
-            <li><a href="/press" className="hover:text-brand transition-colors">Press</a></li>
-            <li><a href="/contact" className="hover:text-brand transition-colors">Contact</a></li>
+            <li><Link href="/about" className="hover:text-brand transition-colors">About us</Link></li>
+            <li><Link href="/careers" className="hover:text-brand transition-colors">Careers</Link></li>
+            <li><Link href="/press" className="hover:text-brand transition-colors">Press</Link></li>
+            <li><Link href="/contact" className="hover:text-brand transition-colors">Contact</Link></li>
           </ul>
         </div>
       </div>
@@ -57,9 +59,9 @@ export default function Footer() {
       <div className="border-t border-slate-100 mx-auto max-w-6xl px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
         <span>© {new Date().getFullYear()} Echo Health, Inc. All rights reserved.</span>
         <div className="flex gap-6">
-          <a href="/privacy" className="hover:text-brand transition-colors">Privacy Policy</a>
-          <a href="/terms" className="hover:text-brand transition-colors">Terms of Service</a>
-          <a href="/cookies" className="hover:text-brand transition-colors">Cookie Settings</a>
+          <Link href="/privacy" className="hover:text-brand transition-colors">Privacy Policy</Link>
+          <Link href="/terms" className="hover:text-brand transition-colors">Terms of Service</Link>
+          <Link href="/cookies" className="hover:text-brand transition-colors">Cookie Settings</Link>
         </div>
       </div>
     </footer>

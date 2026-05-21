@@ -1,6 +1,14 @@
 import { ArrowLeft, BookOpen, Compass, Heart, Brain, Moon, ShieldAlert } from "lucide-react";
-import Image from "next/image";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Mental health guides & self-help resources",
+  description:
+    "In-depth guides on anxiety, depression, sleep, trauma, and relationships — clinically reviewed practical strategies for everyday wellbeing.",
+  path: "/guides",
+});
 
 const guides = [
   {
@@ -59,13 +67,13 @@ export default function GuidesPage() {
       {/* ── Nav ──────────────────────────────────────── */}
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

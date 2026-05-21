@@ -1,5 +1,14 @@
 import { ArrowLeft, MapPin, Laptop, HeartPulse, Coffee, GraduationCap } from "lucide-react";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Careers at Echo Health",
+  description:
+    "Help us reshape mental health care. Open roles across engineering, clinical operations, and design — remote-first, mission-driven teams.",
+  path: "/careers",
+});
 
 const perks = [
   { icon: Laptop, title: "Remote-First", desc: "Work from anywhere in the US or UK. We provide a $1,000 WFH stipend." },
@@ -40,13 +49,13 @@ export default function CareersPage() {
     <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

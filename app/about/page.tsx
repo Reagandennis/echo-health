@@ -1,6 +1,15 @@
 import { ArrowLeft, Target, Heart, Shield, Users } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "About Echo Health",
+  description:
+    "Echo Health is on a mission to make therapy accessible, personal, and effective. Meet the team and the values behind our teletherapy platform.",
+  path: "/about",
+});
 
 const values = [
   {
@@ -53,13 +62,13 @@ export default function AboutPage() {
     <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

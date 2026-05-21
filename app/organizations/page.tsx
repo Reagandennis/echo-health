@@ -8,7 +8,7 @@ import {
   ArrowRight,
   CheckCircle2,
 } from "lucide-react";
-import Image from "next/image";
+import Link from "next/link";
 import Footer from "../components/Footer";
 
 /* ─── Data ─────────────────────────────────────────── */
@@ -72,10 +72,10 @@ export default function OrganizationsPage() {
       {/* ── Nav ──────────────────────────────────────── */}
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <a href="/" className="text-xl font-semibold tracking-tight hover:opacity-80 transition-opacity">
+          <Link href="/" className="text-xl font-semibold tracking-tight hover:opacity-80 transition-opacity">
             <span className="text-brand">Echo Psychology </span>
             <span className="text-slate-700">Group</span>
-          </a>
+          </Link>
           <nav className="hidden gap-8 text-sm font-medium sm:flex text-slate-500">
             <a href="#benefits" className="hover:text-brand transition-colors">Benefits</a>
             <a href="#how-it-works" className="hover:text-brand transition-colors">How it works</a>

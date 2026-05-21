@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Privacy Policy",
   description:
     "Echo Health's comprehensive Privacy Policy — how we collect, use, protect, and share your information in compliance with HIPAA, GDPR, CCPA, and applicable mental-health privacy laws.",
-};
+  path: "/privacy",
+});
 
 const LAST_UPDATED = "May 1, 2026";
 const EFFECTIVE_DATE = "May 1, 2026";

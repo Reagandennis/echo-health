@@ -1,5 +1,14 @@
 import { ArrowLeft, Download, ExternalLink, Mail } from "lucide-react";
+import Link from "next/link";
 import Footer from "../components/Footer";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Press & media",
+  description:
+    "Press releases, brand assets, and media inquiries for Echo Health. The latest news on our mission to expand access to therapy.",
+  path: "/press",
+});
 
 const releases = [
   {
@@ -29,13 +38,13 @@ export default function PressPage() {
     <div className="flex flex-col flex-1 font-sans bg-slate-50 min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

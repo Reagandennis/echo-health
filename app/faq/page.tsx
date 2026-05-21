@@ -1,21 +1,14 @@
 import { ArrowLeft, Plus, MessageCircle } from "lucide-react";
+import Link from "next/link";
 import Footer from "../components/Footer";
-import { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Frequently Asked Questions - Echo Health",
-  description: "Answers to common questions about Echo Health therapy, pricing, insurance, and privacy.",
-  openGraph: {
-    title: "Frequently Asked Questions - Echo Health",
-    description: "Answers to common questions about Echo Health therapy, pricing, insurance, and privacy.",
-    url: "https://echohealth.app/faq",
-    siteName: "Echo Health",
-  },
-  twitter: {
-    title: "Frequently Asked Questions - Echo Health",
-    description: "Answers to common questions about Echo Health therapy, pricing, insurance, and privacy.",
-  },
-};
+export const metadata = pageMetadata({
+  title: "Frequently Asked Questions",
+  description:
+    "Answers to common questions about Echo Health therapy, pricing, insurance, and privacy.",
+  path: "/faq",
+});
 
 const faqs = [
   {
@@ -67,18 +60,37 @@ const faqs = [
   },
 ];
 
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.flatMap((group) =>
+    group.questions.map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.a,
+      },
+    }))
+  ),
+};
+
 export default function FAQPage() {
   return (
     <div className="flex flex-col flex-1 font-sans bg-cream min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-4xl items-center px-6 py-4">
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
           >
             <ArrowLeft size={16} />
             Back to Home
-          </a>
+          </Link>
         </div>
       </header>
 

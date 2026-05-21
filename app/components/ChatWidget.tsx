@@ -57,19 +57,31 @@ export default function ChatWidget() {
       const res = await fetch(`/api/chat/history?${params.toString()}`);
       if (!res.ok) return;
       const data = (await res.json()) as { messages?: Array<{ id: string; role: string; text: string }> };
-      if (data.messages && data.messages.length > 0) {
-        setMessages(
-          data.messages.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "bot" | "admin" | "system",
-            text: m.text,
-          }))
-        );
-      }
+      setMessages(
+        (data.messages ?? []).map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "bot" | "admin" | "system",
+          text: m.text,
+        }))
+      );
     } catch (e) {
       console.error("History fetch error", e);
     }
   };
+
+  useEffect(() => {
+    if (stage !== "chat" || user) return;
+
+    fetchHistory();
+
+    const intervalId = window.setInterval(() => {
+      fetchHistory();
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [stage, user, email]);
 
   // Pulse every 12 s when closed so the user notices the widget
   useEffect(() => {

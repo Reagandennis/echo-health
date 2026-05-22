@@ -194,7 +194,7 @@ function SessionDetailContent() {
               {/* Video Room Section */}
               {isInProgress ? (
                 <div className="flex-1 bg-stone-900 min-h-[500px]">
-                  <VideoRoom sessionId={session.$id} userId={user?.$id ?? ""} role="therapist" onLeave={() => updateStatus("completed")} />
+                  <VideoRoom sessionId={session.$id} onLeave={() => updateStatus("completed")} />
                 </div>
               ) : (
                 <div className="p-12 text-center flex-1 flex flex-col items-center justify-center text-stone-400 bg-stone-50/20 min-h-[300px]">

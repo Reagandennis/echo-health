@@ -185,13 +185,18 @@ async function createSessions() {
     ["scheduledAt", true, 32],
     ["notes", false, 4000],
     ["feedback", false, 2000],
-    ["therapistTracks", false, 1000], // Cloudflare track IDs (JSON)
-    ["patientTracks", false, 1000],   // Cloudflare track IDs (JSON)
+    ["therapistTracks", false, 1000], // legacy: Cloudflare Calls track IDs (JSON). Unused after Realtime Kit migration.
+    ["patientTracks", false, 1000],   // legacy: see above
+    ["cloudflareMeetingId", false, 64], // Realtime Kit meeting id (UUID)
   ] as [string, boolean, number][]) {
     await safeCreate(`attr: ${key}`, () =>
       db.createStringAttribute(DATABASE_ID, "sessions", key, size, required)
     );
   }
+
+  await safeCreate("attr: recordingEnabled", () =>
+    db.createBooleanAttribute(DATABASE_ID, "sessions", "recordingEnabled", false)
+  );
 
   await safeCreate("attr: status", () =>
     db.createEnumAttribute(

@@ -5,6 +5,10 @@ import { appwriteConfig } from "@/lib/appwrite/config";
 import { ID, Permission, Role, Query } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
 import type { TherapySession } from "@/lib/appwrite/database";
+import {
+  createMeeting,
+  updateMeetingRecording,
+} from "@/lib/cloudflare/realtimekit";
 
 export async function uploadFileAction(formData: FormData) {
   const { storage } = createAdminClient();
@@ -30,17 +34,34 @@ export async function createSessionAction(data: Omit<TherapySession, keyof impor
   // `data.therapistId` is the therapists-collection doc $id, not an auth user $id.
   // Resolve it to the therapist's auth user $id so the permission grants the right user.
   let therapistUserId: string | null = null;
+  let therapistName = "Therapist";
   try {
     const therapistDoc = await databases.getDocument(
       appwriteConfig.databaseId,
       appwriteConfig.collections.therapists,
       data.therapistId
-    ) as unknown as { userId?: string };
+    ) as unknown as { userId?: string; name?: string };
     therapistUserId = therapistDoc.userId ?? null;
+    therapistName = therapistDoc.name ?? therapistName;
   } catch {
     // Therapist doc not resolvable; admin can still manage, but the therapist user
     // won't be able to read/update via their own session. Logged as a warning below.
     console.warn(`createSessionAction: could not resolve therapist doc ${data.therapistId} to a userId`);
+  }
+
+  // Pre-create the Cloudflare Realtime Kit meeting so both parties can join the
+  // same room. Recording is off by default; therapists toggle via
+  // toggleSessionRecordingAction. We swallow CF errors so a schedule never
+  // fails over video provisioning — the join endpoint will lazily retry.
+  let cloudflareMeetingId: string | undefined;
+  try {
+    const meeting = await createMeeting({
+      title: `Therapy session — ${therapistName} (${new Date(data.scheduledAt).toISOString()})`,
+      recordOnStart: data.recordingEnabled ?? false,
+    });
+    cloudflareMeetingId = meeting.id;
+  } catch (err) {
+    console.error("createSessionAction: failed to pre-create Realtime Kit meeting", err);
   }
 
   const permissions = [
@@ -58,7 +79,11 @@ export async function createSessionAction(data: Omit<TherapySession, keyof impor
     appwriteConfig.databaseId,
     appwriteConfig.collections.sessions,
     ID.unique(),
-    data,
+    {
+      ...data,
+      ...(cloudflareMeetingId ? { cloudflareMeetingId } : {}),
+      recordingEnabled: data.recordingEnabled ?? false,
+    },
     permissions
   );
 
@@ -66,43 +91,58 @@ export async function createSessionAction(data: Omit<TherapySession, keyof impor
 }
 
 /**
- * Update the WebRTC track-signaling field on a session document.
- * Authorizes the caller (patient or therapist-by-userId) then writes with admin
- * privileges — bypasses the doc's update ACL, which has historically been wrong
- * for the therapist (`Role.user(therapistDocId)` instead of the therapist's userId).
+ * Therapist-only toggle for the recording flag. Updates the Appwrite session
+ * doc AND the Realtime Kit meeting's `record_on_start` setting. Only effective
+ * before participants have joined; mid-call toggling requires session-level
+ * recording APIs (out of scope for v1).
+ *
+ * Authorization: only the therapist assigned to this session (or an admin) can
+ * change recording. Patient consent must be obtained out-of-band before the
+ * therapist flips this on — recordings are PHI.
  */
-export async function updateSessionTracksAction(
+export async function toggleSessionRecordingAction(
   sessionId: string,
-  role: "client" | "therapist",
-  trackData: string
+  enabled: boolean
 ) {
   const user = await getLoggedInUser();
   if (!user) throw new Error("Not authenticated");
 
   const { databases } = createAdminClient();
-  const sess = await databases.getDocument(
+  const sess = (await databases.getDocument(
     appwriteConfig.databaseId,
     appwriteConfig.collections.sessions,
     sessionId
-  ) as unknown as { patientId: string; therapistId: string };
+  )) as unknown as {
+    therapistId: string;
+    cloudflareMeetingId?: string;
+  };
 
-  if (role === "client") {
-    if (sess.patientId !== user.$id) throw new Error("Forbidden");
-  } else {
-    const therapistDoc = await databases.getDocument(
+  const isAdmin = user.labels?.includes("admin") ?? false;
+  if (!isAdmin) {
+    const therapistDoc = (await databases.getDocument(
       appwriteConfig.databaseId,
       appwriteConfig.collections.therapists,
       sess.therapistId
-    ) as unknown as { userId?: string };
-    if (therapistDoc.userId !== user.$id) throw new Error("Forbidden");
+    )) as unknown as { userId?: string };
+    if (therapistDoc.userId !== user.$id) {
+      throw new Error("Forbidden");
+    }
   }
 
-  const field = role === "therapist" ? "therapistTracks" : "patientTracks";
+  if (sess.cloudflareMeetingId) {
+    try {
+      await updateMeetingRecording(sess.cloudflareMeetingId, enabled);
+    } catch (err) {
+      console.error("toggleSessionRecordingAction: CF update failed", err);
+      throw new Error("Could not update recording state on the meeting.");
+    }
+  }
+
   const updated = await databases.updateDocument(
     appwriteConfig.databaseId,
     appwriteConfig.collections.sessions,
     sessionId,
-    { [field]: trackData }
+    { recordingEnabled: enabled }
   );
   return JSON.parse(JSON.stringify(updated));
 }

@@ -74,8 +74,18 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
       const cfSession = await callCloudflare("/sessions/new");
       cfSessionId.current = cfSession.sessionId;
 
+      // Fetch short-lived TURN credentials so calls work behind symmetric NATs
+      // and restrictive firewalls (STUN alone is not enough in those cases).
+      const iceRes = await fetch("/api/video/ice-servers", { method: "POST" });
+      if (!iceRes.ok) {
+        throw new Error(`Failed to fetch ICE servers: ${iceRes.status}`);
+      }
+      const { iceServers } = (await iceRes.json()) as {
+        iceServers: RTCIceServer[];
+      };
+
       const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
+        iceServers,
         bundlePolicy: "max-bundle",
       });
       pcRef.current = pc;

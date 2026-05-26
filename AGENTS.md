@@ -56,6 +56,8 @@ Echo Health is a teletherapy platform with three user surfaces — **clients** (
 
 `hooks/useVideoSession.ts` + `app/api/video/session/route.ts` implement WebRTC via **Cloudflare Calls**. Client calls the local Next.js route handler, which proxies to Cloudflare; track metadata is written into the `sessions` Appwrite collection document (`patientTracks` / `therapistTracks` JSON fields), and the other participant subscribes via Appwrite Realtime to learn about remote tracks. Don't try to replace this with a direct browser-to-Cloudflare call — Cloudflare credentials must stay server-side.
 
+ICE servers (STUN + TURN) are minted just-in-time per-join via `app/api/video/ice-servers/route.ts`, which exchanges the server-only `CLOUDFLARE_TURN_TOKEN_ID` + `CLOUDFLARE_TURN_API_TOKEN` for short-lived (1-hour) credentials from Cloudflare's TURN service. The browser never sees the long-lived API token. TURN is required for connectivity behind symmetric NATs and restrictive corporate firewalls.
+
 ### Analytics (PostHog)
 
 PostHog is initialised in **two** places by design:
@@ -94,3 +96,5 @@ Required env vars (see `.env.local`):
 - `APPWRITE_API_KEY` — server-only, admin client
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 - `NEXT_PUBLIC_SITE_URL` — used for OAuth redirect URLs in SSR contexts
+- `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`, `CLOUDFLARE_CALLS_API_TOKEN` — Cloudflare Calls (SFU)
+- `CLOUDFLARE_TURN_TOKEN_ID`, `CLOUDFLARE_TURN_API_TOKEN` — server-only, used by `/api/video/ice-servers` to mint short-lived TURN credentials

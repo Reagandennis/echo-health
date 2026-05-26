@@ -15,7 +15,8 @@ This project runs **Next.js 16.2.4 with React 19.2.4** — APIs and conventions 
 ## Commands
 
 ```bash
-npm run dev              # next dev
+npm run dev              # next dev --webpack, with NODE_OPTIONS raising the heap to 6 GB
+npm run dev:turbo        # next dev (turbopack) — faster, but the project defaults to webpack
 npm run build            # next build
 npm run start            # next start (production)
 npm run lint             # eslint (flat config, eslint-config-next)
@@ -33,7 +34,7 @@ TypeScript path alias: `@/*` → repo root (e.g. `@/lib/appwrite/server`).
 
 ## Architecture
 
-Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Backend is Appwrite; analytics is PostHog; video is Cloudflare Calls.
+Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Backend is Appwrite; analytics is PostHog; video is self-managed WebRTC over Cloudflare Calls (SFU) + Cloudflare TURN; transactional email is Resend (`lib/email.ts`).
 
 ### Auth & authorization (cookie-session, role-in-layout)
 
@@ -54,16 +55,13 @@ Echo Health is a teletherapy platform with three user surfaces — **clients** (
 
 ### Video sessions
 
-Video sessions are powered by **Cloudflare Realtime Kit** (managed meetings) — the browser does **not** run `RTCPeerConnection`, SDP offer/answer, or track signaling. The flow:
+Video runs on **Cloudflare Calls (the SFU) with Cloudflare's TURN service for ICE relay** — a self-managed WebRTC stack where the browser *does* run `RTCPeerConnection` and SDP offer/answer. (An earlier branch migrated this to managed Realtime Kit; that was reverted because deployment only has the Calls + TURN keys.) The flow lives in **`hooks/useVideoSession.ts`**, consumed by `app/components/video/VideoRoom.tsx`:
 
-1. `createSessionAction` pre-creates a Realtime Kit meeting at schedule time and stores `cloudflareMeetingId` on the `sessions` doc. Failures are swallowed so scheduling never blocks on video provisioning; the join endpoint retries lazily.
-2. `app/api/video/session/[sessionId]/join-token/route.ts` (POST) — auths the caller, resolves them to patient/therapist/admin, lazily creates a meeting if `cloudflareMeetingId` is missing, calls `addParticipant`, and returns `{ token, meetingId, role, recordingEnabled }`. Therapists/admins get the `group_call_host` preset; patients get `group_call_participant`. Rate-limited per user.
-3. `app/api/video/session/[sessionId]/recording/route.ts` (PATCH) — therapist-only toggle that updates both the Appwrite session doc and the meeting's `record_on_start`. **Recordings are PHI** — the UI requires explicit consent, and a signed Cloudflare BAA is required before this can be enabled in production.
-4. `app/components/video/VideoRoom.tsx` uses `useRealtimeKitClient`, `RealtimeKitProvider`, and the `<rtk-meeting>` Stencil component from `@cloudflare/realtimekit-ui`. The custom-element loader is dynamically imported on mount so SSR doesn't touch the DOM.
+1. `app/api/video/session/route.ts` (POST) is an **authenticated, allowlisted proxy** to the Cloudflare Calls REST API (`https://rtc.live.cloudflare.com/v1/apps/<APP_ID>`). It requires a logged-in user, validates `{ endpoint, method, data }` against `videoSessionSchema` (no arbitrary endpoints — it was previously an open proxy, see the security note in the route), and is rate-limited per user. Credentials (`NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`, `CLOUDFLARE_CALLS_API_TOKEN`) stay server-side.
+2. `app/api/video/ice-servers/route.ts` (POST) mints **short-lived TURN ICE credentials** (1-hour TTL) from `https://rtc.live.cloudflare.com/v1/turn/keys/<TOKEN_ID>/credentials/generate-ice-servers`, using `CLOUDFLARE_TURN_TOKEN_ID` / `CLOUDFLARE_TURN_API_TOKEN`. The hook fetches these and passes them to `new RTCPeerConnection({ iceServers })`.
+3. `useVideoSession` does the full WebRTC dance against the SFU: create a Calls session, publish local tracks via `/sessions/<id>/tracks/new` (offer → answer), then subscribe to the remote participant's tracks via `/tracks/request` + `/renegotiate`. All Cloudflare calls go through the proxy route in step 1.
 
-The server-only wrapper for the Realtime Kit REST API is `lib/cloudflare/realtimekit.ts` (`createMeeting`, `addParticipant`, `updateMeetingRecording`, `deleteMeeting`). Credentials never leave the server.
-
-Legacy `patientTracks` / `therapistTracks` attrs are retained on the `sessions` collection so existing rows keep loading — treat them as deprecated.
+There is **no** managed-meeting wrapper, join-token route, or `@cloudflare/realtimekit-*` dependency anymore — don't reintroduce them unless the deployment gets Realtime Kit credentials.
 
 ### Analytics (PostHog)
 
@@ -76,6 +74,20 @@ Both use `api_host: "/ingest"` which is reverse-proxied to PostHog US in `next.c
 ### Clinical risk
 
 `lib/clinical/risk.ts` is a keyword-based risk scanner (`analyzeRisk(text) -> "low" | "moderate" | "high"`). It's intentionally simple — used in chat (`app/api/chat/`) and admin risk views. If extending, keep `HIGH_RISK_KEYWORDS` and `MODERATE_RISK_KEYWORDS` as the source of truth; the corresponding test is `__tests__/clinical-risk.test.ts`.
+
+### Support chat widget
+
+`app/api/chat/` is an anonymous-friendly support chat (distinct from in-session therapy messaging). Key invariants in `route.ts`:
+- **Identity is derived server-side, never trusted from the body.** Authenticated users get their real `name`/`email` via `getLoggedInUser()`; anonymous visitors get the (untrusted) values they typed on the gate form, ACL-scoped to admin-only reads.
+- Messages are written with the **admin client** (the browser SDK has no session) and stored across `chatMessages` / `chatSessions` collections. A `text === "heartbeat"` message is an online-presence ping, not a real message (`role: "system"`).
+- Sibling routes: `history/` (fetch a thread), `offline/` (capture a message when no agent is online), `reply/` (agent → visitor). Risk scanning runs here via `analyzeRisk`.
+
+### Cross-cutting request helpers
+
+- **Validation** — `lib/validation.ts` holds the zod schemas for every API-route body and a `parseOrError(schema, body)` helper returning `{ ok, data } | { ok: false, message }`. Add a schema here and validate at the top of new route handlers rather than hand-rolling checks.
+- **Rate limiting** — `lib/rate-limit.ts` is an in-memory token bucket (`rateLimit(key, opts)` + `clientIp(req)`). It's per-instance defense-in-depth only, **not** a hard cross-instance guarantee — don't rely on it for security-critical limits.
+- **Email** — `lib/email.ts` wraps Resend; `getResend()` returns `null` when `RESEND_API_KEY` is unset, so callers must no-op gracefully (email is optional in dev). HTML-escape interpolated user input.
+- **Plans/currency** — `lib/constants.ts` is the source of truth for plan session allowances and labels; `lib/useCurrency.ts` is a client hook for locale/currency display.
 
 ## Operational scripts (`scripts/`)
 
@@ -103,4 +115,5 @@ Required env vars (see `.env.local`):
 - `APPWRITE_API_KEY` — server-only, admin client
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 - `NEXT_PUBLIC_SITE_URL` — used for OAuth redirect URLs in SSR contexts
-- `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_REALTIME_KIT_ID`, `CLOUDFLARE_REALTIME_KIT_API_TOKEN` — server-only, used by `lib/cloudflare/realtimekit.ts`. The API token needs *Realtime Kit:Edit* permission.
+- `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`, `CLOUDFLARE_CALLS_API_TOKEN` — Cloudflare Calls (SFU). Used by `app/api/video/session/route.ts`; the API token stays server-side.
+- `CLOUDFLARE_TURN_TOKEN_ID`, `CLOUDFLARE_TURN_API_TOKEN` — server-only, used by `app/api/video/ice-servers/route.ts` to mint short-lived TURN ICE credentials.

@@ -37,10 +37,6 @@ export interface TherapySession extends Models.Document {
   scheduledAt: string;
   notes?: string;
   feedback?: string;
-  /** Cloudflare Realtime Kit meeting id. Created when the session is scheduled. */
-  cloudflareMeetingId?: string;
-  /** Therapist-controlled toggle. False until they explicitly enable + get patient consent. */
-  recordingEnabled?: boolean;
 }
 
 export interface Message extends Models.Document {

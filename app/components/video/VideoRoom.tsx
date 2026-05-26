@@ -1,236 +1,162 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import {
-  useRealtimeKitClient,
-  RealtimeKitProvider,
-} from "@cloudflare/realtimekit-react";
-
-// Stencil web component <rtk-meeting> ships in @cloudflare/realtimekit-ui.
-// Registering its custom elements is browser-only. We import the loader
-// dynamically on mount so SSR / module evaluation doesn't try to touch the DOM.
-function useRegisterUI() {
-  useEffect(() => {
-    let cancelled = false;
-    void import("@cloudflare/realtimekit-ui/loader")
-      .then((m) => {
-        if (!cancelled) m.defineCustomElements();
-      })
-      .catch((err) => console.error("Failed to load realtimekit-ui", err));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-}
-
-// Tell TS that <rtk-meeting> is a valid custom element. The Stencil bindings
-// expose JSX intrinsics in @cloudflare/realtimekit-ui/dist/types but pulling
-// them in adds bundle weight; a minimal declaration is enough.
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "rtk-meeting": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement>,
-        HTMLElement
-      >;
-    }
-  }
-}
-
-interface JoinTokenResponse {
-  token: string;
-  meetingId: string;
-  role: "client" | "therapist" | "admin";
-  recordingEnabled: boolean;
-}
+import { useEffect, useRef } from "react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff } from "lucide-react";
+import { useVideoSession } from "@/hooks/useVideoSession";
 
 interface VideoRoomProps {
   sessionId: string;
+  userId: string;
+  role: "client" | "therapist";
   onLeave?: () => void;
 }
 
-/**
- * Therapy-call surface backed by Cloudflare Realtime Kit. The browser never
- * receives the API token — instead it asks `/api/video/session/{id}/join-token`
- * for a per-participant `token`, which it hands to the SDK.
- */
-export default function VideoRoom({ sessionId, onLeave }: VideoRoomProps) {
-  useRegisterUI();
-  const [meeting, initMeeting] = useRealtimeKitClient();
-  const meetingElRef = useRef<HTMLElement | null>(null);
-  const [info, setInfo] = useState<JoinTokenResponse | null>(null);
-  const [status, setStatus] = useState<"idle" | "joining" | "joined" | "error">(
-    "idle"
-  );
-  const [error, setError] = useState<string | null>(null);
+export default function VideoRoom({ sessionId, userId, role, onLeave }: VideoRoomProps) {
+  const {
+    localStream,
+    remoteStream,
+    isJoined,
+    isAudioMuted,
+    isVideoMuted,
+    error,
+    joinSession,
+    leaveSession,
+    toggleAudio,
+    toggleVideo,
+  } = useVideoSession({ sessionId, userId, role });
 
-  async function joinSession() {
-    setStatus("joining");
-    setError(null);
-    try {
-      const res = await fetch(`/api/video/session/${sessionId}/join-token`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `Token request failed: ${res.status}`);
-      }
-      const data = (await res.json()) as JoinTokenResponse;
-      setInfo(data);
-      await initMeeting({
-        authToken: data.token,
-        defaults: { audio: true, video: true },
-      });
-      setStatus("joined");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not join session");
-      setStatus("error");
-    }
-  }
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Bind the meeting client onto the <rtk-meeting> element as a property
-  // (Stencil components expect complex objects via DOM properties, not attrs).
+  // Auto-join on mount
   useEffect(() => {
-    if (meetingElRef.current && meeting) {
-      (meetingElRef.current as unknown as { meeting: unknown }).meeting = meeting;
+    if (!isJoined) {
+      joinSession();
     }
-  }, [meeting]);
+  }, [joinSession, isJoined]);
 
-  // Surface room-leave events back to the caller so the parent page can mark
-  // the session completed, etc.
   useEffect(() => {
-    if (!meeting || !onLeave) return;
-    const handleLeft = () => onLeave();
-    // The SDK exposes the `self.on("roomLeft", ...)` event. We type-erase
-    // because the public type uses an internal `RTKEventMap` we don't ship.
-    const self = (meeting as unknown as { self: { on: (e: string, fn: () => void) => void; off: (e: string, fn: () => void) => void } }).self;
-    self.on("roomLeft", handleLeft);
-    return () => {
-      self.off("roomLeft", handleLeft);
-    };
-  }, [meeting, onLeave]);
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
-  if (status === "joining") {
-    return (
-      <div className="flex flex-col items-center justify-center h-[500px] bg-stone-900 rounded-3xl text-stone-300">
-        <Loader2 className="w-8 h-8 animate-spin mb-3" />
-        <p>Connecting…</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
 
-  if (status === "error") {
-    return (
-      <div className="flex flex-col items-center justify-center h-[500px] bg-stone-900 rounded-3xl text-stone-200 p-8">
-        <p className="text-red-300 text-sm text-center mb-4 max-w-md">{error}</p>
-        <button
-          onClick={joinSession}
-          className="px-6 py-3 bg-brand text-white font-semibold rounded-xl hover:bg-brand/90 transition-all"
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
+  const handleLeave = () => {
+    leaveSession();
+    onLeave?.();
+  };
 
-  if (status === "idle" || !meeting || !info) {
+  if (!isJoined) {
     return (
-      <div className="flex flex-col items-center justify-center h-[500px] bg-stone-900 rounded-3xl text-stone-300 p-8">
-        <h2 className="text-white font-semibold mb-2 text-lg">Ready to join?</h2>
-        <p className="text-xs text-stone-400 mb-4 text-center max-w-sm">
-          We&apos;ll ask for camera + microphone access. The call is hosted on
-          Cloudflare Realtime Kit.
-        </p>
-        <button
-          onClick={joinSession}
-          className="px-6 py-3 bg-brand text-white font-semibold rounded-xl hover:bg-brand/90 transition-all shadow-lg shadow-brand/20"
-        >
-          Join Session
-        </button>
+      <div className="flex flex-col items-center justify-center h-[500px] bg-stone-900 rounded-3xl overflow-hidden relative">
+        {localStream ? (
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="text-stone-400">Camera not enabled</div>
+        )}
+        
+        <div className="relative z-10 flex flex-col items-center p-8 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10">
+          <h2 className="text-white font-semibold mb-4 text-lg">Ready to join?</h2>
+          {error && (
+            <p className="text-red-300 text-sm mb-4 max-w-xs text-center">{error}</p>
+          )}
+          <button
+            onClick={joinSession}
+            className="px-6 py-3 bg-brand text-white font-semibold rounded-xl hover:bg-brand/90 transition-all shadow-lg shadow-brand/20"
+          >
+            {error ? "Try again" : "Join Session"}
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {(info.role === "therapist" || info.role === "admin") && (
-        <RecordingToggle
-          sessionId={sessionId}
-          initialEnabled={info.recordingEnabled}
+    <div className="relative w-full h-[600px] bg-stone-900 rounded-3xl overflow-hidden shadow-2xl border border-stone-800">
+      {/* Remote Video (Full Screen) */}
+      {remoteStream ? (
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
         />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center flex-col text-stone-500">
+          <div className="w-16 h-16 rounded-full border-4 border-stone-800 border-t-brand animate-spin mb-4" />
+          <p>Waiting for the other person to join...</p>
+        </div>
       )}
-      <div className="h-[600px] bg-stone-900 rounded-3xl overflow-hidden shadow-2xl border border-stone-800">
-        <RealtimeKitProvider
-          value={meeting}
-          fallback={
-            <div className="h-full flex items-center justify-center text-stone-400">
-              Loading meeting…
-            </div>
-          }
+
+      {/* Local Video (PiP) */}
+      <div className="absolute top-6 right-6 w-48 h-72 bg-stone-800 rounded-2xl overflow-hidden shadow-2xl border-2 border-stone-700 z-10">
+        {localStream ? (
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover transform -scale-x-100"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-stone-500">
+            <VideoOff size={24} />
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/60 backdrop-blur-xl p-3 rounded-full border border-white/10 z-20 shadow-2xl">
+        <button
+          onClick={toggleAudio}
+          className={`p-4 rounded-full transition-all ${
+            isAudioMuted ? "bg-red-500/20 text-red-500 hover:bg-red-500/30" : "bg-white/10 text-white hover:bg-white/20"
+          }`}
         >
-          <rtk-meeting ref={meetingElRef} style={{ height: "100%", width: "100%", display: "block" }} />
-        </RealtimeKitProvider>
+          {isAudioMuted ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
+
+        <button
+          onClick={toggleVideo}
+          className={`p-4 rounded-full transition-all ${
+            isVideoMuted ? "bg-red-500/20 text-red-500 hover:bg-red-500/30" : "bg-white/10 text-white hover:bg-white/20"
+          }`}
+        >
+          {isVideoMuted ? <VideoOff size={20} /> : <Video size={20} />}
+        </button>
+
+        <div className="w-px h-8 bg-white/10 mx-2" />
+
+        <button
+          onClick={handleLeave}
+          className="p-4 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg shadow-red-500/20 transition-all"
+        >
+          <PhoneOff size={20} />
+        </button>
       </div>
-    </div>
-  );
-}
 
-function RecordingToggle({
-  sessionId,
-  initialEnabled,
-}: {
-  sessionId: string;
-  initialEnabled: boolean;
-}) {
-  const [enabled, setEnabled] = useState(initialEnabled);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function toggle(next: boolean) {
-    setSaving(true);
-    setErr(null);
-    try {
-      const res = await fetch(`/api/video/session/${sessionId}/recording`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? "Failed to update recording");
-      }
-      setEnabled(next);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not update recording");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200">
-      <div className="text-xs text-amber-900">
-        <p className="font-semibold mb-0.5">Recording</p>
-        <p className="text-amber-800/80">
-          {enabled
-            ? "Recording will start when the call begins. You must have explicit patient consent — recordings are PHI."
-            : "Recording is off. Toggle on (with patient consent) before joining."}
-        </p>
-        {err && <p className="text-red-600 mt-1">{err}</p>}
+      {/* Badges */}
+      <div className="absolute top-6 left-6 flex gap-2 z-10">
+        <div className="px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg border border-white/10 text-white text-xs font-semibold flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          LIVE
+        </div>
+        <div className="px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg border border-white/10 text-white/80 text-xs font-medium">
+          Secure End-to-End Encrypted
+        </div>
       </div>
-      <label className="inline-flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={saving}
-          onChange={(e) => void toggle(e.target.checked)}
-          className="w-4 h-4 accent-amber-600"
-        />
-        <span className="text-xs font-semibold text-amber-900">
-          {saving ? "Saving…" : enabled ? "On" : "Off"}
-        </span>
-      </label>
     </div>
   );
 }

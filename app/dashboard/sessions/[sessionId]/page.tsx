@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Clock, Video, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Clock, Video, Loader2, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/app/components/UserProvider";
 import VideoRoom from "@/app/components/video/VideoRoom";
 import { getSessionAction } from "@/app/actions/database";
+import appwriteClient from "@/lib/appwrite/client";
+import { appwriteConfig } from "@/lib/appwrite/config";
 import type { TherapySession } from "@/lib/appwrite/database";
 import posthog from "posthog-js";
 
@@ -18,9 +20,12 @@ export default function ClientSessionPage() {
   const [session, setSession] = useState<TherapySession | null>(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
+  const [therapistLive, setTherapistLive] = useState(false);
 
   useEffect(() => {
     if (!user) return;
+
+    let unsubscribe: (() => void) | undefined;
 
     (async () => {
       try {
@@ -40,10 +45,31 @@ export default function ClientSessionPage() {
         }
 
         setSession(sess);
-        posthog.capture("video_session_opened", {
-          session_id: sess.$id,
-          scheduled_at: sess.scheduledAt,
-        });
+
+        // Check if therapist is already live (tracks already written)
+        const isLive = !!(sess as unknown as Record<string, unknown>).therapistTracks;
+        setTherapistLive(isLive);
+        if (isLive) {
+          posthog.capture("video_session_joined", {
+            session_id: sess.$id,
+            scheduled_at: sess.scheduledAt,
+          });
+        }
+
+        // Subscribe via Appwrite Realtime to detect when therapist joins
+        if (!isLive) {
+          const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${sessionId}`;
+          unsubscribe = appwriteClient.subscribe(channel, (response: { payload: Record<string, unknown> }) => {
+            if (response.payload?.therapistTracks) {
+              posthog.capture("video_session_joined", {
+                session_id: sess.$id,
+                scheduled_at: sess.scheduledAt,
+              });
+              setTherapistLive(true);
+              unsubscribe?.();
+            }
+          });
+        }
       } catch (err) {
         console.error("Client session page error:", err);
         router.replace("/dashboard/sessions");
@@ -51,6 +77,9 @@ export default function ClientSessionPage() {
         setLoading(false);
       }
     })();
+
+    // Cleanup subscription when component unmounts or deps change
+    return () => unsubscribe?.();
   }, [user, sessionId, router]);
 
   // ── Access denied ──────────────────────────────────────────────────────────
@@ -109,13 +138,27 @@ export default function ClientSessionPage() {
         </div>
       </div>
 
-      {/* Video area — Realtime Kit handles the "waiting for other participant"
-          state inside the rtk-meeting UI, so we no longer gate this on the
-          therapist's presence. */}
-      <VideoRoom
-        sessionId={session.$id}
-        onLeave={() => router.replace("/dashboard/sessions")}
-      />
+      {/* Video area */}
+      {therapistLive ? (
+        <VideoRoom
+          sessionId={session.$id}
+          userId={user.$id}
+          role="client"
+          onLeave={() => router.replace("/dashboard/sessions")}
+        />
+      ) : (
+        <div className="bg-stone-900 rounded-2xl min-h-[420px] flex flex-col items-center justify-center gap-5 text-center p-8">
+          <Loader2 size={36} className="text-white/20 animate-spin" />
+          <div className="space-y-1.5">
+            <p className="text-white font-semibold text-base">Waiting for your therapist…</p>
+            <p className="text-stone-400 text-sm">You&apos;ll be connected automatically once they start the session.</p>
+          </div>
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs text-white/60 font-medium">Listening for therapist…</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

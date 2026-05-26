@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, X, Video, Phone, MessageCircle, CalendarCheck,
@@ -11,6 +11,8 @@ import {
   PLAN_SESSIONS, PLACEHOLDER_THERAPIST_ID
 } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
+import appwriteClient from "@/lib/appwrite/client";
+import { appwriteConfig } from "@/lib/appwrite/config";
 import { 
   createSessionAction, 
   listPatientSessionsAction, 
@@ -319,10 +321,8 @@ export default function SessionsPage() {
   const [feedbackSess, setFeedbackSess] = useState<TherapySession | null>(null);
   const [loading, setLoading]     = useState(true);
   const [tab, setTab]             = useState<"upcoming" | "past">("upcoming");
-  // Kept for the dismissible "your therapist is live" banner; the banner is
-  // currently inert (Realtime Kit makes the "is therapist live" signal harder
-  // to derive). Repopulate this when we wire up server-side join tracking.
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
+  const unsubscribesRef = useRef<Array<() => void>>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -336,13 +336,31 @@ export default function SessionsPage() {
         setSessions(sess);
         setTherapists(therapistList);
 
-        // With Cloudflare Realtime Kit, the meeting is provisioned at schedule
-        // time and the SDK shows its own "waiting for participant" state, so
-        // we no longer need to subscribe for a therapist-live signal here.
+        // Subscribe to confirmed sessions to detect when therapist goes live
+        const confirmed = (sess as TherapySession[]).filter((s: TherapySession) => s.status === "confirmed");
+        const unsubs = confirmed.map((s: TherapySession) => {
+          // If therapist is already live (page reload mid-call)
+          if ((s as unknown as Record<string, unknown>).therapistTracks) {
+            setLiveSessionId(s.$id);
+          }
+          const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${s.$id}`;
+          const id = s.$id;
+          return appwriteClient.subscribe(channel, (response: { payload: Record<string, unknown> }) => {
+            if (response.payload?.therapistTracks) {
+              setLiveSessionId(id);
+            }
+          });
+        });
+        unsubscribesRef.current = unsubs;
       } finally {
         setLoading(false);
       }
     })();
+
+    return () => {
+      unsubscribesRef.current.forEach((u) => u());
+      unsubscribesRef.current = [];
+    };
   }, [user]);
 
   if (!user) {

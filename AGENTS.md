@@ -50,11 +50,20 @@ Echo Health is a teletherapy platform with three user surfaces — **clients** (
 
 - `lib/appwrite/config.ts` centralises database + collection IDs. New collections must be added here AND in `scripts/setup-appwrite.ts`.
 - `lib/appwrite/database.ts` holds typed CRUD helpers and the `Profile` / `Therapist` / `TherapySession` / `Message` / `MoodLog` / `JournalEntry` / `Goal` / `ClinicalNote` / `SessionFeedback` interfaces. Every helper sets explicit Appwrite `Permission` rules — follow the existing pattern (owner read/update/delete + admin read; therapist label for clinical data) when adding new collections.
-- Realtime subscriptions use `appwriteClient.subscribe(...)` from the browser SDK (see `hooks/useVideoSession.ts` for the signaling pattern).
+- Realtime subscriptions use `appwriteClient.subscribe(...)` from the browser SDK. The browser SDK has no session attached (cookies are httpOnly) — subscriptions still receive events for the channels they subscribe to, but any document fetch that needs ACL must go through a Server Action or `createSessionClient()`, not the browser `databases` client.
 
 ### Video sessions
 
-`hooks/useVideoSession.ts` + `app/api/video/session/route.ts` implement WebRTC via **Cloudflare Calls**. Client calls the local Next.js route handler, which proxies to Cloudflare; track metadata is written into the `sessions` Appwrite collection document (`patientTracks` / `therapistTracks` JSON fields), and the other participant subscribes via Appwrite Realtime to learn about remote tracks. Don't try to replace this with a direct browser-to-Cloudflare call — Cloudflare credentials must stay server-side.
+Video sessions are powered by **Cloudflare Realtime Kit** (managed meetings) — the browser does **not** run `RTCPeerConnection`, SDP offer/answer, or track signaling. The flow:
+
+1. `createSessionAction` pre-creates a Realtime Kit meeting at schedule time and stores `cloudflareMeetingId` on the `sessions` doc. Failures are swallowed so scheduling never blocks on video provisioning; the join endpoint retries lazily.
+2. `app/api/video/session/[sessionId]/join-token/route.ts` (POST) — auths the caller, resolves them to patient/therapist/admin, lazily creates a meeting if `cloudflareMeetingId` is missing, calls `addParticipant`, and returns `{ token, meetingId, role, recordingEnabled }`. Therapists/admins get the `group_call_host` preset; patients get `group_call_participant`. Rate-limited per user.
+3. `app/api/video/session/[sessionId]/recording/route.ts` (PATCH) — therapist-only toggle that updates both the Appwrite session doc and the meeting's `record_on_start`. **Recordings are PHI** — the UI requires explicit consent, and a signed Cloudflare BAA is required before this can be enabled in production.
+4. `app/components/video/VideoRoom.tsx` uses `useRealtimeKitClient`, `RealtimeKitProvider`, and the `<rtk-meeting>` Stencil component from `@cloudflare/realtimekit-ui`. The custom-element loader is dynamically imported on mount so SSR doesn't touch the DOM.
+
+The server-only wrapper for the Realtime Kit REST API is `lib/cloudflare/realtimekit.ts` (`createMeeting`, `addParticipant`, `updateMeetingRecording`, `deleteMeeting`). Credentials never leave the server.
+
+Legacy `patientTracks` / `therapistTracks` attrs are retained on the `sessions` collection so existing rows keep loading — treat them as deprecated.
 
 ### Analytics (PostHog)
 
@@ -94,3 +103,4 @@ Required env vars (see `.env.local`):
 - `APPWRITE_API_KEY` — server-only, admin client
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 - `NEXT_PUBLIC_SITE_URL` — used for OAuth redirect URLs in SSR contexts
+- `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_REALTIME_KIT_ID`, `CLOUDFLARE_REALTIME_KIT_API_TOKEN` — server-only, used by `lib/cloudflare/realtimekit.ts`. The API token needs *Realtime Kit:Edit* permission.

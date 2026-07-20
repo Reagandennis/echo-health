@@ -1,21 +1,30 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import AdminBadge, { kycBadge } from "../_components/AdminBadge";
 import { Search, Download, UserPlus, Star } from "lucide-react";
+import { listAllSessions, listTherapists } from "../_lib/queries";
 
 export default async function TherapistsListPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { databases } = createAdminClient();
-  const res = await databases.listDocuments(
-    appwriteConfig.databaseId,
-    appwriteConfig.collections.therapists,
-  );
-  const therapists = res.documents;
+  const [therapists, sessions] = await Promise.all([
+    listTherapists(),
+    listAllSessions(),
+  ]);
+
+  // The Sessions column rendered a hardcoded "—". It is real data now.
+  // Earnings stays "—": no payments integration exists and nothing populates
+  // `therapy_sessions.amount`.
+  const sessionCountByTherapist = new Map<string, number>();
+  for (const s of sessions) {
+    sessionCountByTherapist.set(
+      s.therapistId,
+      (sessionCountByTherapist.get(s.therapistId) ?? 0) + 1
+    );
+  }
 
   return (
     <div>
@@ -68,7 +77,7 @@ export default async function TherapistsListPage() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                          {(t.name as string).charAt(0).toUpperCase()}
+                          {t.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-stone-900">{t.name}</p>
@@ -78,19 +87,19 @@ export default async function TherapistsListPage() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap gap-1">
-                        {((t.specialties as string[]) ?? []).slice(0, 2).map((s) => (
+                        {(t.specialties ?? []).slice(0, 2).map((s) => (
                           <AdminBadge key={s} label={s} variant="neutral" />
                         ))}
                       </div>
                     </td>
-                    <td className="px-5 py-4">{kycBadge(t.kycStatus ?? "incomplete")}</td>
+                    <td className="px-5 py-4">{kycBadge(t.kycStatus)}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1">
                         <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                         <span className="text-sm text-stone-700">{t.rating ?? "—"}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-sm text-stone-600">—</td>
+                    <td className="px-5 py-4 text-sm text-stone-600">{sessionCountByTherapist.get(t.id) ?? 0}</td>
                     <td className="px-5 py-4 text-sm text-stone-600">—</td>
                     <td className="px-5 py-4 text-right">
                       <Link href={`/admin/therapists/${t.$id}`} className="text-xs text-teal-600 hover:text-teal-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">View →</Link>

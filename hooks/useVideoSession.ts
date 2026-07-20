@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import appwriteClient from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { useRealtime } from "@/hooks/useRealtime";
 import { updateSessionTracksAction, getSessionTracksAction } from "@/app/actions/database";
 
 interface UseVideoSessionProps {
@@ -21,7 +20,12 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const cfSessionId = useRef<string | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  // Set once joinSession has a peer connection to renegotiate against. The
+  // realtime subscription lives at the top level of the hook (rules of hooks)
+  // but the handler it needs is built inside joinSession, so it is passed here.
+  const checkOtherTracksRef = useRef<
+    ((doc: Record<string, unknown>) => Promise<void>) | null
+  >(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   // Accumulates pulled remote tracks. Cloudflare Calls delivers them on
   // separate ontrack events without grouping into event.streams, so we build
@@ -53,8 +57,7 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
     pcRef.current?.close();
     pcRef.current = null;
     remoteStreamRef.current = null;
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
+    checkOtherTracksRef.current = null;
     cfSessionId.current = null;
     joiningRef.current = false;
     setLocalStream(null);
@@ -153,10 +156,15 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
       const otherRole = role === "therapist" ? "patientTracks" : "therapistTracks";
 
       const checkOtherTracks = async (doc: Record<string, unknown>) => {
-        const remoteTrackDataStr = doc[otherRole] as string | undefined;
-        if (!remoteTrackDataStr) return;
+        const raw = doc[otherRole];
+        if (!raw) return;
 
-        const remoteTrackData = JSON.parse(remoteTrackDataStr);
+        // The column is `jsonb` now, so the action hands back a parsed object.
+        // Appwrite stored a JSON string and rows written before the migration
+        // may still be one, hence both are accepted.
+        const remoteTrackData = (
+          typeof raw === "string" ? JSON.parse(raw) : raw
+        ) as { cfSessionId: string; tracks: { trackName: string }[] };
         if (remoteTrackData.cfSessionId === cfSessionId.current) return; // ignore self
 
         // Pull the remote participant's tracks. Cloudflare Calls has no
@@ -188,18 +196,13 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
       };
 
       // Initial check — read the other party's already-published tracks via a
-      // server action. The browser Appwrite client has no session (httpOnly
-      // cookie), so a direct getDocument here returns 404 under the session ACL.
+      // server action. The browser has no database session, so this is the only
+      // way to read the row.
       const currentTracks = await getSessionTracksAction(sessionId, role);
       await checkOtherTracks(currentTracks as unknown as Record<string, unknown>);
 
-      // Realtime watch
-      unsubscribeRef.current = appwriteClient.subscribe(
-        `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${sessionId}`,
-        async (response: { payload: Record<string, unknown> }) => {
-          await checkOtherTracks(response.payload);
-        }
-      );
+      // Hand the handler to the realtime watch below, which is now live.
+      checkOtherTracksRef.current = checkOtherTracks;
     } catch (err) {
       console.error("joinSession failed:", err);
       setError(err instanceof Error ? err.message : "Could not join session");
@@ -212,6 +215,42 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
       joiningRef.current = false;
     }
   }, [sessionId, role]);
+
+  /**
+   * Watch for the other participant publishing their tracks.
+   *
+   * The Appwrite subscription this replaces handed the session document
+   * straight to `checkOtherTracks` via `response.payload`. Events now carry
+   * identifiers only, so the row is refetched through `getSessionTracksAction`
+   * — which returns exactly the two track columns the handler reads, so no
+   * signalling data is lost. Cloudflare SDP still flows over `/api/video/*`;
+   * this channel only ever said "tracks changed, go look".
+   *
+   * KNOWN GAP: the `therapy_sessions` trigger addresses `therapist_id`, which
+   * is a `therapists.id` row reference rather than the clinician's user id, and
+   * `/api/events` subscribes by user id alone. Until that is resolved to a user
+   * id, a therapist already waiting in the room will not be told when their
+   * patient joins. The patient side is unaffected (`patient_id` is an Auth0
+   * sub), and either side still pulls tracks published before they joined via
+   * the initial `getSessionTracksAction` check above.
+   */
+  useRealtime(
+    ["therapy_sessions"],
+    (event) => {
+      if (event.id !== sessionId) return;
+      const check = checkOtherTracksRef.current;
+      if (!check) return;
+      (async () => {
+        try {
+          const tracks = await getSessionTracksAction(sessionId, role);
+          await check(tracks as unknown as Record<string, unknown>);
+        } catch (err) {
+          console.error("Remote track check failed:", err);
+        }
+      })();
+    },
+    { enabled: isJoined }
+  );
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;

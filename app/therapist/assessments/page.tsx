@@ -51,7 +51,7 @@ export default function AssessmentsPage() {
     if (!user) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (!therapist) return;
         const res = await listAllMoodLogsAction(30);
         setMoods(res as unknown as MoodLog[]);

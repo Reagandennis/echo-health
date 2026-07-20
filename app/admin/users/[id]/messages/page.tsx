@@ -1,8 +1,17 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getProfileByUserId } from "../../../_lib/queries";
 import { ShieldAlert, Flag } from "lucide-react";
 
+/**
+ * The transcript below is hardcoded mock UI. Real therapy messages live in the
+ * `messages` table, but nothing writes the per-message `flagged` marker this
+ * layout is built around, and `messages_select` deliberately scopes reads to
+ * participants (admins included) rather than exposing a compliance view. Wiring
+ * this to real data is a product decision, not a mechanical port — so only the
+ * client identity in the breadcrumb is live.
+ */
 const MOCK_MESSAGES = [
   { id: "1", from: "Client", content: "I've been feeling really overwhelmed lately...", time: "2026-04-22T09:15:00Z", flagged: false },
   { id: "2", from: "Therapist", content: "I hear you. Let's talk through this together. Can you tell me more about what's been triggering these feelings?", time: "2026-04-22T09:18:00Z", flagged: false },
@@ -19,9 +28,9 @@ export default async function ClientMessagesPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { users } = createAdminClient();
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
   return (
     <div>

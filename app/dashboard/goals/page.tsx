@@ -7,13 +7,22 @@ import {
   createGoalAction, 
   updateGoalAction 
 } from "@/app/actions/database";
-import type { Goal, GoalMilestone } from "@/lib/appwrite/database";
+import type { Goal, GoalMilestone } from "@/lib/types/documents";
 import { useUser } from "@/app/components/UserProvider";
 import posthog from "posthog-js";
 
-function parseMilestones(raw: string): GoalMilestone[] {
-  try { return JSON.parse(raw) as GoalMilestone[]; }
-  catch { return []; }
+/**
+ * `goals.milestones` is a real `jsonb` array in Postgres — it used to be a JSON
+ * string crammed into a varchar. The string branch stays only to tolerate rows
+ * written before the migration; new rows arrive already parsed.
+ */
+function parseMilestones(raw: unknown): GoalMilestone[] {
+  if (Array.isArray(raw)) return raw as GoalMilestone[];
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as GoalMilestone[]; }
+    catch { return []; }
+  }
+  return [];
 }
 
 function GoalCard({ goal, onUpdate }: { readonly goal: Goal; readonly onUpdate: (g: Goal) => void }) {
@@ -28,8 +37,9 @@ function GoalCard({ goal, onUpdate }: { readonly goal: Goal; readonly onUpdate: 
     const allDone = updated.every((m) => m.completed);
     try {
       const g = await updateGoalAction(goal.$id, {
-        milestones: JSON.stringify(updated),
-        completedAt: allDone ? new Date().toISOString() : null,
+        // jsonb column — send the array itself, not a JSON string.
+        milestones: updated,
+        completedAt: allDone ? new Date() : null,
       });
       if (allDone) {
         posthog.capture("goal_completed", {

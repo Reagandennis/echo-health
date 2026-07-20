@@ -7,9 +7,8 @@ import Link from "next/link";
 import { useUser } from "@/app/components/UserProvider";
 import VideoRoom from "@/app/components/video/VideoRoom";
 import { getSessionAction } from "@/app/actions/database";
-import appwriteClient from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
-import type { TherapySession } from "@/lib/appwrite/database";
+import { useRealtime } from "@/hooks/useRealtime";
+import type { TherapySession } from "@/lib/types/documents";
 import posthog from "posthog-js";
 
 export default function ClientSessionPage() {
@@ -24,8 +23,6 @@ export default function ClientSessionPage() {
 
   useEffect(() => {
     if (!user) return;
-
-    let unsubscribe: (() => void) | undefined;
 
     (async () => {
       try {
@@ -56,20 +53,6 @@ export default function ClientSessionPage() {
           });
         }
 
-        // Subscribe via Appwrite Realtime to detect when therapist joins
-        if (!isLive) {
-          const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${sessionId}`;
-          unsubscribe = appwriteClient.subscribe(channel, (response: { payload: Record<string, unknown> }) => {
-            if (response.payload?.therapistTracks) {
-              posthog.capture("video_session_joined", {
-                session_id: sess.$id,
-                scheduled_at: sess.scheduledAt,
-              });
-              setTherapistLive(true);
-              unsubscribe?.();
-            }
-          });
-        }
       } catch (err) {
         console.error("Client session page error:", err);
         router.replace("/dashboard/sessions");
@@ -77,10 +60,31 @@ export default function ClientSessionPage() {
         setLoading(false);
       }
     })();
-
-    // Cleanup subscription when component unmounts or deps change
-    return () => unsubscribe?.();
   }, [user, sessionId, router]);
+
+  // Detect the therapist joining. Events carry no row contents, so the old
+  // `response.payload?.therapistTracks` read becomes a refetch of the session;
+  // `enabled` stands in for the self-unsubscribe once they are live.
+  useRealtime(
+    ["therapy_sessions"],
+    (event) => {
+      if (event.id !== sessionId) return;
+      (async () => {
+        try {
+          const sess = (await getSessionAction(sessionId)) as TherapySession;
+          if (!(sess as unknown as Record<string, unknown>).therapistTracks) return;
+          posthog.capture("video_session_joined", {
+            session_id: sess.$id,
+            scheduled_at: sess.scheduledAt,
+          });
+          setTherapistLive(true);
+        } catch (err) {
+          console.error("Client session page realtime error:", err);
+        }
+      })();
+    },
+    { enabled: !!user && !denied && !therapistLive }
+  );
 
   // ── Access denied ──────────────────────────────────────────────────────────
   if (denied) {

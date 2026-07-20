@@ -1,10 +1,17 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminStatCard from "./_components/AdminStatCard";
 import AdminBadge, { sessionStatusBadge } from "./_components/AdminBadge";
-import { Query } from "node-appwrite";
+import {
+  listAllSessions,
+  listProfiles,
+  listTherapists,
+} from "./_lib/queries";
+import {
+  listChatSessionsAction,
+  listRiskAlertsAction,
+} from "@/app/actions/database";
 import {
   Users,
   UserCheck,
@@ -19,10 +26,10 @@ import {
   Clock,
 } from "lucide-react";
 
-/** Relative "time ago" for an ISO timestamp, server-rendered. */
-function timeAgo(iso?: string): string {
-  if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
+/** Relative "time ago". Timestamps are real `Date`s now, not ISO strings. */
+function timeAgo(at?: Date | null): string {
+  if (!at) return "—";
+  const diff = Date.now() - at.getTime();
   const m = Math.floor(diff / 60_000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
@@ -30,13 +37,13 @@ function timeAgo(iso?: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return at.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 /** Short date + time for scheduled sessions. */
-function fmtDateTime(iso?: string): string {
-  if (!iso) return "Unscheduled";
-  return new Date(iso).toLocaleString(undefined, {
+function fmtDateTime(at?: Date | null): string {
+  if (!at) return "Unscheduled";
+  return at.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -44,12 +51,19 @@ function fmtDateTime(iso?: string): string {
   });
 }
 
-function roleBadge(labels?: string[]) {
-  const role = labels?.[0];
-  if (role === "admin") return <AdminBadge label="Admin" variant="purple" dot />;
-  if (role === "therapist") return <AdminBadge label="Therapist" variant="teal" dot />;
-  if (role === "client") return <AdminBadge label="Client" variant="info" dot />;
-  return <AdminBadge label="No role" variant="neutral" />;
+/**
+ * Replaces the old `roleBadge(labels)`.
+ *
+ * Roles are no longer readable here: they live in the Auth0 token
+ * (`scripts/auth0-roles-action.js` → `ROLES_CLAIM`) and there is no server-side
+ * user directory to enumerate them from. `profiles` carries no role column, so
+ * rendering a role for another user would mean inventing one. Match state is
+ * the real signal available on the same row.
+ */
+function matchBadge(therapistId: string | null) {
+  return therapistId
+    ? <AdminBadge label="Matched" variant="teal" dot />
+    : <AdminBadge label="Unmatched" variant="neutral" />;
 }
 
 function initials(name?: string): string {
@@ -67,48 +81,55 @@ export default async function AdminDashboardPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { users, databases } = createAdminClient();
-
-  const [userList, sessionList, therapists, riskAlerts, supportChats] = await Promise.all([
-    users.list(),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.sessions, [Query.limit(100)]),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.therapists, [Query.limit(100)]),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.riskAlerts, [Query.equal("resolved", false), Query.limit(100)]),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.chatSessions, [Query.limit(100)]),
+  // `profiles` is the user roster now; `users.list()` enumerated Appwrite users,
+  // which no longer exist, so every user-derived figure here read as zero.
+  const [profiles, sessions, therapists, allRiskAlerts, supportChats] = await Promise.all([
+    listProfiles(),
+    listAllSessions(),
+    listTherapists(),
+    listRiskAlertsAction(),
+    listChatSessionsAction(100),
   ]);
 
-  const completedSessions = sessionList.documents.filter((s) => s.status === "completed").length;
-  const activeSessions = sessionList.documents.filter((s) => s.status === "confirmed" || s.status === "in-progress").length;
-  const pendingSessions = sessionList.documents.filter((s) => s.status === "pending").length;
-  const cancelledSessions = sessionList.documents.filter((s) => s.status === "cancelled").length;
-  const totalSessions = sessionList.documents.length;
-  const pendingKyc = therapists.documents.filter((t) => t.kycStatus === "pending" || t.kycStatus === "incomplete").length;
-  const criticalAlerts = riskAlerts.documents.filter((a) => a.severity === "critical").length;
+  // `listRiskAlertsAction` returns resolved and unresolved alike; the dashboard
+  // only ever counted open ones.
+  const openRiskAlerts = allRiskAlerts.filter((a: { resolved: boolean }) => !a.resolved);
+
+  const completedSessions = sessions.filter((s) => s.status === "completed").length;
+  const activeSessions = sessions.filter((s) => s.status === "confirmed").length;
+  const pendingSessions = sessions.filter((s) => s.status === "pending").length;
+  const cancelledSessions = sessions.filter((s) => s.status === "cancelled").length;
+  const totalSessions = sessions.length;
+  const pendingKyc = therapists.filter((t) => t.kycStatus === "pending" || t.kycStatus === "incomplete").length;
+  const criticalAlerts = openRiskAlerts.filter((a: { severity: string }) => a.severity === "critical").length;
 
   // Resolve display names for patient / therapist IDs on session rows.
-  const userById = new Map(userList.users.map((u) => [u.$id, u.name] as const));
-  const therapistById = new Map(therapists.documents.map((t) => [t.$id, t.name as string] as const));
-  const therapistByUserId = new Map(therapists.documents.map((t) => [t.userId as string, t.name as string] as const));
-  const resolveName = (id?: string) =>
-    (id && (userById.get(id) || therapistByUserId.get(id) || therapistById.get(id))) || "Unknown";
+  // `therapy_sessions.patient_id` is an Auth0 sub; `therapy_sessions.therapist_id`
+  // is a `therapists.id` row reference — two different key spaces, so they get
+  // two different maps rather than one merged lookup.
+  const nameByUserId = new Map(profiles.map((p) => [p.userId, p.name] as const));
+  const therapistById = new Map(therapists.map((t) => [t.id, t.name] as const));
+  const resolvePatient = (id?: string) => (id && nameByUserId.get(id)) || "Unknown";
+  const resolveTherapist = (id?: string) => (id && therapistById.get(id)) || "Unknown";
 
   const stats = [
-    { label: "Total Clients", value: userList.total.toString(), change: "Active users", trend: "up" as const, icon: Users, iconColor: "bg-blue-100 text-blue-700", subtext: "Platform users" },
+    { label: "Total Clients", value: profiles.length.toString(), change: "Active users", trend: "up" as const, icon: Users, iconColor: "bg-blue-100 text-blue-700", subtext: "Platform users" },
     { label: "Active Sessions", value: activeSessions.toString(), change: "Confirmed", trend: "up" as const, icon: Calendar, iconColor: "bg-teal-100 text-teal-700", subtext: "Live / Upcoming" },
     { label: "Monthly Revenue", value: `$${(completedSessions * 50).toLocaleString()}`, change: "+8.2%", trend: "up" as const, icon: CreditCard, iconColor: "bg-emerald-100 text-emerald-700", subtext: "Estimated" },
-    { label: "Risk Alerts", value: riskAlerts.total.toString(), change: `${criticalAlerts} critical`, trend: "down" as const, icon: AlertTriangle, iconColor: "bg-rose-100 text-rose-700", subtext: "Needs attention" },
+    { label: "Risk Alerts", value: openRiskAlerts.length.toString(), change: `${criticalAlerts} critical`, trend: "down" as const, icon: AlertTriangle, iconColor: "bg-rose-100 text-rose-700", subtext: "Needs attention" },
     { label: "Pending KYC", value: pendingKyc.toString(), change: "Awaiting review", trend: "neutral" as const, icon: ShieldCheck, iconColor: "bg-purple-100 text-purple-700", subtext: "Therapist queue" },
-    { label: "Support Chats", value: supportChats.total.toString(), change: "Active sessions", trend: "up" as const, icon: HeadphonesIcon, iconColor: "bg-amber-100 text-amber-700", subtext: "Customer care" },
-    { label: "Total Therapists", value: therapists.total.toString(), change: "Clinicians", trend: "up" as const, icon: UserCheck, iconColor: "bg-indigo-100 text-indigo-700", subtext: "Verified & pending" },
+    { label: "Support Chats", value: supportChats.length.toString(), change: "Active sessions", trend: "up" as const, icon: HeadphonesIcon, iconColor: "bg-amber-100 text-amber-700", subtext: "Customer care" },
+    { label: "Total Therapists", value: therapists.length.toString(), change: "Clinicians", trend: "up" as const, icon: UserCheck, iconColor: "bg-indigo-100 text-indigo-700", subtext: "Verified & pending" },
     { label: "Sessions Completed", value: completedSessions.toString(), change: "Total volume", trend: "up" as const, icon: TrendingUp, iconColor: "bg-orange-100 text-orange-700", subtext: "All time" },
   ];
 
-  const recentSignups = [...userList.users]
-    .sort((a, b) => new Date(b.$createdAt).getTime() - new Date(a.$createdAt).getTime())
+  // `createdAt` is a real Date — compare with getTime(), never localeCompare.
+  const recentSignups = [...profiles]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 6);
 
-  const recentSessions = [...sessionList.documents]
-    .sort((a, b) => new Date(b.$createdAt).getTime() - new Date(a.$createdAt).getTime())
+  const recentSessions = [...sessions]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 6);
 
   const statusBreakdown = [
@@ -121,7 +142,7 @@ export default async function AdminDashboardPage() {
   const attention = [
     { label: "Therapists awaiting KYC", value: pendingKyc, href: "/admin/therapists/verification-queue", icon: ShieldCheck, tone: "text-purple-700 bg-purple-100" },
     { label: "Critical risk alerts", value: criticalAlerts, href: "/admin/risk", icon: AlertTriangle, tone: "text-rose-700 bg-rose-100" },
-    { label: "Open support chats", value: supportChats.total, href: "/admin/customer-care", icon: HeadphonesIcon, tone: "text-amber-700 bg-amber-100" },
+    { label: "Open support chats", value: supportChats.length, href: "/admin/customer-care", icon: HeadphonesIcon, tone: "text-amber-700 bg-amber-100" },
   ];
 
   return (
@@ -169,19 +190,19 @@ export default async function AdminDashboardPage() {
                 recentSessions.map((s) => (
                   <div key={s.$id} className="flex items-center gap-3 px-6 py-3.5 hover:bg-stone-50/60 transition-colors">
                     <div className="w-9 h-9 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {initials(resolveName(s.patientId as string))}
+                      {initials(resolvePatient(s.patientId))}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-stone-900 truncate">
-                        {resolveName(s.patientId as string)}
+                        {resolvePatient(s.patientId)}
                         <span className="font-normal text-stone-400"> with </span>
-                        {resolveName(s.therapistId as string)}
+                        {resolveTherapist(s.therapistId)}
                       </p>
                       <p className="text-xs text-stone-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {fmtDateTime(s.scheduledAt as string)}
+                        <Clock className="w-3 h-3" /> {fmtDateTime(s.scheduledAt)}
                       </p>
                     </div>
-                    {sessionStatusBadge(s.status as string)}
+                    {sessionStatusBadge(s.status)}
                   </div>
                 ))
               )}
@@ -200,21 +221,21 @@ export default async function AdminDashboardPage() {
               {recentSignups.length === 0 ? (
                 <p className="px-6 py-10 text-center text-sm text-stone-400">No users yet.</p>
               ) : (
-                recentSignups.map((u) => (
+                recentSignups.map((p) => (
                   <Link
-                    key={u.$id}
-                    href={`/admin/users/${u.$id}`}
+                    key={p.$id}
+                    href={`/admin/users/${encodeURIComponent(p.userId)}`}
                     className="flex items-center gap-3 px-6 py-3.5 hover:bg-teal-50/50 transition-colors"
                   >
                     <div className="w-9 h-9 rounded-full bg-stone-100 text-stone-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {initials(u.name)}
+                      {initials(p.name)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-stone-900 truncate">{u.name || "Unnamed user"}</p>
-                      <p className="text-xs text-stone-400 truncate">{u.email}</p>
+                      <p className="text-sm font-semibold text-stone-900 truncate">{p.name || "Unnamed user"}</p>
+                      <p className="text-xs text-stone-400 truncate">{p.email}</p>
                     </div>
-                    {roleBadge(u.labels)}
-                    <span className="text-xs text-stone-400 w-16 text-right flex-shrink-0">{timeAgo(u.$createdAt)}</span>
+                    {matchBadge(p.therapistId)}
+                    <span className="text-xs text-stone-400 w-16 text-right flex-shrink-0">{timeAgo(p.createdAt)}</span>
                   </Link>
                 ))
               )}
@@ -275,8 +296,8 @@ export default async function AdminDashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Verify Therapists", desc: `${pendingKyc} pending`, href: "/admin/therapists/verification-queue", color: "from-purple-500 to-indigo-600" },
-          { label: "Review Risk Alerts", desc: `${riskAlerts.total} active`, href: "/admin/risk", color: "from-rose-500 to-rose-700" },
-          { label: "Support Queue", desc: `${supportChats.total} chats`, href: "/admin/customer-care", color: "from-amber-500 to-orange-600" },
+          { label: "Review Risk Alerts", desc: `${openRiskAlerts.length} active`, href: "/admin/risk", color: "from-rose-500 to-rose-700" },
+          { label: "Support Queue", desc: `${supportChats.length} chats`, href: "/admin/customer-care", color: "from-amber-500 to-orange-600" },
           { label: "Export Report", desc: "Analytics", href: "/admin/analytics/export", color: "from-teal-500 to-teal-700" },
         ].map((action) => (
           <Link

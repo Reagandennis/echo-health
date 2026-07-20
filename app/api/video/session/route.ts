@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { parseOrError, videoSessionSchema } from "@/lib/validation";
 import { rateLimit } from "@/lib/rate-limit";
 

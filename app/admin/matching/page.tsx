@@ -1,4 +1,4 @@
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";

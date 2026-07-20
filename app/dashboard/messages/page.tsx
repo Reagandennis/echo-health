@@ -3,41 +3,25 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Send, Paperclip, Mic, CheckCheck, Check } from "lucide-react";
 import { listDirectMessagesAction, sendMessageAction } from "@/app/actions/database";
-import type { Message } from "@/lib/appwrite/database";
-import { appwriteConfig } from "@/lib/appwrite/config";
-import client from "@/lib/appwrite/client";
+import type { Message } from "@/lib/types/documents";
+import { useRealtime } from "@/hooks/useRealtime";
 import { PLACEHOLDER_THERAPIST_ID } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 
-const MESSAGES_CHANNEL = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.messages}.documents`;
 const THERAPIST_ID = PLACEHOLDER_THERAPIST_ID;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
-function msgTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+function msgTime(at: Date) {
+  return at.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
-function msgDate(iso: string) {
-  const d = new Date(iso);
+function msgDate(at: Date) {
+  const d = at;
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return "Today";
   const yd = new Date(now); yd.setDate(now.getDate() - 1);
   if (d.toDateString() === yd.toDateString()) return "Yesterday";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function addOrReplace(list: Message[], doc: Message): Message[] {
-  const idx = list.findIndex((m) => m.$id === doc.$id);
-  if (idx === -1) return [...list, doc];
-  const copy = [...list]; copy[idx] = doc; return copy;
-}
-
-function replaceMsg(doc: Message) {
-  return (prev: Message[]) => prev.map((m) => (m.$id === doc.$id ? doc : m));
-}
-
-function removeMsg(id: string) {
-  return (prev: Message[]) => prev.filter((m) => m.$id !== id);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -49,45 +33,30 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
-  // Keep userId in a ref so the realtime callback always has a fresh value
-  const userIdRef = useRef<string | null>(null);
+
+  const loadMessages = useCallback(async () => {
+    const msgs = await listDirectMessagesAction(THERAPIST_ID);
+    setMessages(msgs);
+  }, []);
 
   // ── Auth + initial message load ──────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        userIdRef.current = user.$id;
-        const msgs = await listDirectMessagesAction(user.$id, THERAPIST_ID);
-        setMessages(msgs);
+        await loadMessages();
       } finally {
         setLoading(false);
       }
     })();
-  }, [user]);
+  }, [user, loadMessages]);
 
-  // ── Realtime subscription (separate effect to keep nesting shallow) ──────
-  useEffect(() => {
-    function onRealtimeEvent(evt: any) {
-      const doc = evt.payload as unknown as Message;
-      const uid = userIdRef.current;
-      if (!uid) return;
-      const mine = doc.senderId === uid || doc.receiverId === uid;
-      const theirSide = doc.senderId === THERAPIST_ID || doc.receiverId === THERAPIST_ID;
-      if (!mine || !theirSide) return;
-
-      if (evt.events.some((e: string) => e.endsWith(".create"))) {
-        setMessages((prev) => addOrReplace(prev, doc));
-      } else if (evt.events.some((e: string) => e.endsWith(".update"))) {
-        setMessages(replaceMsg(doc));
-      } else if (evt.events.some((e: string) => e.endsWith(".delete"))) {
-        setMessages(removeMsg(doc.$id));
-      }
-    }
-
-    const unsub = client.subscribe(MESSAGES_CHANNEL, onRealtimeEvent);
-    return unsub;
-  }, []);
+  // ── Realtime subscription ────────────────────────────────────────────────
+  // Events carry no row contents, so the create/update/delete splicing this
+  // used to do from `evt.payload` is now a refetch of the thread. The action
+  // returns only this pair's messages, which replaces the old
+  // sender/receiver filtering that ran against the collection-wide feed.
+  useRealtime(["messages"], () => { void loadMessages(); }, { enabled: !!user });
 
   // ── Scroll to bottom ─────────────────────────────────────────────────────
   useEffect(() => {

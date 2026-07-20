@@ -1,9 +1,16 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
 import AdminBadge from "../../../_components/AdminBadge";
+import { getProfileByUserId } from "../../../_lib/queries";
 import { AlertTriangle, ShieldCheck, Clock } from "lucide-react";
 
+/**
+ * The scores, breakdown and alert history on this page are hardcoded mock UI —
+ * there is no risk-scoring pipeline, and `risk_alerts` (the one real table) is
+ * keyed by patient but carries none of the sub-scores this layout renders.
+ * Only the client identity in the breadcrumb is live data.
+ */
 const MOCK_FLAGS = [
   { id: "1", type: "AI Flag", description: "Expressed suicidal ideation in session notes", severity: "critical", date: "2026-04-20T10:30:00Z", resolved: false },
   { id: "2", type: "Manual Flag", description: "Missed 3 consecutive sessions", severity: "medium", date: "2026-04-15T08:00:00Z", resolved: true },
@@ -18,9 +25,11 @@ export default async function RiskProfilePage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { users } = createAdminClient();
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+
+  // `[id]` is an Auth0 sub, not a uuid. Identity comes from `profiles` — the
+  // Appwrite Users API this used to call holds no users any more.
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
   return (
     <div>

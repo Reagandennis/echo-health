@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, ArrowRight, Download, Sparkles } from "lucide-react";
 import { Suspense } from "react";
-import { updatePrefs } from "@/lib/appwrite/auth";
+import { updateUserMetadataAction } from "@/app/actions/user-metadata";
 
 function PaymentSuccessContent() {
   const router = useRouter();
@@ -12,9 +12,16 @@ function PaymentSuccessContent() {
   const plan = searchParams.get("plan") ?? "Plus";
   const [count, setCount] = useState(5);
 
-  // Persist the chosen plan so signin can skip onboarding next time
+  // Persist the chosen plan so signin can skip onboarding next time.
+  //
+  // TODO: this is currently a no-op — `updateUserMetadataAction` is a stub that
+  // throws until Auth0 Management API credentials exist (see the file's header).
+  // Kept best-effort rather than blocking: a failed preference write must never
+  // break the payment confirmation screen the user just paid to reach.
   useEffect(() => {
-    updatePrefs({ plan: plan.toLowerCase() }).catch(() => null);
+    updateUserMetadataAction({ plan: plan.toLowerCase() }).catch((err) => {
+      console.error("Could not persist plan preference:", err);
+    });
   }, [plan]);
 
   useEffect(() => {

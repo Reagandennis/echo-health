@@ -8,9 +8,11 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This file is the single source of truth for AI agents working in this repo. `CLAUDE.md` transcludes it via `@AGENTS.md`.
 
-## Critical: Next.js / Appwrite versions
+## Critical: Next.js version
 
-This project runs **Next.js 16.2.4 with React 19.2.4** — APIs and conventions differ from older versions you may have been trained on. Before writing any non-trivial Next.js code (routing, server actions, instrumentation, caching, headers/cookies APIs), read the relevant guide under `node_modules/next/dist/docs/` and heed deprecation notices. The Appwrite SDK is v24 — its old `Databases` API is also flagged deprecated in favour of `TablesDB` (see `lib/appwrite/database.ts:1`), but is still in use throughout the codebase.
+This project runs **Next.js 16.2.6 with React 19.2.4** — APIs and conventions differ from older versions you may have been trained on. Before writing any non-trivial Next.js code (routing, server actions, instrumentation, caching, headers/cookies APIs), read the relevant guide under `node_modules/next/dist/docs/` and heed deprecation notices.
+
+Note in particular that **`middleware.ts` was deprecated in v16.0.0 and renamed to `proxy.ts`** — this repo uses `proxy.ts`, and the exported function is `proxy`, not `middleware`.
 
 ## Commands
 
@@ -26,32 +28,69 @@ npm run test:coverage
 npx jest path/to/file    # run a single test file
 npx jest -t "name"       # run tests matching a name
 
-# One-time Appwrite collection bootstrap (requires APPWRITE_API_KEY env)
-APPWRITE_API_KEY=<key> npx tsx scripts/setup-appwrite.ts
+# Database (Drizzle + Postgres on Azure)
+npm run db:generate      # generate a migration from lib/db/schema.ts
+npm run db:migrate       # apply pending migrations
+npm run db:studio        # browse the database
+
+# Hand-written SQL (RLS policies, triggers) — generate an empty file to edit:
+npx drizzle-kit generate --custom --name=<name>
 ```
 
-TypeScript path alias: `@/*` → repo root (e.g. `@/lib/appwrite/server`).
+TypeScript path alias: `@/*` → repo root (e.g. `@/lib/db/schema`).
 
 ## Architecture
 
-Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Backend is Appwrite; analytics is PostHog; video is self-managed WebRTC over Cloudflare Calls (SFU) + Cloudflare TURN; transactional email is Resend (`lib/email.ts`).
+Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Auth is Auth0; the database is Postgres (Azure) via Drizzle; analytics is PostHog; video is self-managed WebRTC over Cloudflare Calls (SFU) + Cloudflare TURN; transactional email is Resend (`lib/email.ts`).
 
-### Auth & authorization (cookie-session, role-in-layout)
+### Auth & authorization (Auth0 Universal Login, role-in-layout)
 
-- Sessions are an Appwrite session secret stored in an **httpOnly cookie `appwrite-session`** set by Server Actions in `lib/appwrite/actions.ts` (`createSession`, `signUpAction`, `deleteSession`).
-- `middleware.ts` only checks for cookie *presence* on `/admin`, `/therapist`, `/dashboard` — it intentionally does **not** call Appwrite, to avoid per-request network cost. It also intentionally does **not** redirect away from `/signin` / `/signup` (that caused redirect loops with stale cookies).
-- **Role-based access is enforced inside each section's Server Component layout** (e.g. `app/admin/layout.tsx:15` checks `user.labels?.includes("admin")`). Roles live as Appwrite user **labels** (`admin`, `therapist`). Add new role gates at the layout, not the middleware.
-- `lib/appwrite/server.ts` exposes:
-  - `createAdminClient()` — uses `APPWRITE_API_KEY`, full privileges. Use for user creation, label/role assignment, admin queries.
-  - `createSessionClient()` — uses the cookie, acts as the logged-in user.
-  - `getLoggedInUser()` — React-`cache`d, returns a **plainified** (`JSON.parse(JSON.stringify(...))`) user or `null`. The plainify step is required so the user can be passed from Server Layouts into Client Providers without Next.js serialization errors — preserve it when adding similar helpers.
-- Browser-side Appwrite SDK is `lib/appwrite/client.ts` (`account`, `databases`, `storage`, `realtime`). Anything that needs the user's session from the server must go through `createSessionClient()` or a Server Action, **not** the browser client.
+**Authentication is Auth0.** `@auth0/nextjs-auth0` v4 — note v4 is a rewrite of v3, and its routes live at `/auth/*`, not `/api/auth/*`.
 
-### Data layer
+- `lib/auth0.ts` exports the `Auth0Client`, configured from `AUTH0_DOMAIN` / `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_SECRET` / `APP_BASE_URL`.
+- `proxy.ts` (**not** `middleware.ts` — Next 16 deprecated and renamed that convention) mounts the SDK routes `/auth/login`, `/auth/logout`, `/auth/callback`, `/auth/profile`, `/auth/access-token`, and gates `/admin`, `/therapist`, `/dashboard` on session *presence* only. Its matcher must stay broad, because `/auth/*` is served by the proxy rather than by route files.
+- **Role-based access is still enforced inside each section's Server Component layout** (e.g. `app/admin/layout.tsx` checks `user.labels?.includes("admin")`). Add new role gates at the layout, not the proxy.
+- `lib/auth/session.ts` is the auth core:
+  - `getLoggedInUser()` — React-`cache`d, returns a `SessionUser` or `null`. Resolving a session is a local cookie decrypt with **no network call**, so `null` always means "no valid session", never "provider unreachable".
+  - `SessionUser` uses the field names `$id` / `name` / `email` / `labels` / `prefs`. The `$`-prefix is a holdover from the Appwrite era, kept so ~89 call sites and ~76 `labels?.includes(...)` role guards did not have to change. **`$id` is the Auth0 `sub`** (`auth0|…`, `google-oauth2|…`) and is the canonical `user_id` foreign key in Postgres — a `text` column, never uuid.
+  - `labels` ← the namespaced claim `https://echo-health.app/roles`; `prefs` ← `https://echo-health.app/user_metadata`. Both are injected by a post-login Action — the source lives at `scripts/auth0-roles-action.js` and **must be deployed manually in the Auth0 dashboard**. Without it every role check silently evaluates to `false`.
+- `lib/auth/client.ts` holds the browser-side entry points (`signIn`, `signUp`, `signInWithGoogle`, `signOut`). They are plain redirects — Universal Login means the app never handles credentials, so there is no `signIn(email, password)`.
 
-- `lib/appwrite/config.ts` centralises database + collection IDs. New collections must be added here AND in `scripts/setup-appwrite.ts`.
-- `lib/appwrite/database.ts` holds typed CRUD helpers and the `Profile` / `Therapist` / `TherapySession` / `Message` / `MoodLog` / `JournalEntry` / `Goal` / `ClinicalNote` / `SessionFeedback` interfaces. Every helper sets explicit Appwrite `Permission` rules — follow the existing pattern (owner read/update/delete + admin read; therapist label for clinical data) when adding new collections.
-- Realtime subscriptions use `appwriteClient.subscribe(...)` from the browser SDK. The browser SDK has no session attached (cookies are httpOnly) — subscriptions still receive events for the channels they subscribe to, but any document fetch that needs ACL must go through a Server Action or `createSessionClient()`, not the browser `databases` client.
+### Data layer (Drizzle + Postgres, with RLS)
+
+- `lib/db/schema.ts` is the single source of truth for all 17 tables. Change it, then `npm run db:generate` and `npm run db:migrate`. **Never** hand-edit a generated migration; for policies and triggers use `drizzle-kit generate --custom`.
+- `lib/db/index.ts` exports `db` and the raw `sql` client. **The app connects as `echo_app`, not the migration admin** — this is load-bearing: `echo_admin` owns the tables and has `rolbypassrls = true`, so connecting as it silently disables every policy.
+- **Every query must run inside `withUser()` / `withCurrentUser()` / `withAnonymous()` from `lib/db/session.ts`, using the `tx` handle — never the bare `db` export.** These open a transaction and set `app.user_id` / `app.user_roles`, which is what the RLS policies read. A query issued outside one carries no identity, so every ownership predicate fails closed and returns zero rows. Transaction-local (`set_config(..., true)`) is mandatory, because pooled connections are reused across requests and a session-scoped setting would leak one user's identity into the next.
+- `lib/types/documents.ts` derives the UI row types from the Drizzle schema. Don't hand-write row interfaces.
+- Timestamps are real `timestamptz` and come back as `Date`. They were ISO strings under Appwrite, so watch for `.localeCompare` and `JSON.parse` on what are now `Date` and `jsonb` values.
+
+#### Authorization is enforced twice, and both layers matter
+
+1. **Postgres RLS** (`lib/db/migrations/0001_row_level_security.sql`) — the datastore refuses rows the caller may not see. This replaced the Appwrite ACLs, which died with the auth migration.
+2. **Application checks** in `app/actions/database.ts` (`requirePatientAccess`, `ownsTherapistDoc`, …) — RLS fails a request *quietly* by returning nothing; these fail it *loudly* with "Forbidden", which is what the UI and audit trail need.
+
+Keep both when adding an action. Some app checks are strictly redundant with a policy and are annotated as such — that redundancy is deliberate.
+
+Notable policy decisions: `journal_entries` is author-only (no therapist or admin read path); `clinical_notes` is readable by the authoring therapist and admins, never the patient; the `therapists` directory is world-readable because visitors browse it before signing in; `chat_*` are permissive because anonymous visitors have no identity to bind to, so those two tables rely on application checks alone.
+
+### Realtime
+
+Postgres `LISTEN`/`NOTIFY` over SSE — replaced Appwrite's realtime subscriptions.
+
+- Triggers (`0002`, `0004`) emit `pg_notify` on the `echo_changes` channel with **identifiers only, never row contents**. Subscribers refetch through normal RLS-protected queries, so this channel cannot leak unauthorized data and can never exceed the 8 kB `pg_notify` payload cap.
+- `lib/db/events.ts` holds **one shared LISTEN connection per process** and fans out in memory. This is not an optimisation: the Azure tier allows ~24 app connections, so a connection-per-subscriber design would exhaust the server at ~24 concurrent users.
+- Client side is `hooks/useRealtime.ts`; the stream is `app/api/events/route.ts`.
+- **Requires a long-lived Node process** (Azure App Service / Container Apps). On serverless the listener dies between invocations. **Do not put PgBouncer in front of it** — transaction pooling multiplexes backends and notifications are silently lost.
+- Trigger audience specs: a bare column name, `therapist:<column>` (resolves a `therapists.id` to its owner's Auth0 sub), or `const:<literal>` (e.g. `const:staff`, which staff subscribe to for the support-chat inbox).
+
+### File uploads
+
+Bytes live in Postgres `bytea`, not object storage.
+
+- `avatars` — profile photos, world-readable, served by `/api/avatar/[id]`. Public because they render in the therapist directory.
+- `kyc_documents` — identity documents, restricted to owner and admins, served by `/api/kyc/[id]` with `Content-Disposition: attachment` (serving user uploads inline would be a stored-XSS vector).
+- These are separate tables on purpose: one table would force a single RLS policy across two very different sensitivity levels.
+- Uploads are capped at 10 MB with a MIME allowlist — the bytes go into your database, so an unbounded upload is a storage problem as well as a security one.
 
 ### Video sessions
 
@@ -91,28 +130,27 @@ Both use `api_host: "/ingest"` which is reverse-proxied to PostHog US in `next.c
 
 ## Operational scripts (`scripts/`)
 
-All scripts run as `APPWRITE_API_KEY=<key> npx tsx scripts/<name>.ts`. They use the admin client and are intended for one-off operator tasks, not application code.
-
-- `setup-appwrite.ts` — bootstraps the database, collections, attributes, and indexes. Run once per environment; re-running is idempotent for existing collections but new collections must be added here AND in `lib/appwrite/config.ts`.
-- `check-collections.ts`, `check-user-roles.ts` — read-only diagnostics. Safe to run anytime.
-- `repair-profiles.ts`, `fix-reagan-user.ts` — destructive data fixes. Read them before running and treat as templates for similar repairs rather than reusable utilities.
+- `auth0-roles-action.js` — **not application code and not imported anywhere.** It is the source of the Auth0 post-login Action that injects the roles and `user_metadata` claims, and it must be pasted into the Auth0 dashboard by hand. Without it deployed, every role check evaluates to `false` and admins are locked out.
 
 ## Repo-root noise
 
-The repo root contains scratch/debug files left over from manual Appwrite testing — `test_appwrite.js`, `test_appwrite2.js` … `test_appwrite6.js`, `test_appwrite_local.js`, `test_node_appwrite.js`. **These are not part of the Jest suite** (the suite lives in `__tests__/` and Jest does not pick them up). Don't treat them as authoritative examples; they may reference stale schema or credentials. Safe to delete if they're in the way, but confirm with the user first.
+The Appwrite-era scratch files (`test_appwrite*.js`, `test_node_appwrite.js`) and operator scripts have been removed along with the SDK.
 
 ## Testing
 
 - Jest config: `jest.config.js` (uses `next/jest` preset, jsdom env, `@/` alias). Setup in `jest.setup.js` polyfills `TextEncoder`, `matchMedia`, `IntersectionObserver`.
 - Coverage scope: `app/**`, `hooks/**`, `lib/**`.
-- API-route tests (`__tests__/api-*.test.ts`) exercise route handlers directly — follow the existing mocking pattern for `lib/appwrite/server` and `posthog-node` when adding new ones.
+- API-route tests (`__tests__/api-*.test.ts`) exercise route handlers directly — follow the existing mocking pattern for `@/lib/db/session`, `@/lib/auth/session` and `posthog-node` when adding new ones.
+- `test-utils/session.ts` builds a `SessionUser` fixture. It lives outside `__tests__/` deliberately: `next/jest`'s default `testMatch` treats every file under `__tests__/` as a suite.
 
 ## Environment
 
 Required env vars (see `.env.local`):
-- `NEXT_PUBLIC_APPWRITE_ENDPOINT`, `NEXT_PUBLIC_APPWRITE_PROJECT_ID`, `NEXT_PUBLIC_APPWRITE_DATABASE_ID`, `NEXT_PUBLIC_APPWRITE_STORAGE_BUCKET_ID`
-- `NEXT_PUBLIC_APPWRITE_*_COLLECTION_ID` for each collection in `lib/appwrite/config.ts` (some have hard-coded fallbacks)
-- `APPWRITE_API_KEY` — server-only, admin client
+- `APP_DATABASE_URL` — **what the application connects with.** Role `echo_app`, which is subject to RLS. Requires `?sslmode=require` (Azure rejects unencrypted connections).
+- `DATABASE_URL` — admin role `echo_admin`, used **only** by drizzle-kit for migrations. It has `rolbypassrls = true`, so never point the app at it.
+- `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` — Auth0 application credentials (server-only).
+- `AUTH0_SECRET` — 32-byte hex, encrypts the session cookie. Rotate with `openssl rand -hex 32`.
+- `APP_BASE_URL` — the app's own origin; Auth0 builds callback URLs from it. Must match a **Allowed Callback URL** on the Auth0 application (`<origin>/auth/callback`) or login fails.
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 - `NEXT_PUBLIC_SITE_URL` — used for OAuth redirect URLs in SSR contexts
 - `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`, `CLOUDFLARE_CALLS_API_TOKEN` — Cloudflare Calls (SFU). Used by `app/api/video/session/route.ts`; the API token stays server-side.

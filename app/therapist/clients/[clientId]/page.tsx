@@ -44,7 +44,7 @@ export default function ClientDetailPage() {
     if (!clientId || !user?.$id) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (!therapist) return;
 
         const [pProf, gList, mList, sList, nList] = await Promise.all([

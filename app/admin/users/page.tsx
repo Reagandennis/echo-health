@@ -1,33 +1,42 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import AdminBadge from "../_components/AdminBadge";
 import { Search, UserPlus, Download, Clock } from "lucide-react";
-import { listProfilesAction, listTherapistsAction } from "@/app/actions/database";
-import { Query } from "node-appwrite";
+import { listAllSessions, listProfiles, listTherapists } from "../_lib/queries";
 
+/**
+ * The client roster.
+ *
+ * `profiles` replaces the Appwrite `users.list()` enumeration — Appwrite holds
+ * no users since the Auth0 migration, so that call returned an empty list and
+ * this table rendered blank. `profiles.user_id` is the Auth0 sub and is what
+ * every row link and session lookup keys on.
+ *
+ * The Status column no longer shows Appwrite's account-enabled flag (an Auth0
+ * concern now, with no server-side query available) and instead shows whether
+ * the client has been matched to a therapist — real data from the same row.
+ */
 export default async function UsersListPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { users, databases } = createAdminClient();
-  const [userList, profiles, therapists, sessions] = await Promise.all([
-    users.list(),
-    listProfilesAction(),
-    listTherapistsAction(),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.sessions, [Query.limit(100)]),
+  const [profiles, therapists, sessions] = await Promise.all([
+    listProfiles(),
+    listTherapists(),
+    listAllSessions(),
   ]);
 
-  function getTherapistName(userId: string) {
-    const profile = profiles.find((p: any) => p.userId === userId);
-    if (!profile?.therapistId) return "—";
-    return therapists.find((t: any) => t.$id === profile.therapistId)?.name || "—";
-  }
+  const therapistNameById = new Map(therapists.map((t) => [t.id, t.name]));
 
-  function getSessionCount(userId: string) {
-    return sessions.documents.filter((s: any) => s.patientId === userId).length;
+  // Pre-aggregate instead of re-scanning every session inside the render loop.
+  const sessionCountByPatient = new Map<string, number>();
+  for (const s of sessions) {
+    sessionCountByPatient.set(
+      s.patientId,
+      (sessionCountByPatient.get(s.patientId) ?? 0) + 1
+    );
   }
 
   return (
@@ -78,7 +87,7 @@ export default async function UsersListPage() {
           <table className="w-full text-left min-w-[700px]">
             <thead className="bg-stone-50 border-b border-stone-100">
               <tr>
-                {["Client", "Joined", "Status", "Therapist", "Sessions", "Risk", ""].map((h) => (
+                {["Client", "Joined", "Match", "Therapist", "Sessions", "Risk", ""].map((h) => (
                   <th
                     key={h}
                     className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500"
@@ -89,42 +98,48 @@ export default async function UsersListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-50">
-              {userList.users.map((u) => (
-                <tr key={u.$id} className="hover:bg-teal-50/30 transition-colors group">
+              {profiles.length === 0 ? (
+                <tr><td colSpan={7} className="py-16 text-center text-sm text-stone-400">No clients found.</td></tr>
+              ) : profiles.map((p) => (
+                <tr key={p.$id} className="hover:bg-teal-50/30 transition-colors group">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                        {u.name.charAt(0).toUpperCase()}
+                        {p.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-stone-900">{u.name}</p>
-                        <p className="text-xs text-stone-400">{u.email}</p>
+                        <p className="text-sm font-semibold text-stone-900">{p.name}</p>
+                        <p className="text-xs text-stone-400">{p.email}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1 text-xs text-stone-500">
                       <Clock className="w-3 h-3" />
-                      {new Date(u.registration).toLocaleDateString("en-US", {
+                      {p.createdAt.toLocaleDateString("en-US", {
                         month: "short", day: "numeric", year: "numeric",
                       })}
                     </div>
                   </td>
                   <td className="px-5 py-4">
                     <AdminBadge
-                      label={u.status ? "Active" : "Inactive"}
-                      variant={u.status ? "success" : "neutral"}
+                      label={p.therapistId ? "Matched" : "Unmatched"}
+                      variant={p.therapistId ? "success" : "neutral"}
                       dot
                     />
                   </td>
-                  <td className="px-5 py-4 text-sm text-stone-700">{getTherapistName(u.$id)}</td>
-                  <td className="px-5 py-4 text-sm text-stone-700">{getSessionCount(u.$id)}</td>
+                  <td className="px-5 py-4 text-sm text-stone-700">
+                    {p.therapistId ? therapistNameById.get(p.therapistId) ?? "—" : "—"}
+                  </td>
+                  <td className="px-5 py-4 text-sm text-stone-700">
+                    {sessionCountByPatient.get(p.userId) ?? 0}
+                  </td>
                   <td className="px-5 py-4">
                     <AdminBadge label="None" variant="neutral" />
                   </td>
                   <td className="px-5 py-4 text-right">
                     <Link
-                      href={`/admin/users/${u.$id}`}
+                      href={`/admin/users/${encodeURIComponent(p.userId)}`}
                       className="text-xs text-teal-600 hover:text-teal-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       View →
@@ -137,7 +152,7 @@ export default async function UsersListPage() {
         </div>
         <div className="px-5 py-3.5 border-t border-stone-100 flex items-center justify-between">
           <p className="text-xs text-stone-500">
-            Showing {userList.users.length} of {userList.total} clients
+            Showing {profiles.length} client{profiles.length === 1 ? "" : "s"}
           </p>
           <div className="flex gap-1">
             {["←", "1", "2", "3", "→"].map((p) => (

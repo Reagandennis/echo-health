@@ -10,13 +10,17 @@
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "appwrite": "^24.2.0",
+    "@auth0/nextjs-auth0": "^4.25.0",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.9.0",
     "next": "^16.2.6",
-    "node-appwrite": "^24.0.0",
+    "postgres": "^3.4.9",
     "posthog-js": "^1.373.4",
     "posthog-node": "^5.34.1",
     "react": "19.2.4",
@@ -34,6 +38,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "jest": "^30.4.1",

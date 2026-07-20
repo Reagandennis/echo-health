@@ -1,25 +1,31 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getTherapist } from "../../../_lib/queries";
 import AdminBadge, { kycBadge } from "../../../_components/AdminBadge";
 import { Award, FileText, CheckCircle, XCircle, Upload } from "lucide-react";
 
+/**
+ * Partly mock. `licenseNumber` and `kycStatus` are real columns; the licence
+ * type, issuing authority, issue/expiry dates and the four-row document
+ * checklist are hardcoded — none of them exist in the schema. The `kyc_documents`
+ * table does hold real uploads, but it carries filename/MIME/size metadata, not
+ * the per-document verification states this checklist renders.
+ */
 export default async function TherapistCredentialsPage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
-  let t: Record<string, unknown>;
-  try { t = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.therapists, id) as unknown as Record<string, unknown>; } catch { notFound(); }
+  const t = await getTherapist(id);
+  if (!t) notFound();
 
   return (
     <div>
       <AdminPageHeader
         title="Credentials & Licensing"
-        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name as string, href: `/admin/therapists/${id}` }, { label: "Credentials" }]}
+        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Credentials" }]}
       />
 
       <div className="max-w-2xl space-y-6">
@@ -36,7 +42,7 @@ export default async function TherapistCredentialsPage({
           </div>
           <div className="space-y-4">
             {[
-              { label: "License Number", value: (t.licenseNumber as string) ?? "Not provided" },
+              { label: "License Number", value: t.licenseNumber ?? "Not provided" },
               { label: "License Type", value: "Licensed Clinical Social Worker (LCSW)" },
               { label: "Issuing Authority", value: "State Board of Behavioral Sciences" },
               { label: "Issue Date", value: "January 15, 2019" },
@@ -54,14 +60,14 @@ export default async function TherapistCredentialsPage({
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-sm font-bold text-stone-800">KYC Verification Status</h3>
-            {kycBadge((t.kycStatus as string) ?? "incomplete")}
+            {kycBadge(t.kycStatus ?? "incomplete")}
           </div>
           <div className="space-y-3">
             {[
               { label: "Government ID", status: "verified" },
-              { label: "Professional License", status: (t.kycStatus as string) === "verified" ? "verified" : "pending" },
+              { label: "Professional License", status: t.kycStatus === "verified" ? "verified" : "pending" },
               { label: "Insurance Certificate", status: "pending" },
-              { label: "Background Check", status: (t.kycStatus as string) === "verified" ? "verified" : "incomplete" },
+              { label: "Background Check", status: t.kycStatus === "verified" ? "verified" : "incomplete" },
             ].map((doc) => (
               <div key={doc.label} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl">
                 <div className="flex items-center gap-2">

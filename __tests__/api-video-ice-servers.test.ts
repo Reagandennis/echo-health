@@ -1,11 +1,12 @@
 /**
  * @jest-environment node
  */
-jest.mock("@/lib/appwrite/server", () => ({
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { mockUser } from "@/test-utils/session";
 
 const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
   typeof getLoggedInUser
@@ -25,7 +26,7 @@ describe("/api/video/ice-servers", () => {
     jest.clearAllMocks();
     process.env.CLOUDFLARE_TURN_TOKEN_ID = "turn-token-id";
     process.env.CLOUDFLARE_TURN_API_TOKEN = "turn-api-token";
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1" });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1" }));
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({

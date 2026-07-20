@@ -1,32 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Query } from "node-appwrite";
-import { createAdminClient } from "@/lib/appwrite/server";
+import { eq } from "drizzle-orm";
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? "";
-const SESSIONS_COLLECTION_ID = "chat_sessions";
+import { withAnonymous } from "@/lib/db/session";
+import { chatSessions } from "@/lib/db/schema";
+import { chatOfflineSchema, parseOrError } from "@/lib/validation";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
+/**
+ * Presence beacon: marks a support-chat session offline when the visitor leaves.
+ *
+ * AUTHORIZATION MODEL. This endpoint is deliberately unauthenticated, because
+ * the visitors it serves are anonymous and have no account to check. The
+ * session id is the credential: it is a `crypto.randomUUID()` (122 bits) minted
+ * in the browser, so holding it is equivalent to being that visitor.
+ *
+ * That only holds if the id cannot be *guessed*, which is what the two guards
+ * below are for. Previously this route had neither: it accepted any string and
+ * was unmetered, so a caller could walk the id space and flip other people's
+ * conversations offline. The blast radius was small — presence is not private
+ * data, and RLS still prevents reading anything — but it was free to abuse.
+ *
+ *  1. Shape check: only a well-formed UUID is even attempted.
+ *  2. Per-IP rate limit: makes enumeration impractical rather than merely tedious.
+ *
+ * Note `rateLimit` is per-instance and is defence-in-depth, not a hard
+ * cross-instance guarantee (see lib/rate-limit.ts).
+ */
 export async function POST(req: NextRequest) {
-  try {
-    const { sessionId } = await req.json();
-    if (!sessionId) return NextResponse.json({ ok: false });
+  const limited = rateLimit(`chat-offline:${clientIp(req)}`, {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return NextResponse.json({ ok: false }, { status: 429 });
+  }
 
-    const { databases } = createAdminClient();
-    const sessions = await databases.listDocuments({
-      databaseId: DATABASE_ID,
-      collectionId: SESSIONS_COLLECTION_ID,
-      queries: [Query.equal("sessionId", [sessionId])],
+  try {
+    const parsed = parseOrError(chatOfflineSchema, await req.json());
+    if (!parsed.ok) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+
+    await withAnonymous(async (tx) => {
+      await tx
+        .update(chatSessions)
+        .set({ isOnline: false })
+        .where(eq(chatSessions.sessionId, parsed.data.sessionId));
     });
 
-    if (sessions.total > 0) {
-      await databases.updateDocument({
-        databaseId: DATABASE_ID,
-        collectionId: SESSIONS_COLLECTION_ID,
-        documentId: sessions.documents[0].$id,
-        data: { isOnline: false },
-      });
-    }
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ ok: false });
+    return NextResponse.json({ ok: false }, { status: 400 });
   }
 }

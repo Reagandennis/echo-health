@@ -12,7 +12,7 @@ import { ArrowLeft, Clock, User, FileText, CheckCircle, XCircle, Video, Maximize
 import Link from "next/link";
 import VideoRoom from "@/app/components/video/VideoRoom";
 import { useUser } from "@/app/components/UserProvider";
-import type { TherapySession } from "@/lib/appwrite/database";
+import type { TherapySession } from "@/lib/types/documents";
 
 interface Profile { $id: string; name: string; email: string; }
 
@@ -48,7 +48,7 @@ function SessionDetailContent() {
         // Access control — sess.therapistId is the therapist *document* $id,
         // not the auth user $id. Resolve the therapist doc first, then compare.
         if (user) {
-          const therapistDoc = await getTherapistByUserIdAction(user.$id);
+          const therapistDoc = await getTherapistByUserIdAction();
           if (!therapistDoc || therapistDoc.$id !== sess.therapistId) {
             globalThis.location.replace("/therapist/sessions");
             return;

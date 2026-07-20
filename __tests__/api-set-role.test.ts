@@ -2,15 +2,29 @@
  * @jest-environment node
  */
 import { POST } from "@/app/api/user/set-role/route";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { mockUser } from "@/test-utils/session";
 
-jest.mock("@/lib/appwrite/server", () => ({
-  createAdminClient: jest.fn(),
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-const mockedCreateAdminClient = createAdminClient as jest.MockedFunction<typeof createAdminClient>;
-const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
+jest.mock("@/lib/auth0-management", () => ({
+  isManagementConfigured: jest.fn(() => true),
+  assignRole: jest.fn(),
+  getUserRoles: jest.fn(async () => []),
+}));
+
+import { assignRole, getUserRoles, isManagementConfigured } from "@/lib/auth0-management";
+
+const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
+  typeof getLoggedInUser
+>;
+const mockedAssignRole = assignRole as jest.MockedFunction<typeof assignRole>;
+const mockedGetUserRoles = getUserRoles as jest.MockedFunction<typeof getUserRoles>;
+const mockedIsConfigured = isManagementConfigured as jest.MockedFunction<
+  typeof isManagementConfigured
+>;
 
 function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
   return {
@@ -21,47 +35,55 @@ function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
   } as unknown as Parameters<typeof POST>[0];
 }
 
+/**
+ * Roles live in Auth0, so assigning one is a Management API call. The module is
+ * mocked here: these tests cover the route's authorization gates and its
+ * contract with that API, not Auth0 itself.
+ *
+ * The gates matter more than the happy path — each one is the only thing
+ * standing between a self-serve signup and a privilege escalation.
+ */
 describe("/api/user/set-role", () => {
-  const users = {
-    get: jest.fn(),
-    updateLabels: jest.fn(),
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedCreateAdminClient.mockReturnValue({ users } as unknown as ReturnType<typeof createAdminClient>);
+    mockedIsConfigured.mockReturnValue(true);
+    mockedGetUserRoles.mockResolvedValue([]);
   });
 
   it("rejects invalid role payloads", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1", labels: [] });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: [] }));
 
-    const response = await POST(jsonRequest({ userId: "user-1", role: "admin" }, { "x-forwarded-for": "10.1.0.1" }));
+    const response = await POST(
+      jsonRequest({ userId: "user-1", role: "admin" }, { "x-forwarded-for": "10.1.0.1" })
+    );
     const body = await response.json();
 
     expect(response.status).toBe(400);
     expect(body.error).toBeDefined();
-    expect(users.updateLabels).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated callers", async () => {
     mockedGetLoggedInUser.mockResolvedValue(null);
-    const response = await POST(jsonRequest({ userId: "user-1", role: "client" }, { "x-forwarded-for": "10.1.0.2" }));
+    const response = await POST(
+      jsonRequest({ userId: "user-1", role: "client" }, { "x-forwarded-for": "10.1.0.2" })
+    );
     expect(response.status).toBe(401);
   });
 
   it("prevents non-admin users from setting another user's role", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1", labels: [] });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: [] }));
 
-    const response = await POST(jsonRequest({ userId: "user-2", role: "client" }, { "x-forwarded-for": "10.1.0.3" }));
+    const response = await POST(
+      jsonRequest({ userId: "user-2", role: "client" }, { "x-forwarded-for": "10.1.0.3" })
+    );
     const body = await response.json();
 
     expect(response.status).toBe(403);
     expect(body.error).toContain("Cannot set role");
-    expect(users.updateLabels).not.toHaveBeenCalled();
   });
 
   it("blocks non-admin users from self-assigning the therapist role", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1", labels: [] });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: [] }));
 
     const response = await POST(
       jsonRequest({ userId: "user-1", role: "therapist" }, { "x-forwarded-for": "10.1.0.4" })
@@ -70,12 +92,10 @@ describe("/api/user/set-role", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toContain("KYC");
-    expect(users.updateLabels).not.toHaveBeenCalled();
   });
 
-  it("allows a new user to set their first role to client", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1", labels: [] });
-    users.get.mockResolvedValue({ labels: ["beta"] });
+  it("assigns the role and flags that re-authentication is required", async () => {
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: [] }));
 
     const response = await POST(
       jsonRequest({ userId: "user-1", role: "client" }, { "x-forwarded-for": "10.1.0.5" })
@@ -83,21 +103,46 @@ describe("/api/user/set-role", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(users.updateLabels).toHaveBeenCalledWith("user-1", ["beta", "client"]);
+    expect(mockedAssignRole).toHaveBeenCalledWith("user-1", "client");
+    // The roles claim is minted at login, so the caller must re-authenticate
+    // before the new role is visible. Silence here strands the user roleless.
+    expect(body.requiresReauth).toBe(true);
   });
 
-  it("lets admins replace existing client or therapist labels while preserving other labels", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "admin-1", labels: ["admin"] });
-    users.get.mockResolvedValue({ labels: ["client", "admin"] });
+  it("stops a non-admin from switching an already-assigned role", async () => {
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: [] }));
+    mockedGetUserRoles.mockResolvedValue(["client"]);
 
     const response = await POST(
-      jsonRequest({ userId: "user-1", role: "therapist" }, { "x-forwarded-for": "10.1.0.6" })
+      jsonRequest({ userId: "user-1", role: "client" }, { "x-forwarded-for": "10.1.0.6" })
     );
-    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(mockedAssignRole).not.toHaveBeenCalled();
+  });
+
+  it("lets an admin grant the therapist role", async () => {
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "admin-1", labels: ["admin"] }));
+
+    const response = await POST(
+      jsonRequest({ userId: "user-2", role: "therapist" }, { "x-forwarded-for": "10.1.0.7" })
+    );
 
     expect(response.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(users.updateLabels).toHaveBeenCalledWith("user-1", ["admin", "therapist"]);
+    expect(mockedAssignRole).toHaveBeenCalledWith("user-2", "therapist");
+  });
+
+  it("degrades to 501 when Management credentials are absent", async () => {
+    mockedIsConfigured.mockReturnValue(false);
+    // Distinct subject: the rate limiter is module-scoped and keyed on user id,
+    // so reusing "user-1" here would trip its 5/minute cap and return 429.
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-9", labels: [] }));
+
+    const response = await POST(
+      jsonRequest({ userId: "user-9", role: "client" }, { "x-forwarded-for": "10.1.0.8" })
+    );
+
+    expect(response.status).toBe(501);
+    expect(mockedAssignRole).not.toHaveBeenCalled();
   });
 });

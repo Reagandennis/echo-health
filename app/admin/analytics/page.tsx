@@ -1,47 +1,56 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import { ArrowRight, Download } from "lucide-react";
-import { Query } from "node-appwrite";
+import { listAllSessions, listProfiles } from "../_lib/queries";
+import { listAllMoodLogsAction } from "@/app/actions/database";
 
 export default async function AnalyticsDashboardPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { databases, users } = createAdminClient();
-  
-  const [sessions, userList, moodLogs] = await Promise.all([
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.sessions, [Query.limit(100)]),
-    users.list(),
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.moodLogs, [Query.limit(100)]),
+  // `profiles` replaces `users.list()` as the client count — the Appwrite user
+  // directory is empty, which made `avgSessions` divide by zero and pinned both
+  // it and "Active Clients" to 0.
+  const [sessions, profiles, moodLogs] = await Promise.all([
+    listAllSessions(),
+    listProfiles(),
+    listAllMoodLogsAction(100),
   ]);
 
-  const completed = sessions.documents.filter(s => s.status === "completed").length;
-  const avgSessions = userList.total > 0 ? (completed / userList.total).toFixed(1) : "0";
-  
-  // Improvement logic: % of users whose last mood score is higher than their first
+  const completed = sessions.filter((s) => s.status === "completed").length;
+  const avgSessions = profiles.length > 0 ? (completed / profiles.length).toFixed(1) : "0";
+
+  // Improvement logic: % of users whose last mood score is higher than their first.
+  // `listAllMoodLogsAction` returns newest-first, so entries are appended in
+  // reverse chronological order — index 0 is the LATEST score and the last
+  // element the earliest. The comparison below reflects that.
   const userMoods: Record<string, number[]> = {};
-  moodLogs.documents.forEach(m => {
-    if (!userMoods[m.userId]) userMoods[m.userId] = [];
-    userMoods[m.userId].push(m.score);
-  });
-  
+  for (const m of moodLogs as { userId: string; score: number }[]) {
+    (userMoods[m.userId] ??= []).push(m.score);
+  }
+
   let improved = 0;
   let totalWithMoods = 0;
-  Object.values(userMoods).forEach(scores => {
+  for (const scores of Object.values(userMoods)) {
     if (scores.length > 1) {
       totalWithMoods++;
-      if (scores[scores.length - 1] > scores[0]) improved++;
+      if (scores[0] > scores[scores.length - 1]) improved++;
     }
-  });
+  }
   const outcomeRate = totalWithMoods > 0 ? Math.round((improved / totalWithMoods) * 100) : "0";
 
+  // Real monthly distribution — `scheduledAt` is a Date, so sessions can be
+  // bucketed by month instead of dumping the whole total into the current one.
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const currentMonth = new Date().getMonth();
-  const BARS = Array(12).fill(0);
-  BARS[currentMonth] = completed; // Simplified for current data
+  const thisYear = new Date().getFullYear();
+  const BARS: number[] = Array(12).fill(0);
+  for (const s of sessions) {
+    if (s.status === "completed" && s.scheduledAt.getFullYear() === thisYear) {
+      BARS[s.scheduledAt.getMonth()] += 1;
+    }
+  }
   const max = Math.max(...BARS, 10);
 
   return (
@@ -78,7 +87,7 @@ export default async function AnalyticsDashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Avg Sessions/Client", value: avgSessions },
-          { label: "Active Clients", value: userList.total.toString() },
+          { label: "Active Clients", value: profiles.length.toString() },
           { label: "Outcome Improvement", value: `${outcomeRate}%` },
           { label: "Platform Uptime", value: "99.9%" },
         ].map((m) => (

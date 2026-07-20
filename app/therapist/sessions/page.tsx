@@ -42,7 +42,7 @@ export default function SessionsPage() {
     if (!user?.$id) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (therapist) {
           const sess = await listTherapistSessionsAction(therapist.$id);
           setSessions(sess as unknown as Session[]);

@@ -1,9 +1,16 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
 import AdminBadge from "../../../_components/AdminBadge";
+import { getProfileByUserId } from "../../../_lib/queries";
 import { CreditCard, Download, RefreshCw } from "lucide-react";
 
+/**
+ * Every figure on this page is hardcoded mock UI. There is no payments
+ * integration and no transactions, invoices or subscriptions table in the
+ * schema — `therapy_sessions.amount` is the only money column that exists, and
+ * nothing populates it. Only the client identity is live data.
+ */
 const MOCK_TRANSACTIONS = [
   { id: "txn_001", date: "2026-04-01", description: "Monthly Subscription — Growth Plan", amount: "$79.00", status: "paid" },
   { id: "txn_002", date: "2026-03-01", description: "Monthly Subscription — Growth Plan", amount: "$79.00", status: "paid" },
@@ -20,9 +27,9 @@ export default async function ClientBillingPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { users } = createAdminClient();
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
   return (
     <div>

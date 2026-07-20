@@ -1,10 +1,11 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
 import AdminBadge from "../../../_components/AdminBadge";
 import AdminEmptyState from "../../../_components/AdminEmptyState";
 import Link from "next/link";
+import { getProfileByUserId, listTherapists } from "../../../_lib/queries";
+import { listPatientSessionsAction } from "@/app/actions/database";
 
 export default async function TherapyHistoryPage({
   params,
@@ -15,16 +16,20 @@ export default async function TherapyHistoryPage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
   const { id } = await params;
-  const { users, databases } = createAdminClient();
 
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
-  const sessionList = await databases.listDocuments(
-    appwriteConfig.databaseId,
-    appwriteConfig.collections.sessions,
-  );
-  const sessions = sessionList.documents.filter((s) => s.patientId === id);
+  // Replaces a fetch-every-session-then-filter-in-JS scan with an indexed
+  // `patient_id` lookup (`therapy_sessions_patient_id_idx`).
+  const [sessions, therapists] = await Promise.all([
+    listPatientSessionsAction(id),
+    listTherapists(),
+  ]);
+
+  // `therapy_sessions.therapist_id` is a `therapists.id`, not a user id. The
+  // Therapist column rendered a hardcoded "—" before; it can be resolved now.
+  const therapistNameById = new Map(therapists.map((t) => [t.id, t.name]));
 
   return (
     <div>
@@ -57,13 +62,13 @@ export default async function TherapyHistoryPage({
                 {sessions.map((s) => (
                   <tr key={s.$id} className="hover:bg-stone-50/50 transition-colors">
                     <td className="px-5 py-4 text-xs text-stone-400 font-mono">{s.$id.slice(0, 10)}…</td>
-                    <td className="px-5 py-4 text-sm text-stone-700">—</td>
+                    <td className="px-5 py-4 text-sm text-stone-700">{therapistNameById.get(s.therapistId) ?? "—"}</td>
                     <td className="px-5 py-4 text-sm text-stone-600">
-                      {new Date(s.scheduledAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {s.scheduledAt.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </td>
                     <td className="px-5 py-4">
                       <AdminBadge
-                        label={s.status as string}
+                        label={s.status}
                         variant={s.status === "completed" ? "teal" : s.status === "confirmed" ? "success" : s.status === "cancelled" ? "danger" : "warning"}
                         dot
                       />

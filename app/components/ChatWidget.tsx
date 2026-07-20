@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
-import { realtime } from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { useRealtime } from "@/hooks/useRealtime";
 import { useUser } from "./UserProvider";
 import posthog from "posthog-js";
 
@@ -27,7 +26,11 @@ export default function ChatWidget() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const sessionId = useRef<string>(typeof window !== 'undefined' ? (localStorage.getItem('chat_sessionId') || crypto.randomUUID()) : '');
+  // Was a ref, but the realtime subscription needs it during render and React
+  // 19 forbids reading a ref there. Never reassigned, so lazy state is equivalent.
+  const [sessionId] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('chat_sessionId') || crypto.randomUUID()) : ''
+  );
 
   // Handle auto-gate for logged in users
   useEffect(() => {
@@ -36,8 +39,8 @@ export default function ChatWidget() {
       setEmail(user.email);
       setStage("chat");
       fetchHistory();
-    } else if (typeof window !== 'undefined' && sessionId.current) {
-      localStorage.setItem('chat_sessionId', sessionId.current);
+    } else if (typeof window !== 'undefined' && sessionId) {
+      localStorage.setItem('chat_sessionId', sessionId);
       const savedName = localStorage.getItem('chat_name');
       const savedEmail = localStorage.getItem('chat_email');
       if (savedName && savedEmail) {
@@ -47,12 +50,12 @@ export default function ChatWidget() {
         fetchHistory();
       }
     }
-  }, [user]);
+  }, [user, sessionId]);
 
   const fetchHistory = async () => {
     try {
       const emailForClaim = (user?.email ?? email).trim();
-      const params = new URLSearchParams({ sessionId: sessionId.current });
+      const params = new URLSearchParams({ sessionId });
       if (emailForClaim) params.set("email", emailForClaim);
       const res = await fetch(`/api/chat/history?${params.toString()}`);
       if (!res.ok) return;
@@ -94,30 +97,19 @@ export default function ChatWidget() {
     return () => clearInterval(interval);
   }, [open]);
 
-  // Realtime subscription
+  // Realtime message feed. Visitors here are usually anonymous — no Auth0
+  // identity — so we subscribe by the opaque chat session id instead. Events
+  // carry no row contents, so the append-from-payload this used to do is now a
+  // history refetch, which also de-duplicates the optimistic send.
+  useRealtime(
+    ["chat_messages"],
+    () => { fetchHistory(); },
+    { chatSession: sessionId, enabled: stage === "chat" }
+  );
+
+  // Presence heartbeat + unload beacon
   useEffect(() => {
     if (stage === 'chat') {
-      let unsubscribe: any;
-      
-      try {
-        unsubscribe = realtime.subscribe(
-          [`databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.chatMessages}.documents`],
-          (response) => {
-            const payload = response.payload as any;
-            if (payload.sessionId === sessionId.current) {
-              if (response.events.includes("databases.*.collections.*.documents.*.create")) {
-                setMessages((prev) => {
-                  if (prev.find(m => m.id === payload.$id)) return prev;
-                  return [...prev, { id: payload.$id, role: payload.role, text: payload.text }];
-                });
-              }
-            }
-          }
-        );
-      } catch (e) {
-        console.error("Realtime subscription error", e);
-      }
-
       // Heartbeat to keep session online
       const heartbeat = setInterval(async () => {
         if (!name || !email) return;
@@ -126,7 +118,7 @@ export default function ChatWidget() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              sessionId: sessionId.current,
+              sessionId,
               name: name.trim(),
               email: email.trim(),
               role: "system",
@@ -137,21 +129,18 @@ export default function ChatWidget() {
       }, 30000);
 
       const handleUnload = () => {
-        navigator.sendBeacon("/api/chat/offline", JSON.stringify({ sessionId: sessionId.current }));
+        navigator.sendBeacon("/api/chat/offline", JSON.stringify({ sessionId }));
       };
       window.addEventListener('beforeunload', handleUnload);
 
       return () => {
-        if (typeof unsubscribe === "function") {
-          unsubscribe();
-        }
         clearInterval(heartbeat);
         window.removeEventListener('beforeunload', handleUnload);
       };
     }
-    // PERF: deps were [stage, name, email] which recreated the WebSocket +
-    // heartbeat on every keystroke in the gate form. The heartbeat reads
-    // `name`/`email` from closure each tick, so we don't need them as deps.
+    // PERF: deps were [stage, name, email] which recreated the heartbeat on
+    // every keystroke in the gate form. The heartbeat reads `name`/`email`
+    // from closure each tick, so we don't need them as deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
@@ -180,7 +169,7 @@ export default function ChatWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: sessionId.current,
+          sessionId,
           name: name.trim(),
           email: email.trim(),
           role: "system",
@@ -218,7 +207,7 @@ export default function ChatWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: sessionId.current,
+          sessionId,
           name: name.trim(),
           email: email.trim(),
           role: "user",
@@ -230,7 +219,7 @@ export default function ChatWidget() {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } else {
         posthog.capture("chat_message_sent", {
-          session_id: sessionId.current,
+          session_id: sessionId,
           message_length: text.length,
         });
       }

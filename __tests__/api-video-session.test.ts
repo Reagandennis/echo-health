@@ -1,11 +1,13 @@
 /**
  * @jest-environment node
  */
-jest.mock("@/lib/appwrite/server", () => ({
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { mockUser } from "@/test-utils/session";
+import type { NextRequest } from "next/server";
 
 const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
 
@@ -15,7 +17,7 @@ function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
     headers: {
       get: jest.fn((k: string) => headers[k.toLowerCase()] ?? null),
     },
-  } as unknown as Request;
+  } as unknown as NextRequest;
 }
 
 async function loadPost() {
@@ -32,7 +34,7 @@ describe("/api/video/session", () => {
     jest.clearAllMocks();
     process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID = "cf-app";
     process.env.CLOUDFLARE_CALLS_API_TOKEN = "cf-token";
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1" });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1" }));
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({ sessionId: "session-1" }),

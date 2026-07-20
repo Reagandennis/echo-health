@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { getPostHogClient } from "@/lib/posthog-server";
+
+import { getLoggedInUser } from "@/lib/auth/session";
 import { parseOrError, setRoleSchema } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import {
+  assignRole,
+  getUserRoles,
+  isManagementConfigured,
+} from "@/lib/auth0-management";
 
+/**
+ * Assign a role to a user.
+ *
+ * Roles live in Auth0, not Postgres — `getLoggedInUser()` reads them from a token
+ * claim — so this writes through the Management API. Storing them in a local
+ * table instead would be worse than failing: the write would appear to succeed
+ * while every `labels.includes(...)` check kept returning false.
+ *
+ * The caller MUST send the user back through `/auth/login` after a success. The
+ * roles claim is minted at login and then cached in the session cookie, so a
+ * freshly assigned role is invisible to the current session. Auth0's SSO session
+ * makes that redirect silent — no credential re-entry.
+ */
 export async function POST(req: NextRequest) {
   try {
     const requester = await getLoggedInUser();
@@ -26,13 +44,18 @@ export async function POST(req: NextRequest) {
     const { userId, role } = parsed.data;
 
     const isAdmin = requester.labels?.includes("admin") ?? false;
+
+    // You may only set your own role, unless you are an admin.
     if (userId !== requester.$id && !isAdmin) {
-      return NextResponse.json({ error: "Forbidden: Cannot set role for another user." }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden: Cannot set role for another user." },
+        { status: 403 }
+      );
     }
 
-    // SECURITY: only admins may grant the "therapist" label. Self-serve users
-    // selecting "therapist" go through the KYC flow (/therapist/onboarding ->
-    // /api/admin/therapist-kyc) and only get the label on admin approval.
+    // SECURITY: "therapist" grants access to clinical data, so it is never
+    // self-serve. Applicants go through /onboarding/therapist → KYC review, and
+    // /api/admin/therapist-kyc assigns the role on admin approval.
     if (role === "therapist" && !isAdmin) {
       return NextResponse.json(
         { error: "Therapist role requires verification. Please complete KYC." },
@@ -40,33 +63,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { users } = createAdminClient();
-    const user = await users.get(userId);
-    const existingLabels: string[] = user.labels ?? [];
-
-    const hasExistingRole =
-      existingLabels.includes("client") || existingLabels.includes("therapist");
-    if (hasExistingRole && !isAdmin) {
+    if (!isManagementConfigured()) {
       return NextResponse.json(
-        { error: "Unauthorized: Role already set and you are not an admin." },
+        {
+          error:
+            "Role assignment is unavailable: Auth0 Management API credentials " +
+            "are not configured. Ask an administrator to assign your role.",
+        },
+        { status: 501 }
+      );
+    }
+
+    // A non-admin may claim a role once but not switch afterwards, or a client
+    // could reassign themselves at will. Admins may always change a role.
+    const existing = await getUserRoles(userId);
+    if (!isAdmin && existing.length > 0) {
+      return NextResponse.json(
+        { error: "Your role is already set. Contact support to change it." },
         { status: 403 }
       );
     }
 
-    const filteredLabels = existingLabels.filter(
-      (l) => l !== "client" && l !== "therapist"
-    );
-    await users.updateLabels(userId, [...filteredLabels, role]);
+    await assignRole(userId, role);
 
-    const posthog = getPostHogClient();
-    posthog.capture({
-      distinctId: userId,
-      event: "user_role_selected",
-      properties: { role, set_by_admin: isAdmin },
+    return NextResponse.json({
+      success: true,
+      role,
+      /**
+       * Tells the caller the user must re-authenticate before the role takes
+       * effect. Returned explicitly rather than left implicit, so a caller that
+       * forgets cannot silently strand someone in a roleless session.
+       */
+      requiresReauth: true,
     });
-    await posthog.shutdown();
-
-    return NextResponse.json({ ok: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to set role.";
     console.error("set-role error:", error);

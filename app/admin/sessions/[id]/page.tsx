@@ -1,10 +1,11 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../../_components/AdminPageHeader";
-import AdminBadge, { sessionStatusBadge } from "../../_components/AdminBadge";
-import { Calendar, User, MessageSquare, Star } from "lucide-react";
+import { sessionStatusBadge } from "../../_components/AdminBadge";
+import { User, MessageSquare, Star } from "lucide-react";
+import { getProfileByUserId, getTherapist, isUuid } from "../../_lib/queries";
+import { getSessionAction } from "@/app/actions/database";
 
 export default async function SessionDetailPage({
   params,
@@ -12,9 +13,24 @@ export default async function SessionDetailPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
+
+  // Unlike `/admin/users/[id]`, this `[id]` IS a uuid (`therapy_sessions.id`).
+  // Screen it first: Postgres raises `invalid input syntax for type uuid` on a
+  // malformed value, which would be a 500 where the page wants a 404.
+  if (!isUuid(id)) notFound();
+
   let session;
-  try { session = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.sessions, id); } catch { notFound(); }
+  try {
+    session = await getSessionAction(id);
+  } catch {
+    notFound();
+  }
+
+  // Resolve the two participants to names. Both were rendered as raw ids before.
+  const [patient, therapist] = await Promise.all([
+    getProfileByUserId(session.patientId),
+    getTherapist(session.therapistId),
+  ]);
 
   return (
     <div>
@@ -41,9 +57,9 @@ export default async function SessionDetailPage({
               {[
                 { label: "Session ID", value: session.$id },
                 { label: "Status", value: session.status as string },
-                { label: "Scheduled At", value: new Date(session.scheduledAt).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
-                { label: "Patient ID", value: session.patientId as string },
-                { label: "Therapist ID", value: session.therapistId as string },
+                { label: "Scheduled At", value: (session.scheduledAt as Date).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
+                { label: "Patient", value: patient?.name ?? (session.patientId as string) },
+                { label: "Therapist", value: therapist?.name ?? (session.therapistId as string) },
                 { label: "Notes", value: (session.notes as string) || "None" },
               ].map((row) => (
                 <div key={row.label}>
@@ -71,15 +87,15 @@ export default async function SessionDetailPage({
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3">Participants</h3>
-            {[{ label: "Patient", id: session.patientId as string, href: `/admin/users/${session.patientId}` },
-              { label: "Therapist", id: session.therapistId as string, href: `/admin/therapists/${session.therapistId}` }].map((p) => (
+            {[{ label: "Patient", name: patient?.name, id: session.patientId as string, href: `/admin/users/${encodeURIComponent(session.patientId as string)}` },
+              { label: "Therapist", name: therapist?.name, id: session.therapistId as string, href: `/admin/therapists/${session.therapistId}` }].map((p) => (
               <div key={p.label} className="flex items-center justify-between py-3 border-b border-stone-50 last:border-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center">
                     <User className="w-4 h-4 text-stone-500" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-stone-700">{p.label}</p>
+                    <p className="text-xs font-semibold text-stone-700">{p.name ?? p.label}</p>
                     <p className="text-[11px] text-stone-400 font-mono">{p.id.slice(0, 12)}…</p>
                   </div>
                 </div>

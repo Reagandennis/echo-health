@@ -1,7 +1,15 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getProfileByUserId } from "../../../_lib/queries";
 import { Save } from "lucide-react";
+
+/**
+ * The form below is display-only — it has no action, no client component and no
+ * submit handler, and never did. Name and email are prefilled from `profiles`;
+ * the phone, account-status and admin-notes fields have no column to bind to.
+ * Account status in particular is an Auth0 concern now, not a database one.
+ */
 
 export default async function ClientEditPage({
   params,
@@ -11,9 +19,9 @@ export default async function ClientEditPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { users } = createAdminClient();
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
   return (
     <div>

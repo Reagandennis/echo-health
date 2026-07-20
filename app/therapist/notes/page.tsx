@@ -15,8 +15,7 @@ import {
   updateClinicalNoteAction,
   deleteClinicalNoteAction
 } from "@/app/actions/database";
-import type { ClinicalNote, Profile } from "@/lib/appwrite/database";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import type { ClinicalNote, Profile } from "@/lib/types/documents";
 
 interface SoapContent {
   subjective: string;
@@ -49,7 +48,7 @@ export default function ClinicalNotesPage() {
     if (!user) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (therapist) {
           setTherapistId(therapist.$id);
           const [notesRes, clientsRes] = await Promise.all([

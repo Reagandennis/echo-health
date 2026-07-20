@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bell, X, Calendar, MessageCircle, AlertTriangle, Circle } from "lucide-react";
-import { realtime } from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { useRealtime } from "@/hooks/useRealtime";
 import { listNotificationsAction, markNotificationAsReadAction } from "@/app/actions/database";
 import Link from "next/link";
 
@@ -28,36 +27,16 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
     // Initial fetch
     fetchNotifications();
-
-    // Subscribe to real-time changes
-    const sub = realtime.subscribe(
-      [`databases.${appwriteConfig.databaseId}.collections.notifications.documents`],
-      (response) => {
-        const payload = response.payload as Notification;
-        if (payload.userId === userId) {
-          if (response.events.includes("databases.*.collections.*.documents.*.create")) {
-            setNotifications(prev => [payload, ...prev]);
-          } else if (response.events.includes("databases.*.collections.*.documents.*.update")) {
-            setNotifications(prev => prev.map(n => n.$id === payload.$id ? payload : n));
-          } else if (response.events.includes("databases.*.collections.*.documents.*.delete")) {
-            setNotifications(prev => prev.filter(n => n.$id !== payload.$id));
-          }
-        }
-      }
-    );
-
-    return () => {
-      if (typeof sub === "function") {
-        (sub as () => void)();
-      } else if (sub && "unsubscribe" in sub) {
-        (sub as any).unsubscribe();
-      }
-    };
   }, [userId]);
+
+  // Realtime events carry no row contents, so the create/update/delete splicing
+  // this used to do from `response.payload` is now a refetch. The action is
+  // already scoped to the caller, which replaces the old `payload.userId` check.
+  useRealtime(["notifications"], () => { fetchNotifications(); }, { enabled: !!userId });
 
   async function fetchNotifications() {
     try {
-      const docs = await listNotificationsAction(userId);
+      const docs = await listNotificationsAction();
       setNotifications(docs as unknown as Notification[]);
     } catch (error) {
       console.error("Failed to fetch notifications:", error);

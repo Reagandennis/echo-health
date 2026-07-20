@@ -1,22 +1,26 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getTherapist } from "../../../_lib/queries";
 
+/**
+ * Partly mock. `rating` is a real column; session counts, retention, no-show and
+ * cancellation rates, response time and the monthly bar chart are hardcoded —
+ * none of those metrics are computed or stored anywhere.
+ */
 export default async function TherapistPerformancePage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
-  let t: Record<string, unknown>;
-  try { t = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.therapists, id) as unknown as Record<string, unknown>; } catch { notFound(); }
+  const t = await getTherapist(id);
+  if (!t) notFound();
 
   const metrics = [
     { label: "Sessions Completed", value: "84", change: "+12 this month", trend: "up" },
     { label: "Client Retention Rate", value: "91%", change: "+2% vs last month", trend: "up" },
-    { label: "Avg Session Rating", value: `${(t.rating as number) ?? "N/A"}/5`, change: "Based on 56 ratings", trend: "neutral" },
+    { label: "Avg Session Rating", value: `${t.rating ?? "N/A"}/5`, change: "Based on 56 ratings", trend: "neutral" },
     { label: "No-Show Rate", value: "4%", change: "-1% vs last month", trend: "up" },
     { label: "Cancellation Rate", value: "8%", change: "Within target", trend: "neutral" },
     { label: "Response Time", value: "< 2h", change: "Avg message reply", trend: "neutral" },
@@ -34,7 +38,7 @@ export default async function TherapistPerformancePage({
     <div>
       <AdminPageHeader
         title="Performance Dashboard"
-        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name as string, href: `/admin/therapists/${id}` }, { label: "Performance" }]}
+        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Performance" }]}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">

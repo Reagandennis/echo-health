@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CreditCard, ChevronRight, CheckCircle2, Clock } from "lucide-react";
-import { listPatientSessions } from "@/lib/appwrite/database";
+import { listPatientSessionsAction } from "@/app/actions/database";
 import { PLAN_LABELS, PLAN_PRICES, PLAN_SESSIONS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 import posthog from "posthog-js";
@@ -26,9 +26,12 @@ export default function BillingPage() {
     if (!user) return;
     (async () => {
       try {
-        const rawPlan = (user.prefs as Record<string, string> | undefined)?.plan;
+        const rawPlan = user.prefs?.plan;
         if (rawPlan && rawPlan in PLAN_SESSIONS) setPlan(rawPlan as Plan);
-        const sessions = await listPatientSessions(user.$id);
+        // Server Action, not the browser SDK: the browser Appwrite client has no
+        // session, so the previous direct call always failed into the catch below
+        // and silently reported 0 sessions used.
+        const sessions = await listPatientSessionsAction(user.$id);
         const completed = sessions.filter((s) => s.status === "completed").length;
         setUsed(completed);
       } catch {

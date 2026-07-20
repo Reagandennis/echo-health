@@ -41,7 +41,9 @@ export default function RiskAlertList({ initialAlerts, profiles }: Props) {
   }
 
   function getPatientName(id: string) {
-    return profiles.find(p => p.$id === id)?.name || "Unknown Patient";
+    // `patientId` holds an Auth0 sub, not a profile row id — matching it against
+    // `p.$id` never found anyone and every alert rendered "Unknown Patient".
+    return profiles.find(p => p.userId === id)?.name || "Unknown Patient";
   }
 
   return (

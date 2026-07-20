@@ -40,7 +40,7 @@ export default function TherapistHomePage() {
     if (!user) return;
     (async () => {
       setTherapistName(user.name?.split(" ")[0] ?? "Doctor");
-      const therapist = await getTherapistByUserIdAction(user.$id);
+      const therapist = await getTherapistByUserIdAction();
       if (!therapist) {
         setLoading(false);
         return;
@@ -72,7 +72,7 @@ export default function TherapistHomePage() {
       setPendingRequests(prev => prev.filter(s => s.$id !== sessionId));
       setStats(prev => ({ ...prev, pending: prev.pending - 1 }));
       // Refresh today's agenda if it was for today
-      const therapist = await getTherapistByUserIdAction(user!.$id);
+      const therapist = await getTherapistByUserIdAction();
       if (therapist) {
         const statsData = await listTherapistDashboardStatsAction(therapist.$id);
         setTodaySessions(statsData.today);
@@ -121,7 +121,7 @@ export default function TherapistHomePage() {
           <div className="flex-1">
             <p className="font-semibold text-red-800">KYC verification incomplete</p>
             <p className="text-sm text-red-600 mt-0.5">You need to complete your profile and submit your license before you can accept clients.</p>
-            <Link href="/therapist/onboarding" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
+            <Link href="/onboarding/therapist" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
               Continue setup <ArrowRight size={14} />
             </Link>
           </div>
@@ -165,7 +165,7 @@ export default function TherapistHomePage() {
           <div>
             <p className="font-semibold text-red-800">Verification rejected</p>
             <p className="text-sm text-red-600 mt-0.5">Your submission was not approved. Please re-submit with valid documents.</p>
-            <Link href="/therapist/onboarding" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
+            <Link href="/onboarding/therapist" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
               Re-submit <ArrowRight size={14} />
             </Link>
           </div>

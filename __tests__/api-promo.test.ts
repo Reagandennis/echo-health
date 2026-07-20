@@ -2,53 +2,79 @@
  * @jest-environment node
  */
 import { POST } from "@/app/api/promo/route";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { AppwriteException } from "node-appwrite";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { withCurrentUser } from "@/lib/db/session";
+import { promos } from "@/lib/db/schema";
+import { mockUser } from "@/test-utils/session";
 
-jest.mock("@/lib/appwrite/server", () => ({
-  createAdminClient: jest.fn(),
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-jest.mock("node-appwrite", () => ({
-  AppwriteException: class AppwriteException extends Error {
-    code: number;
-
-    constructor(message: string, code: number) {
-      super(message);
-      this.code = code;
-    }
-  },
+jest.mock("@/lib/db/session", () => ({
+  withCurrentUser: jest.fn(),
 }));
 
-const mockedCreateAdminClient = createAdminClient as jest.MockedFunction<typeof createAdminClient>;
-const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
+jest.mock("@/lib/posthog-server", () => ({
+  getPostHogClient: jest.fn(() => ({
+    capture: jest.fn(),
+    shutdown: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
+  typeof getLoggedInUser
+>;
+const mockedWithCurrentUser = withCurrentUser as jest.MockedFunction<
+  typeof withCurrentUser
+>;
 
 function jsonRequest(body: unknown) {
   return {
     json: jest.fn().mockResolvedValue(body),
+    headers: { get: jest.fn(() => null) },
   } as unknown as Parameters<typeof POST>[0];
 }
 
 describe("/api/promo", () => {
   const originalPromoCode = process.env.PROMO_CODE;
-  const databases = {
-    getCollection: jest.fn(),
-    createCollection: jest.fn(),
-    createStringAttribute: jest.fn(),
-    createDatetimeAttribute: jest.fn(),
-    getDocument: jest.fn(),
-    createDocument: jest.fn(),
-  };
+
+  /**
+   * Stand-in for the Drizzle chain
+   * `insert(promos).values(…).onConflictDoNothing(…).returning(…)`.
+   *
+   * `returning()` resolves to the inserted rows, or to `[]` when the primary key
+   * already existed — which is exactly how the route distinguishes a fresh
+   * redemption from a duplicate one, atomically and without a prior SELECT.
+   */
+  let returnedRows: { code: string }[];
+  let insertedValues: Record<string, unknown> | undefined;
+  let conflictTarget: unknown;
 
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.PROMO_CODE = "WELCOME100";
-    mockedCreateAdminClient.mockReturnValue({ databases } as unknown as ReturnType<typeof createAdminClient>);
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1" });
-    databases.getCollection.mockResolvedValue({});
-    databases.getDocument.mockRejectedValue(new AppwriteException("Not found", 404));
-    databases.createDocument.mockResolvedValue({ $id: "WELCOME100" });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1" }));
+
+    returnedRows = [{ code: "WELCOME100" }];
+    insertedValues = undefined;
+    conflictTarget = undefined;
+
+    const tx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          insertedValues = values;
+          return {
+            onConflictDoNothing: (conflict: { target: unknown }) => {
+              conflictTarget = conflict.target;
+              return { returning: () => Promise.resolve(returnedRows) };
+            },
+          };
+        },
+      }),
+    };
+
+    mockedWithCurrentUser.mockImplementation(async (fn) => fn(tx as never));
   });
 
   afterAll(() => {
@@ -83,7 +109,7 @@ describe("/api/promo", () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toBe("Invalid promo code.");
-    expect(databases.createDocument).not.toHaveBeenCalled();
+    expect(mockedWithCurrentUser).not.toHaveBeenCalled();
   });
 
   it("redeems valid unused promo codes case-insensitively", async () => {
@@ -92,16 +118,16 @@ describe("/api/promo", () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(databases.createDocument).toHaveBeenCalledWith(
-      expect.any(String),
-      "promos",
-      "WELCOME100",
-      expect.objectContaining({ usedBy: "user-1" })
+    // The code IS the primary key, so it is normalised before it becomes one.
+    expect(insertedValues).toEqual(
+      expect.objectContaining({ code: "WELCOME100", usedBy: "user-1" })
     );
+    expect(conflictTarget).toBe(promos.code);
   });
 
   it("returns conflict when a promo code was already redeemed", async () => {
-    databases.getDocument.mockResolvedValue({ $id: "WELCOME100" });
+    // A primary-key conflict makes `onConflictDoNothing().returning()` empty.
+    returnedRows = [];
 
     const response = await POST(jsonRequest({ code: "WELCOME100", userId: "user-1" }));
     const body = await response.json();

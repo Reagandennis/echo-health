@@ -1,7 +1,7 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getTherapist } from "../../../_lib/queries";
 import AdminBadge from "../../../_components/AdminBadge";
 import { DollarSign, TrendingUp, Download } from "lucide-react";
 
@@ -11,21 +11,25 @@ const MOCK_PAYOUTS = [
   { id: "p3", period: "February 2026", sessions: 18, gross: "$1,440", fee: "$144", net: "$1,296", status: "paid" },
 ];
 
+/**
+ * Every figure below is hardcoded mock UI. There is no payments integration and
+ * no payouts table; `therapy_sessions.amount` exists but nothing populates it.
+ * Only the therapist identity is live data.
+ */
 export default async function TherapistEarningsPage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
-  let t: Record<string, unknown>;
-  try { t = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.therapists, id) as unknown as Record<string, unknown>; } catch { notFound(); }
+  const t = await getTherapist(id);
+  if (!t) notFound();
 
   return (
     <div>
       <AdminPageHeader
         title="Earnings Summary"
-        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name as string, href: `/admin/therapists/${id}` }, { label: "Earnings" }]}
+        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Earnings" }]}
         actions={
           <button className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors">
             <Download className="w-4 h-4" /> Export

@@ -1,7 +1,7 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getTherapist } from "../../../_lib/queries";
 import { Clock, LogIn, LogOut, Edit, ShieldAlert } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -14,22 +14,26 @@ const MOCK_AUDIT = [
   { id: "4", event: "logout", description: "Logged out", ip: "102.89.x.x", time: "2026-04-14T18:00:00Z" },
 ];
 
+/**
+ * The audit entries below are hardcoded mock UI. There is no audit table in the
+ * Postgres schema and nothing writes one; authentication events live only in
+ * Auth0's log stream. Only the therapist identity is live data.
+ */
 export default async function TherapistAuditLogPage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
-  let t: Record<string, unknown>;
-  try { t = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.therapists, id) as unknown as Record<string, unknown>; } catch { notFound(); }
+  const t = await getTherapist(id);
+  if (!t) notFound();
 
   return (
     <div>
       <AdminPageHeader
         title="Audit Log"
         description="Complete activity history for this therapist account."
-        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name as string, href: `/admin/therapists/${id}` }, { label: "Audit Log" }]}
+        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Audit Log" }]}
       />
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

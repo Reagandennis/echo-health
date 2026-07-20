@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { databases, realtime } from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
-import { Query } from "appwrite";
+import { listChatSessionsAction } from "@/app/actions/database";
+import { useRealtime } from "@/hooks/useRealtime";
 import { MessageSquare, Clock, User, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
@@ -23,19 +22,9 @@ export default function CustomerCarePage() {
 
   const fetchSessions = async () => {
     try {
-      const response = await databases.listDocuments(
-        appwriteConfig.databaseId,
-        appwriteConfig.collections.chatSessions,
-        [Query.orderDesc("lastActive")]
-      );
-      setSessions(response.documents as unknown as ChatSession[]);
-    } catch (error: any) {
-      // Handle missing collection gracefully
-      if (error?.code === 404) {
-        setSessions([]);
-      } else {
-        console.error("Error fetching sessions:", error);
-      }
+      setSessions(await listChatSessionsAction(200) as unknown as ChatSession[]);
+    } catch (error) {
+      console.error("Error fetching sessions:", error);
     } finally {
       setLoading(false);
     }
@@ -43,33 +32,15 @@ export default function CustomerCarePage() {
 
   useEffect(() => {
     fetchSessions();
-
-    let unsubscribe: any;
-    try {
-      unsubscribe = realtime.subscribe(
-        [`databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.chatSessions}.documents`],
-        (response) => {
-          const payload = response.payload as ChatSession;
-          if (response.events.includes("databases.*.collections.*.documents.*.create")) {
-            setSessions((prev) => [payload, ...prev]);
-          } else if (response.events.includes("databases.*.collections.*.documents.*.update")) {
-            setSessions((prev) =>
-              prev.map((s) => (s.$id === payload.$id ? payload : s))
-            );
-          } else if (response.events.includes("databases.*.collections.*.documents.*.delete")) {
-            setSessions((prev) => prev.filter((s) => s.$id !== payload.$id));
-          }
-        }
-      );
-    } catch (error) {
-      console.error("Failed to subscribe to sessions:", error);
-    }
-
-    return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
-      else if (unsubscribe?.unsubscribe) unsubscribe.unsubscribe();
-    };
   }, []);
+
+  // This inbox spans every conversation, so it cannot subscribe by any single
+  // visitor's session id. Migration 0004 therefore has the chat triggers also
+  // address a constant "staff" token, which `/api/events` subscribes admins and
+  // therapists to — replacing the 10s poll this used to run.
+  useRealtime(["chat_sessions", "chat_messages"], () => {
+    fetchSessions();
+  });
 
   if (loading) {
     return (

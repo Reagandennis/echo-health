@@ -2,15 +2,33 @@
  * @jest-environment node
  */
 import { POST } from "@/app/api/admin/therapist-kyc/route";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { withCurrentUser } from "@/lib/db/session";
+import { mockUser } from "@/test-utils/session";
 
-jest.mock("@/lib/appwrite/server", () => ({
-  createAdminClient: jest.fn(),
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-const mockedCreateAdminClient = createAdminClient as jest.MockedFunction<typeof createAdminClient>;
-const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
+jest.mock("@/lib/db/session", () => ({
+  withCurrentUser: jest.fn(),
+}));
+
+jest.mock("@/lib/posthog-server", () => ({
+  getPostHogClient: jest.fn(() => ({
+    capture: jest.fn(),
+    shutdown: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
+  typeof getLoggedInUser
+>;
+const mockedWithCurrentUser = withCurrentUser as jest.MockedFunction<
+  typeof withCurrentUser
+>;
+
+const THERAPIST_ID = "11111111-2222-4333-8444-555555555555";
 
 function jsonRequest(body: unknown) {
   return {
@@ -19,31 +37,50 @@ function jsonRequest(body: unknown) {
 }
 
 describe("/api/admin/therapist-kyc", () => {
-  const databases = {
-    updateDocument: jest.fn(),
-  };
-  const users = {
-    get: jest.fn(),
-    updateLabels: jest.fn(),
-  };
+  /** Rows the therapist UPDATE ... RETURNING resolves to. Empty means "no such row". */
+  let therapistRows: { id: string; userId: string }[];
+  let updates: { set: Record<string, unknown> }[];
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedCreateAdminClient.mockReturnValue({ databases, users } as unknown as ReturnType<typeof createAdminClient>);
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "admin-1", labels: ["admin"] });
-    databases.updateDocument.mockResolvedValue({ $id: "therapist-doc", userId: "therapist-user" });
-    users.get.mockResolvedValue({ labels: ["client", "beta"] });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "admin-1", labels: ["admin"] }));
+
+    therapistRows = [{ id: THERAPIST_ID, userId: "therapist-user" }];
+    updates = [];
+
+    /*
+     * Stand-in for two Drizzle statements:
+     *   update(therapists).set(…).where(…).returning(…)   → therapistRows
+     *   update(kycDocuments).set(…).where(…)              → awaited directly
+     * so `where()` must be both awaitable and carry `returning`.
+     */
+    const tx = {
+      update: () => ({
+        set: (set: Record<string, unknown>) => {
+          updates.push({ set });
+          return {
+            where: () => ({
+              returning: () => Promise.resolve(therapistRows),
+              then: (resolve: (v: unknown) => unknown) =>
+                Promise.resolve([]).then(resolve),
+            }),
+          };
+        },
+      }),
+    };
+
+    mockedWithCurrentUser.mockImplementation(async (fn) => fn(tx as never));
   });
 
   it("requires an admin user", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({ $id: "user-1", labels: ["client"] });
+    mockedGetLoggedInUser.mockResolvedValue(mockUser({ $id: "user-1", labels: ["client"] }));
 
-    const response = await POST(jsonRequest({ therapistDocId: "therapist-doc", action: "approve" }));
+    const response = await POST(jsonRequest({ therapistDocId: THERAPIST_ID, action: "approve" }));
     const body = await response.json();
 
     expect(response.status).toBe(401);
     expect(body.error).toBe("Unauthorized");
-    expect(databases.updateDocument).not.toHaveBeenCalled();
+    expect(mockedWithCurrentUser).not.toHaveBeenCalled();
   });
 
   it("rejects invalid payloads", async () => {
@@ -54,25 +91,54 @@ describe("/api/admin/therapist-kyc", () => {
     expect(body.error).toBe("Invalid payload");
   });
 
-  it("approves KYC and ensures the user has only the therapist role label", async () => {
-    const response = await POST(jsonRequest({ therapistDocId: "therapist-doc", action: "approve" }));
-    const body = await response.json();
+  it("rejects a therapistDocId that is not a uuid before it reaches Postgres", async () => {
+    // Postgres raises `invalid input syntax for type uuid` on a malformed id,
+    // which would surface as a 500 rather than the 400 this deserves.
+    const response = await POST(jsonRequest({ therapistDocId: "not-a-uuid", action: "approve" }));
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ ok: true, kycStatus: "verified" });
-    const updateCall = databases.updateDocument.mock.calls[0];
-    expect(updateCall[2]).toBe("therapist-doc");
-    expect(updateCall[3]).toEqual({ kycStatus: "verified" });
-    expect(users.updateLabels).toHaveBeenCalledWith("therapist-user", ["beta", "therapist"]);
+    expect(response.status).toBe(400);
+    expect(mockedWithCurrentUser).not.toHaveBeenCalled();
   });
 
-  it("rejects KYC without changing user role labels", async () => {
-    const response = await POST(jsonRequest({ therapistDocId: "therapist-doc", action: "reject" }));
+  it("404s when no therapist row matches", async () => {
+    therapistRows = [];
+
+    const response = await POST(jsonRequest({ therapistDocId: THERAPIST_ID, action: "approve" }));
+
+    expect(response.status).toBe(404);
+  });
+
+  it("approves KYC and reports that the role could not be granted", async () => {
+    const response = await POST(jsonRequest({ therapistDocId: THERAPIST_ID, action: "approve" }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ ok: true, kycStatus: "rejected" });
-    expect(users.get).not.toHaveBeenCalled();
-    expect(users.updateLabels).not.toHaveBeenCalled();
+    expect(body.ok).toBe(true);
+    expect(body.kycStatus).toBe("verified");
+    expect(updates[0].set).toEqual(expect.objectContaining({ kycStatus: "verified" }));
+
+    // Granting the "therapist" role is an Auth0 Management API call with no
+    // configured credentials, so approval is HALF complete and says so rather
+    // than implying the therapist now has access.
+    expect(body.roleAssigned).toBe(false);
+    expect(body.warning).toMatch(/Auth0/i);
+  });
+
+  it("stamps the KYC document review trail on approval", async () => {
+    await POST(jsonRequest({ therapistDocId: THERAPIST_ID, action: "approve" }));
+
+    // Second UPDATE targets kyc_documents. Appwrite had no review trail at all.
+    expect(updates[1].set).toEqual(
+      expect.objectContaining({ reviewedBy: "admin-1", reviewedAt: expect.any(Date) })
+    );
+  });
+
+  it("rejects KYC without emitting a role warning", async () => {
+    const response = await POST(jsonRequest({ therapistDocId: THERAPIST_ID, action: "reject" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.kycStatus).toBe("rejected");
+    expect(body.warning).toBeUndefined();
   });
 });

@@ -1,47 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AppwriteException } from "node-appwrite";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+
+import { getLoggedInUser } from "@/lib/auth/session";
+import { withCurrentUser } from "@/lib/db/session";
+import { promos } from "@/lib/db/schema";
 import { getPostHogClient } from "@/lib/posthog-server";
 import { parseOrError, promoSchema } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? "";
-const COLLECTION_ID = "promos";
-
 /**
- * Ensures the `promos` collection exists. Safe to call on every request —
- * it's a no-op if the collection already exists.
+ * Redeems the single active promo code.
+ *
+ * The Appwrite version had to bootstrap its own collection on every request
+ * (`ensureCollection`) because the promo table was never in the setup script.
+ * `promos` is a real migrated table now, so that is gone.
+ *
+ * Single-redemption is still enforced by the primary key: `promos.code` IS the
+ * code, so a second redemption hits a PK conflict. `onConflictDoNothing()`
+ * turns that into an empty `returning()`, which is the "already used" signal —
+ * atomic, and not subject to a check-then-insert race.
  */
-async function ensureCollection(
-  databases: ReturnType<typeof createAdminClient>["databases"]
-) {
-  try {
-    await databases.getCollection(DATABASE_ID, COLLECTION_ID);
-  } catch (e) {
-    if (e instanceof AppwriteException && e.code === 404) {
-      await databases.createCollection(
-        DATABASE_ID,
-        COLLECTION_ID,
-        "Promo Codes",
-        [] // no special permissions — admin-only access via API key
-      );
-      await databases.createStringAttribute(
-        DATABASE_ID,
-        COLLECTION_ID,
-        "usedBy",
-        255,
-        true
-      );
-      await databases.createDatetimeAttribute(
-        DATABASE_ID,
-        COLLECTION_ID,
-        "usedAt",
-        true
-      );
-    }
-  }
-}
-
 export async function POST(req: NextRequest) {
   const user = await getLoggedInUser();
   if (!user) {
@@ -79,54 +56,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid promo code." }, { status: 400 });
   }
 
-  const { databases } = createAdminClient();
+  const normalised = PROMO_CODE.toUpperCase();
 
+  let redeemed: boolean;
   try {
-    await ensureCollection(databases);
-  } catch {
-    return NextResponse.json(
-      { error: "Could not validate promo code. Please try again." },
-      { status: 500 }
-    );
-  }
+    redeemed = await withCurrentUser(async (tx) => {
+      const rows = await tx
+        .insert(promos)
+        .values({ code: normalised, usedBy: userId, usedAt: new Date() })
+        .onConflictDoNothing({ target: promos.code })
+        .returning({ code: promos.code });
 
-  // Document ID = normalised code. If it already exists, the code was used.
-  const docId = PROMO_CODE.toUpperCase();
-
-  try {
-    await databases.getDocument(DATABASE_ID, COLLECTION_ID, docId);
-    // Document exists → already redeemed
-    return NextResponse.json(
-      { error: "This promo code has already been used." },
-      { status: 409 }
-    );
-  } catch (e) {
-    if (e instanceof AppwriteException && e.code === 404) {
-      // Not yet redeemed — proceed
-    } else {
-      return NextResponse.json(
-        { error: "Could not validate promo code. Please try again." },
-        { status: 500 }
-      );
-    }
-  }
-
-  // Mark the code as used (atomic — second request will get a 409 from Appwrite)
-  try {
-    await databases.createDocument(DATABASE_ID, COLLECTION_ID, docId, {
-      usedBy: userId,
-      usedAt: new Date().toISOString(),
+      return rows.length > 0;
     });
-  } catch (e) {
-    if (e instanceof AppwriteException && e.code === 409) {
-      return NextResponse.json(
-        { error: "This promo code has already been used." },
-        { status: 409 }
-      );
-    }
+  } catch {
     return NextResponse.json(
       { error: "Could not redeem promo code. Please try again." },
       { status: 500 }
+    );
+  }
+
+  if (!redeemed) {
+    return NextResponse.json(
+      { error: "This promo code has already been used." },
+      { status: 409 }
     );
   }
 

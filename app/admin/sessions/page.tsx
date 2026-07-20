@@ -1,32 +1,30 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import AdminBadge from "../_components/AdminBadge";
-import { Search, Filter, Calendar } from "lucide-react";
-import { listProfilesAction, listTherapistsAction } from "@/app/actions/database";
+import { Search, Calendar } from "lucide-react";
+import { listAllSessions, listProfiles, listTherapists } from "../_lib/queries";
 
 export default async function AllSessionsPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
-  
-  const { databases } = createAdminClient();
-  const [res, profiles, therapists] = await Promise.all([
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.sessions),
-    listProfilesAction(),
-    listTherapistsAction(),
+
+  const [sessions, profiles, therapists] = await Promise.all([
+    listAllSessions(),
+    listProfiles(),
+    listTherapists(),
   ]);
-  
-  const sessions = res.documents;
 
-  function getPatientName(id: string) {
-    return profiles.find((p: any) => p.userId === id || p.$id === id)?.name || id;
-  }
-
-  function getTherapistName(id: string) {
-    return therapists.find((t: any) => t.$id === id)?.name || id;
-  }
+  /*
+   * `patient_id` is an Auth0 sub and `therapist_id` is a `therapists.id` uuid —
+   * separate key spaces. The previous lookup matched a patient id against either
+   * `userId` OR `$id`, which conflated the two and could resolve a patient to
+   * the wrong person's name if a profile uuid ever collided with a user id.
+   * Two maps, each keyed by exactly one thing.
+   */
+  const nameByUserId = new Map(profiles.map((p) => [p.userId, p.name]));
+  const therapistNameById = new Map(therapists.map((t) => [t.id, t.name]));
 
   return (
     <div>
@@ -68,16 +66,16 @@ export default async function AllSessionsPage() {
               ) : sessions.map((s) => (
                 <tr key={s.$id} className="hover:bg-teal-50/30 transition-colors group">
                   <td className="px-5 py-4 text-xs font-mono text-stone-400">{s.$id.slice(0, 10)}…</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-stone-900">{getPatientName(s.patientId)}</td>
-                  <td className="px-5 py-4 text-sm text-stone-700">{getTherapistName(s.therapistId)}</td>
+                  <td className="px-5 py-4 text-sm font-semibold text-stone-900">{nameByUserId.get(s.patientId) ?? s.patientId}</td>
+                  <td className="px-5 py-4 text-sm text-stone-700">{therapistNameById.get(s.therapistId) ?? s.therapistId}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1 text-xs text-stone-500">
                       <Calendar className="w-3 h-3" />
-                      {new Date(s.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {s.scheduledAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <AdminBadge label={s.status as string} variant={s.status === "completed" ? "teal" : s.status === "confirmed" ? "success" : s.status === "cancelled" ? "danger" : "warning"} dot />
+                    <AdminBadge label={s.status} variant={s.status === "completed" ? "teal" : s.status === "confirmed" ? "success" : s.status === "cancelled" ? "danger" : "warning"} dot />
                   </td>
                   <td className="px-5 py-4"><AdminBadge label="Good" variant="success" /></td>
                   <td className="px-5 py-4 text-right">

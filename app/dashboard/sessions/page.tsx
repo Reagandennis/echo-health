@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, X, Video, Phone, MessageCircle, CalendarCheck,
   Clock, ChevronDown, Star, Bell,
 } from "lucide-react";
-import type { TherapySession, Therapist } from "@/lib/appwrite/database";
+import type { TherapySession, Therapist } from "@/lib/types/documents";
 import {
   PLAN_SESSIONS, PLACEHOLDER_THERAPIST_ID
 } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
-import appwriteClient from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
-import { 
+import { useRealtime } from "@/hooks/useRealtime";
+import {
   createSessionAction, 
   listPatientSessionsAction, 
   updateTherapySessionAction,
@@ -35,8 +34,8 @@ function statusColor(s: TherapySession["status"]) {
   }[s] ?? "bg-cream text-brand/50";
 }
 
-function fmtDateTime(iso: string) {
-  const d = new Date(iso);
+function fmtDateTime(at: Date) {
+  const d = at;
   return {
     date: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
     time: d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
@@ -76,13 +75,15 @@ function BookModal({
     if (!canBook) return;
     setSaving(true);
     try {
-      const scheduled = new Date(`${date}T${time}`).toISOString();
       const session = await createSessionAction({
         patientId: userId,
         therapistId: tid,
         status: "pending",
-        scheduledAt: scheduled,
-        notes: `${type}|${note}`,
+        scheduledAt: new Date(`${date}T${time}`),
+        // `sessionType` is its own column now. This used to be packed into
+        // `notes` as `${type}|${note}`, which corrupted any note containing "|".
+        sessionType: type,
+        notes: note,
       }) as unknown as TherapySession;
       onBooked(session);
       setDone(true);
@@ -130,7 +131,7 @@ function BookModal({
                   <select id="therapist" value={tid} onChange={(e) => setTid(e.target.value)}
                     className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/30 appearance-none">
                     {therapists.map((t) => (
-                      <option key={t.$id} value={t.$id}>{t.name} · {t.specialties.slice(0, 2).join(", ")}</option>
+                      <option key={t.$id} value={t.$id}>{t.name} · {(t.specialties ?? []).slice(0, 2).join(", ")}</option>
                     ))}
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand/40 pointer-events-none" />
@@ -142,7 +143,7 @@ function BookModal({
               <div className="bg-brand/5 border border-brand/10 rounded-xl px-4 py-3">
                 <p className="text-[10px] font-semibold text-brand/60 uppercase tracking-wide mb-1">Assigned Therapist</p>
                 <p className="text-sm font-bold text-brand">{therapists[0].name}</p>
-                <p className="text-xs text-brand/50 mt-0.5">{therapists[0].specialties.slice(0, 2).join(", ")}</p>
+                <p className="text-xs text-brand/50 mt-0.5">{(therapists[0]?.specialties ?? []).slice(0, 2).join(", ")}</p>
               </div>
             )}
 
@@ -322,7 +323,26 @@ export default function SessionsPage() {
   const [loading, setLoading]     = useState(true);
   const [tab, setTab]             = useState<"upcoming" | "past">("upcoming");
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
-  const unsubscribesRef = useRef<Array<() => void>>([]);
+
+  // Detects a therapist going live: a confirmed session that has published its
+  // WebRTC tracks. Used for the initial load and after every realtime event.
+  const applySessions = useCallback((sess: TherapySession[]) => {
+    setSessions(sess);
+    const live = sess.find(
+      (s) =>
+        s.status === "confirmed" &&
+        (s as unknown as Record<string, unknown>).therapistTracks
+    );
+    if (live) setLiveSessionId(live.$id);
+  }, []);
+
+  const loadSessions = useCallback(async () => {
+    if (!user) return;
+    const sess = await listPatientSessionsAction(user.$id).catch(
+      () => [] as TherapySession[]
+    );
+    applySessions(sess as TherapySession[]);
+  }, [user, applySessions]);
 
   useEffect(() => {
     if (!user) return;
@@ -333,35 +353,18 @@ export default function SessionsPage() {
           listPatientSessionsAction(user.$id).catch(() => [] as TherapySession[]),
           listTherapistsAction(profile?.therapistId).catch(() => [] as Therapist[]),
         ]);
-        setSessions(sess);
+        applySessions(sess as TherapySession[]);
         setTherapists(therapistList);
-
-        // Subscribe to confirmed sessions to detect when therapist goes live
-        const confirmed = (sess as TherapySession[]).filter((s: TherapySession) => s.status === "confirmed");
-        const unsubs = confirmed.map((s: TherapySession) => {
-          // If therapist is already live (page reload mid-call)
-          if ((s as unknown as Record<string, unknown>).therapistTracks) {
-            setLiveSessionId(s.$id);
-          }
-          const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.sessions}.documents.${s.$id}`;
-          const id = s.$id;
-          return appwriteClient.subscribe(channel, (response: { payload: Record<string, unknown> }) => {
-            if (response.payload?.therapistTracks) {
-              setLiveSessionId(id);
-            }
-          });
-        });
-        unsubscribesRef.current = unsubs;
       } finally {
         setLoading(false);
       }
     })();
+  }, [user, applySessions]);
 
-    return () => {
-      unsubscribesRef.current.forEach((u) => u());
-      unsubscribesRef.current = [];
-    };
-  }, [user]);
+  // One subscription for the whole table replaces the per-session channels.
+  // Events carry no row contents, so the old `response.payload.therapistTracks`
+  // read becomes a refetch; the patient is in the audience of their own rows.
+  useRealtime(["therapy_sessions"], () => { void loadSessions(); }, { enabled: !!user });
 
   if (!user) {
     return (

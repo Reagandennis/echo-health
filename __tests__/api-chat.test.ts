@@ -2,31 +2,68 @@
  * @jest-environment node
  */
 import { POST } from "@/app/api/chat/route";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { withAnonymous } from "@/lib/db/session";
+import { chatMessages, chatSessions } from "@/lib/db/schema";
+import { mockUser } from "@/test-utils/session";
 
-jest.mock("@/lib/appwrite/server", () => ({
-  createAdminClient: jest.fn(),
+jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-jest.mock("node-appwrite", () => ({
-  ID: {
-    unique: jest.fn(() => "unique-id"),
-  },
-  Query: {
-    equal: jest.fn((field: string, value: string[]) => ({ field, value })),
-  },
-  Permission: {
-    read: jest.fn((role: string) => `read:${role}`),
-  },
-  Role: {
-    user: jest.fn((id: string) => `user:${id}`),
-    label: jest.fn((label: string) => `label:${label}`),
-  },
+jest.mock("@/lib/db/session", () => ({
+  withAnonymous: jest.fn(),
 }));
 
-const mockedCreateAdminClient = createAdminClient as jest.MockedFunction<typeof createAdminClient>;
-const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<typeof getLoggedInUser>;
+const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
+  typeof getLoggedInUser
+>;
+const mockedWithAnonymous = withAnonymous as jest.MockedFunction<
+  typeof withAnonymous
+>;
+
+type InsertRecord = {
+  table: unknown;
+  values: Record<string, unknown>;
+  conflict?: unknown;
+};
+
+/**
+ * A stand-in for the Drizzle transaction handle.
+ *
+ * The route builds two statements: a plain `insert().values()` for the message
+ * and an `insert().values().onConflictDoUpdate()` upsert for the session. The
+ * chain therefore has to be awaitable at BOTH links, so `values()` returns a
+ * thenable that also carries `onConflictDoUpdate`.
+ *
+ * Recorded calls are tagged with the schema object they targeted, so assertions
+ * can tell the two tables apart without depending on call ordering.
+ */
+function makeTx() {
+  const inserts: InsertRecord[] = [];
+
+  const tx = {
+    insert(table: unknown) {
+      return {
+        values(values: Record<string, unknown>) {
+          const record: InsertRecord = { table, values };
+          inserts.push(record);
+          return {
+            onConflictDoUpdate(conflict: unknown) {
+              record.conflict = conflict;
+              return Promise.resolve([]);
+            },
+            then(resolve: (v: unknown) => unknown) {
+              return Promise.resolve([]).then(resolve);
+            },
+          };
+        },
+      };
+    },
+  };
+
+  return { tx, inserts };
+}
 
 function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
   return {
@@ -38,19 +75,22 @@ function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
 }
 
 describe("/api/chat", () => {
-  const databases = {
-    createDocument: jest.fn(),
-    listDocuments: jest.fn(),
-    updateDocument: jest.fn(),
-  };
+  let inserts: InsertRecord[];
+
+  const messageInserts = () => inserts.filter((i) => i.table === chatMessages);
+  const sessionInserts = () => inserts.filter((i) => i.table === chatSessions);
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedCreateAdminClient.mockReturnValue({ databases } as unknown as ReturnType<typeof createAdminClient>);
     mockedGetLoggedInUser.mockResolvedValue(null);
-    databases.listDocuments.mockResolvedValue({ total: 0, documents: [] });
-    databases.createDocument.mockResolvedValue({ $id: "created-doc" });
-    databases.updateDocument.mockResolvedValue({ $id: "session-doc" });
+
+    const harness = makeTx();
+    inserts = harness.inserts;
+    // The route runs with NO identity — support chat is anonymous-friendly and
+    // the two chat tables have deliberately permissive RLS.
+    // Only the fake handle is cast; `fn` keeps its real signature so a drift in
+    // `withAnonymous`'s contract still fails to compile here.
+    mockedWithAnonymous.mockImplementation(async (fn) => fn(harness.tx as never));
   });
 
   it("rejects messages missing required fields", async () => {
@@ -61,7 +101,7 @@ describe("/api/chat", () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/email|name/i);
-    expect(databases.createDocument).not.toHaveBeenCalled();
+    expect(mockedWithAnonymous).not.toHaveBeenCalled();
   });
 
   it("ignores client-supplied role and forces 'user' for anonymous messages", async () => {
@@ -80,9 +120,8 @@ describe("/api/chat", () => {
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(databases.createDocument).toHaveBeenCalledTimes(2);
-    const messageCreateCall = databases.createDocument.mock.calls[0];
-    expect(messageCreateCall[3]).toEqual(
+    expect(messageInserts()).toHaveLength(1);
+    expect(messageInserts()[0].values).toEqual(
       expect.objectContaining({
         sessionId: "session-1",
         name: "Ada",
@@ -91,16 +130,14 @@ describe("/api/chat", () => {
         text: "I need help",
       })
     );
-    // Anonymous: admin-only read ACL (no Role.any leak)
-    expect(messageCreateCall[4]).toEqual(["read:label:admin"]);
+    // Anonymous visitors have no Auth0 sub to record.
+    expect(sessionInserts()[0].values.userId).toBeNull();
   });
 
   it("derives identity from the authenticated session, ignoring client-supplied name/email", async () => {
-    mockedGetLoggedInUser.mockResolvedValue({
-      $id: "user-1",
-      name: "Authed",
-      email: "authed@example.com",
-    });
+    mockedGetLoggedInUser.mockResolvedValue(
+      mockUser({ $id: "user-1", name: "Authed", email: "authed@example.com" })
+    );
 
     const response = await POST(
       jsonRequest(
@@ -115,21 +152,17 @@ describe("/api/chat", () => {
     );
 
     expect(response.status).toBe(200);
-    const messageCreateCall = databases.createDocument.mock.calls[0];
-    expect(messageCreateCall[3]).toEqual(
-      expect.objectContaining({ name: "Authed", email: "authed@example.com", role: "user" })
+    expect(messageInserts()[0].values).toEqual(
+      expect.objectContaining({
+        name: "Authed",
+        email: "authed@example.com",
+        role: "user",
+      })
     );
-    expect(messageCreateCall[4]).toEqual(
-      expect.arrayContaining(["read:label:admin", "read:user:user-1"])
-    );
+    expect(sessionInserts()[0].values.userId).toBe("user-1");
   });
 
   it("does not store heartbeat messages but still updates session presence", async () => {
-    databases.listDocuments.mockResolvedValue({
-      total: 1,
-      documents: [{ $id: "existing-session" }],
-    });
-
     const response = await POST(
       jsonRequest(
         {
@@ -145,13 +178,26 @@ describe("/api/chat", () => {
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(databases.createDocument).not.toHaveBeenCalled();
-    const sessionUpdateCall = databases.updateDocument.mock.calls[0];
-    expect(sessionUpdateCall[2]).toBe("existing-session");
-    expect(sessionUpdateCall[3]).toEqual(
+    expect(messageInserts()).toHaveLength(0);
+    expect(sessionInserts()).toHaveLength(1);
+    expect(sessionInserts()[0].values).toEqual(
+      expect.objectContaining({ lastMessage: "heartbeat", isOnline: true })
+    );
+  });
+
+  it("upserts session presence rather than reading first, closing the first-message race", async () => {
+    await POST(
+      jsonRequest(
+        { sessionId: "session-1", name: "Ada", email: "ada@example.com", text: "hi" },
+        { "x-forwarded-for": "10.0.0.5" }
+      )
+    );
+
+    const upsert = sessionInserts()[0];
+    expect(upsert.conflict).toEqual(
       expect.objectContaining({
-        lastMessage: "heartbeat",
-        isOnline: true,
+        target: chatSessions.sessionId,
+        set: expect.objectContaining({ lastMessage: "hi", isOnline: true }),
       })
     );
   });

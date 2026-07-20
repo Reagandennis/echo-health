@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ID, Query } from "node-appwrite";
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { sendEmailNotification } from "@/lib/email";
+import { eq } from "drizzle-orm";
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? "";
-const MESSAGES_COLLECTION_ID = "chat_messages";
-const SESSIONS_COLLECTION_ID = "chat_sessions";
+import { getLoggedInUser } from "@/lib/auth/session";
+import { withCurrentUser } from "@/lib/db/session";
+import { chatMessages, chatSessions } from "@/lib/db/schema";
+import { sendEmailNotification } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,42 +24,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
     }
 
-    const { databases } = createAdminClient();
-
-    // 1. Save Admin Message
-    await databases.createDocument({
-      databaseId: DATABASE_ID,
-      collectionId: MESSAGES_COLLECTION_ID,
-      documentId: ID.unique(),
-      data: {
+    await withCurrentUser(async (tx) => {
+      // 1. Save admin message.
+      await tx.insert(chatMessages).values({
         sessionId,
         name: "Admin",
         email: "support@echohealth.com",
         role: "admin",
         text,
-      },
-    });
-
-    // 2. Update Session last message
-    const sessions = await databases.listDocuments({
-      databaseId: DATABASE_ID,
-      collectionId: SESSIONS_COLLECTION_ID,
-      queries: [Query.equal("sessionId", [sessionId])],
-    });
-
-    if (sessions.total > 0) {
-      await databases.updateDocument({
-        databaseId: DATABASE_ID,
-        collectionId: SESSIONS_COLLECTION_ID,
-        documentId: sessions.documents[0].$id,
-        data: {
-          lastMessage: text,
-          lastActive: new Date().toISOString(),
-        },
       });
-    }
 
-    // 3. Send Email Notification (as requested, always email use resend API for this build)
+      // 2. Update the session's last-message summary. A no-op when the session
+      //    row is missing, which is the same outcome the previous
+      //    list-then-branch produced.
+      await tx
+        .update(chatSessions)
+        .set({ lastMessage: text, lastActive: new Date() })
+        .where(eq(chatSessions.sessionId, sessionId));
+    });
+
+    // 3. Send email notification (always emailed for this build, via Resend).
     await sendEmailNotification(userEmail, userName, text);
 
     return NextResponse.json({ ok: true });

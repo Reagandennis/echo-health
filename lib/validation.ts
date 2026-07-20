@@ -14,6 +14,18 @@ export const chatMessageSchema = z.object({
   text: safeTextSchema,
 });
 
+/**
+ * Presence beacon for the anonymous support chat.
+ *
+ * The session id is a `crypto.randomUUID()` minted in the browser and acts as a
+ * bearer capability — holding it *is* the authorization, since anonymous
+ * visitors have no account to check. Requiring the UUID shape here means a
+ * caller cannot probe with arbitrary strings.
+ */
+export const chatOfflineSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
 // /api/chat/reply — admin-only
 export const chatReplySchema = z.object({
   sessionId: z.string().min(8).max(128),

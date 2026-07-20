@@ -1,11 +1,12 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import AdminBadge from "../../_components/AdminBadge";
+import { getProfileByUserId, listTherapists } from "../../_lib/queries";
+import { listPatientSessionsAction } from "@/app/actions/database";
 import {
-  Mail, Calendar, ShieldAlert, MessageSquare,
+  Calendar, ShieldAlert, MessageSquare,
   FileText, CreditCard, Edit, Ban, Clock,
   Activity, ChevronRight,
 } from "lucide-react";
@@ -21,6 +22,18 @@ const SUB_LINKS = [
   { label: "Audit Log",         href: "audit-log",         icon: Clock },
 ];
 
+/**
+ * `[id]` is an Auth0 `sub` (`auth0|68f…`), NOT a uuid — it is never cast.
+ *
+ * This page used to resolve the client through the Appwrite Users API. Appwrite
+ * holds no users since the Auth0 migration, so that call threw on every request
+ * and this route 404'd for every client. `profiles` is the user store now.
+ *
+ * Fields the Appwrite user object carried that `profiles` cannot supply —
+ * account status (active/suspended), MFA enrolment, and roles — are marked as
+ * unavailable below rather than guessed. Roles in particular live only in the
+ * Auth0 token (see `scripts/auth0-roles-action.js`) and are not queryable here.
+ */
 export default async function ClientDetailPage({
   params,
 }: {
@@ -30,22 +43,20 @@ export default async function ClientDetailPage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
   const { id } = await params;
-  const { users, databases } = createAdminClient();
 
-  let client;
-  try {
-    client = await users.get(id);
-  } catch {
-    notFound();
-  }
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
-  const sessionList = await databases.listDocuments(
-    appwriteConfig.databaseId,
-    appwriteConfig.collections.sessions,
-  );
-  const clientSessions = sessionList.documents.filter(
-    (s) => s.patientId === id
-  );
+  const [clientSessions, therapists] = await Promise.all([
+    listPatientSessionsAction(id),
+    listTherapists(),
+  ]);
+
+  const therapistName = client.therapistId
+    ? therapists.find((t) => t.id === client.therapistId)?.name ?? "Unknown"
+    : "Unassigned";
+
+  const therapistNameById = new Map(therapists.map((t) => [t.id, t.name]));
 
   return (
     <div>
@@ -83,8 +94,8 @@ export default async function ClientDetailPage({
               <p className="text-sm text-stone-500">{client.email}</p>
               <div className="mt-3">
                 <AdminBadge
-                  label={client.status ? "Active" : "Inactive"}
-                  variant={client.status ? "success" : "neutral"}
+                  label={client.therapistId ? "Matched" : "Unmatched"}
+                  variant={client.therapistId ? "success" : "neutral"}
                   dot
                 />
               </div>
@@ -92,10 +103,14 @@ export default async function ClientDetailPage({
 
             <div className="space-y-3 text-sm">
               {[
-                { label: "User ID",    value: client.$id },
-                { label: "Registered", value: new Date(client.registration).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) },
-                { label: "2FA",        value: client.mfa ? "Enabled" : "Disabled" },
-                { label: "Role",       value: client.labels?.join(", ") || "client" },
+                { label: "User ID",     value: client.userId },
+                { label: "Profile since", value: client.createdAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) },
+                { label: "Therapist",   value: therapistName },
+                { label: "Goal",        value: client.goal || "—" },
+                // Account status, MFA and roles lived on the Appwrite user
+                // record. Auth0 owns them now and there is no server-side
+                // directory query available — see the file header.
+                { label: "Role",        value: "Managed in Auth0" },
               ].map((row) => (
                 <div key={row.label} className="flex justify-between gap-2">
                   <span className="text-stone-400">{row.label}</span>
@@ -130,9 +145,9 @@ export default async function ClientDetailPage({
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: "Total",     value: clientSessions.length },
-                { label: "Active",    value: clientSessions.filter(s => s.status === "confirmed").length },
-                { label: "Completed", value: clientSessions.filter(s => s.status === "completed").length },
-                { label: "Cancelled", value: clientSessions.filter(s => s.status === "cancelled").length },
+                { label: "Active",    value: clientSessions.filter((s) => s.status === "confirmed").length },
+                { label: "Completed", value: clientSessions.filter((s) => s.status === "completed").length },
+                { label: "Cancelled", value: clientSessions.filter((s) => s.status === "cancelled").length },
               ].map((m) => (
                 <div key={m.label} className="bg-stone-50 rounded-xl p-3 text-center">
                   <p className="text-xl font-bold text-stone-900">{m.value}</p>
@@ -180,16 +195,16 @@ export default async function ClientDetailPage({
                     <div className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-stone-800 truncate">
-                        Session with therapist
+                        Session with {therapistNameById.get(s.therapistId) ?? "therapist"}
                       </p>
                       <p className="text-xs text-stone-400">
-                        {new Date(s.scheduledAt).toLocaleString("en-US", {
+                        {s.scheduledAt.toLocaleString("en-US", {
                           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
                         })}
                       </p>
                     </div>
                     <AdminBadge
-                      label={s.status as string}
+                      label={s.status}
                       variant={
                         s.status === "completed" ? "teal"
                         : s.status === "confirmed" ? "success"

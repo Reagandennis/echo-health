@@ -1,8 +1,9 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
 import AdminBadge from "../../../_components/AdminBadge";
+import { getProfileByUserId } from "../../../_lib/queries";
+import { listPatientSessionsAction } from "@/app/actions/database";
 
 export default async function SessionTimelinePage({
   params,
@@ -13,18 +14,16 @@ export default async function SessionTimelinePage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
   const { id } = await params;
-  const { users, databases } = createAdminClient();
 
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
-  const sessionList = await databases.listDocuments(
-    appwriteConfig.databaseId,
-    appwriteConfig.collections.sessions,
+  // `listPatientSessionsAction` orders newest-first; a timeline reads oldest to
+  // newest. `scheduledAt` is a real Date now, so this compares with getTime()
+  // rather than parsing a string.
+  const sessions = [...(await listPatientSessionsAction(id))].sort(
+    (a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime()
   );
-  const sessions = sessionList.documents
-    .filter((s) => s.patientId === id)
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
   return (
     <div>
@@ -45,7 +44,6 @@ export default async function SessionTimelinePage({
           <div className="absolute left-6 top-0 bottom-0 w-px bg-stone-200" />
           <div className="space-y-6 pl-16">
             {sessions.map((s) => {
-              const date = new Date(s.scheduledAt);
               const color =
                 s.status === "completed" ? "bg-teal-500"
                 : s.status === "confirmed" ? "bg-emerald-500"
@@ -59,7 +57,7 @@ export default async function SessionTimelinePage({
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div>
                         <p className="text-xs text-stone-400 font-medium mb-1">
-                          {date.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {s.scheduledAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                         </p>
                         <p className="text-sm font-semibold text-stone-800">
                           Therapy Session
@@ -69,7 +67,7 @@ export default async function SessionTimelinePage({
                         )}
                       </div>
                       <AdminBadge
-                        label={s.status as string}
+                        label={s.status}
                         variant={s.status === "completed" ? "teal" : s.status === "confirmed" ? "success" : s.status === "cancelled" ? "danger" : "warning"}
                         dot
                       />

@@ -5,7 +5,7 @@ import {
   ClipboardList, BookOpen, Clock, DollarSign, Shield, Settings,
   LogOut, Bell, ChevronRight, Stethoscope,
 } from "lucide-react";
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import SignOutButton from "@/app/components/SignOutButton";
 import { UserProvider } from "@/app/components/UserProvider";
 import NotificationBell from "@/app/components/NotificationBell";

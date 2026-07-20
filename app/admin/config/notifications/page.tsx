@@ -1,4 +1,4 @@
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import { Save, ToggleLeft, ToggleRight, Mail, Smartphone, MessageSquare, Bell } from "lucide-react";

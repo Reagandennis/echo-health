@@ -1,7 +1,7 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getTherapist } from "../../../_lib/queries";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const SLOTS = ["8:00", "9:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
@@ -14,22 +14,26 @@ const AVAILABLE: Record<string, string[]> = {
   Sat: [], Sun: [],
 };
 
+/**
+ * The weekly grid below is hardcoded mock UI. There is no availability table in
+ * the Postgres schema — a therapist's bookable hours were never modelled — so
+ * only the therapist identity is live data.
+ */
 export default async function TherapistAvailabilityPage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { databases } = createAdminClient();
-  let t: Record<string, unknown>;
-  try { t = await databases.getDocument(appwriteConfig.databaseId, appwriteConfig.collections.therapists, id) as unknown as Record<string, unknown>; } catch { notFound(); }
+  const t = await getTherapist(id);
+  if (!t) notFound();
 
   return (
     <div>
       <AdminPageHeader
         title="Availability Overview"
         description="Weekly schedule — read-only admin view."
-        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name as string, href: `/admin/therapists/${id}` }, { label: "Availability" }]}
+        breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Availability" }]}
       />
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

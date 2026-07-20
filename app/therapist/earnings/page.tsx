@@ -28,7 +28,7 @@ export default function EarningsPage() {
     if (!user) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (!therapist) return;
         const res = await listTherapistSessionsAction(therapist.$id);
         setSessions(res as unknown as Session[]);

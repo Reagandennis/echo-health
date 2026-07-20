@@ -1,34 +1,47 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import { DollarSign, TrendingUp, CreditCard, Users, ArrowRight } from "lucide-react";
-import { Query } from "node-appwrite";
+import { listAllSessions, listProfiles } from "../_lib/queries";
+
+/**
+ * There is no payments integration, so every currency figure here is an
+ * estimate derived from completed-session counts at a flat $50 — that was true
+ * before this port and remains true. `therapy_sessions.amount` exists in the
+ * schema but nothing writes it. The session and user counts ARE real.
+ */
+const ESTIMATED_RATE_USD = 50;
 
 export default async function BillingDashboardPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { databases, users: authUsers } = createAdminClient();
-  
-  const [sessionList, userList] = await Promise.all([
-    databases.listDocuments(appwriteConfig.databaseId, appwriteConfig.collections.sessions, [
-      Query.equal("status", "completed"),
-      Query.limit(100)
-    ]),
-    authUsers.list()
+  const [sessions, profiles] = await Promise.all([
+    listAllSessions(),
+    listProfiles(),
   ]);
 
-  const totalCompleted = sessionList.total;
-  const mrr = totalCompleted * 50; // Simple estimate: $50 per session
+  const completed = sessions.filter((s) => s.status === "completed");
+  const totalCompleted = completed.length;
+  const mrr = totalCompleted * ESTIMATED_RATE_USD;
   const arr = mrr * 12;
 
-  const MONTHLY = [
-    { month: "Nov", value: 0 }, { month: "Dec", value: 0 },
-    { month: "Jan", value: 0 }, { month: "Feb", value: 0 },
-    { month: "Mar", value: 0 }, { month: "Apr", value: mrr },
-  ];
+  // Real trailing-six-month distribution, replacing five hardcoded zeroes and a
+  // single bar labelled "Apr" that held the entire all-time total.
+  const now = new Date();
+  const MONTHLY = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    const count = completed.filter(
+      (s) =>
+        s.scheduledAt.getFullYear() === d.getFullYear() &&
+        s.scheduledAt.getMonth() === d.getMonth()
+    ).length;
+    return {
+      month: d.toLocaleDateString("en-US", { month: "short" }),
+      value: count * ESTIMATED_RATE_USD,
+    };
+  });
   const max = Math.max(...MONTHLY.map((m) => m.value)) || 1000;
 
   return (
@@ -49,7 +62,7 @@ export default async function BillingDashboardPage() {
         {[
           { label: "Est. MRR", value: `$${mrr.toLocaleString()}`, change: "Based on completions", icon: DollarSign, color: "bg-emerald-100 text-emerald-700" },
           { label: "Est. ARR", value: `$${arr.toLocaleString()}`, change: "Projected annual", icon: TrendingUp, color: "bg-teal-100 text-teal-700" },
-          { label: "Total Users", value: userList.total.toString(), change: "Active across platform", icon: Users, color: "bg-blue-100 text-blue-700" },
+          { label: "Total Users", value: profiles.length.toString(), change: "Active across platform", icon: Users, color: "bg-blue-100 text-blue-700" },
           { label: "Sessions", value: totalCompleted.toString(), change: "Completed to date", icon: CreditCard, color: "bg-amber-100 text-amber-700" },
         ].map((m) => (
           <div key={m.label} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">

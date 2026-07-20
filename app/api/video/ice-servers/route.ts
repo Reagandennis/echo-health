@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/rate-limit";
 
 // Short-lived TURN credentials. Long enough to cover a typical 50-minute

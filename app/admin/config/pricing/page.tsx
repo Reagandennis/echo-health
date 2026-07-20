@@ -1,27 +1,37 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
-import { appwriteConfig } from "@/lib/appwrite/config";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import { Save, Plus } from "lucide-react";
-import { Query } from "node-appwrite";
+import { listPromos } from "../../_lib/queries";
 
+/**
+ * The commission slider and the three subscription tiers below are static UI —
+ * neither is stored anywhere, and the "Save All Changes" button has no handler.
+ * `lib/constants.ts` is the real source of truth for plans. The promo table IS
+ * live data.
+ */
 export default async function PricingConfigPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const { databases } = createAdminClient();
-  const promoRes = await databases.listDocuments(
-    appwriteConfig.databaseId,
-    appwriteConfig.collections.promos,
-    [Query.limit(100), Query.orderDesc("$createdAt")]
-  );
+  const promoRows = await listPromos();
 
-  const PROMOS = promoRes.documents.map(p => ({
-    code: p.$id, // Assuming document ID is the code for now
-    discount: p.discount || "—",
-    usage: `${p.usedBy?.length || 0} / ${p.limit || "∞"}`,
-    expires: p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : "Never",
-    active: !p.disabled
+  /*
+   * `promos` is keyed by `code` — there is no `$id`, and the Appwrite comment
+   * "assuming document ID is the code for now" is now literally the schema.
+   *
+   * Three columns rendered as placeholders before because Appwrite never
+   * declared the attributes behind them; `discount`, `redemption_limit`,
+   * `expires_at` and `disabled` are real columns now. The old code also read
+   * `usedBy?.length` as if it were a list of redeemers — it is a single Auth0
+   * sub, and a row exists only once the code has been redeemed, so usage is 1.
+   */
+  const PROMOS = promoRows.map((p) => ({
+    code: p.code,
+    discount: p.discount !== null ? `${p.discount}%` : "—",
+    usage: `1 / ${p.redemptionLimit ?? "∞"}`,
+    expires: p.expiresAt ? p.expiresAt.toLocaleDateString() : "Never",
+    active: !p.disabled,
   }));
 
   return (

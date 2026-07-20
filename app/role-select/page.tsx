@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, Stethoscope, ArrowRight, Loader2 } from "lucide-react";
 import { Suspense } from "react";
-import { useUser } from "@/app/components/UserProvider";
+import { useSession } from "@/app/components/UserProvider";
 import SignOutButton from "@/app/components/SignOutButton";
 
 type Role = "client" | "therapist";
@@ -49,18 +49,23 @@ const roles: {
       "Earnings & compliance dashboard",
     ],
     accent: "stone",
-    redirectTo: "/therapist/onboarding",
+    redirectTo: "/onboarding/therapist",
   },
 ];
 
 function RoleSelectContent() {
   const router = useRouter();
-  const user = useUser();
+  const { user, loading } = useSession();
   const [selected, setSelected] = useState<Role | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Wait for hydration. `user` is null both while /api/me is in flight and
+    // when signed out; redirecting on the former sends a valid session to
+    // /signin, which comes back here and loops indefinitely.
+    if (loading) return;
+
     if (!user) {
       router.replace("/signin");
       return;
@@ -73,7 +78,7 @@ function RoleSelectContent() {
     } else if (labels.includes("client")) {
       router.replace("/onboarding");
     }
-  }, [user, router]);
+  }, [user, loading, router]);
 
   async function handleConfirm() {
     if (!selected || !user) return;
@@ -82,10 +87,12 @@ function RoleSelectContent() {
 
     try {
       // Clients self-assign the "client" label. Therapists do NOT receive a
-      // label here — they complete /therapist/onboarding, an admin reviews
+      // label here — they complete /onboarding/therapist, an admin reviews
       // their KYC, and only then does /api/admin/therapist-kyc assign the
       // "therapist" label. This prevents self-promotion to a role with
       // access to clinical data.
+      const target = roles.find((r) => r.id === selected)?.redirectTo ?? "/onboarding";
+
       if (selected === "client") {
         const res = await fetch("/api/user/set-role", {
           method: "POST",
@@ -93,13 +100,23 @@ function RoleSelectContent() {
           body: JSON.stringify({ userId: user.$id, role: "client" }),
         });
 
+        const data = await res.json() as { error?: string; requiresReauth?: boolean };
+
         if (!res.ok) {
-          const data = await res.json() as { error?: string };
           throw new Error(data.error ?? "Failed to save role.");
+        }
+
+        // The role now exists in Auth0, but this browser still holds a session
+        // cookie whose roles claim was minted at login — so `user.labels` would
+        // stay empty and the client would be bounced straight back here.
+        // Re-entering the login flow mints a fresh token; Auth0's SSO session
+        // makes it a silent redirect rather than another sign-in prompt.
+        if (data.requiresReauth) {
+          window.location.assign(`/auth/login?returnTo=${encodeURIComponent(target)}`);
+          return;
         }
       }
 
-      const target = roles.find((r) => r.id === selected)?.redirectTo ?? "/onboarding";
       router.push(target);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -107,7 +124,7 @@ function RoleSelectContent() {
     }
   }
 
-  if (!user) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />

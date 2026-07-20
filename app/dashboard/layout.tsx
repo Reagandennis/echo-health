@@ -5,7 +5,7 @@ import {
   Target, BookOpen, CreditCard, Settings, LogOut, AlertTriangle,
   Bell,
 } from "lucide-react";
-import { getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import SignOutButton from "@/app/components/SignOutButton";
 import { UserProvider } from "@/app/components/UserProvider";
 

@@ -28,7 +28,7 @@ export default function ClientsPage() {
     if (!user) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction(user.$id);
+        const therapist = await getTherapistByUserIdAction();
         if (therapist) {
           const res = await listTherapistClientsAction(therapist.$id);
           setProfiles(res as unknown as Profile[]);

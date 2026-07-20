@@ -13,7 +13,7 @@ import {
   updateJournalEntryAction,
   deleteJournalEntryAction
 } from "@/app/actions/database";
-import type { MoodLog, JournalEntry } from "@/lib/appwrite/database";
+import type { MoodLog, JournalEntry } from "@/lib/types/documents";
 import { MOOD_EMOJIS, MOOD_TAGS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 
@@ -204,7 +204,7 @@ export default function ProgressPage() {
       try {
         const [moods, entries] = await Promise.all([
           listMoodLogsAction(user.$id, 30).catch(() => [] as MoodLog[]),
-          listJournalEntriesAction(user.$id, 20).catch(() => [] as JournalEntry[]),
+          listJournalEntriesAction(20).catch(() => [] as JournalEntry[]),
         ]);
         setMoodLogs(moods);
         setJournal(entries);
@@ -233,7 +233,13 @@ export default function ProgressPage() {
   }
 
   function onMoodSaved(log: MoodLog) {
-    setMoodLogs((prev) => [...prev, log].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    // `createdAt` is a real Date since the Postgres migration — it was an ISO
+    // string compared with localeCompare, which now throws (Date has no such method).
+    setMoodLogs((prev) =>
+      [...prev, log].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+    );
     setShowMood(false);
   }
 
@@ -348,9 +354,9 @@ export default function ProgressPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-brand">{m.score}/10</span>
-                    {m.tags.length > 0 && (
+                    {(m.tags?.length ?? 0) > 0 && (
                       <div className="flex gap-1 flex-wrap">
-                        {m.tags.slice(0, 3).map((t) => (
+                        {(m.tags ?? []).slice(0, 3).map((t) => (
                           <span key={t} className="text-[10px] bg-brand/8 text-brand/60 px-2 py-0.5 rounded-full">{t}</span>
                         ))}
                       </div>

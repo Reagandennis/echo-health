@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { User, Bell, Shield, ChevronRight, AlertTriangle } from "lucide-react";
-import { updateProfile, updatePrefs } from "@/lib/appwrite/auth";
+import { updateUserMetadataAction } from "@/app/actions/user-metadata";
 import { useUser } from "@/app/components/UserProvider";
 
 interface UserPrefs {
@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const [emergencyPhone,setEmergencyPhone]  = useState("");
   const [saving,        setSaving]          = useState(false);
   const [saved,         setSaved]           = useState(false);
+  const [saveError,     setSaveError]       = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete]   = useState(false);
 
   useEffect(() => {
@@ -44,13 +45,36 @@ export default function SettingsPage() {
     );
   }
 
+  /**
+   * TODO: this cannot succeed yet. `updateUserMetadataAction` is a stub that
+   * throws until Auth0 Management API credentials are configured (see
+   * `app/actions/user-metadata.ts`). The failure is surfaced rather than
+   * swallowed so the page never claims "Saved ✓" over data it dropped.
+   *
+   * `name` rides along in the patch for now, but note it is a *root* Auth0 user
+   * field rather than `user_metadata` — it will need its own PATCH body key when
+   * the action is implemented.
+   */
   async function handleSaveProfile() {
     setSaving(true);
-    await updateProfile({ name });
-    await updatePrefs({ sessionType, commStyle, emergencyName, emergencyPhone });
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setSaveError(null);
+    try {
+      await updateUserMetadataAction({
+        name,
+        sessionType,
+        commStyle,
+        emergencyName,
+        emergencyPhone,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not save your changes."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -110,6 +134,11 @@ export default function SettingsPage() {
       </Section>
 
       {/* Save button */}
+      {saveError && (
+        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {saveError}
+        </div>
+      )}
       <button onClick={handleSaveProfile} disabled={saving}
         className="w-full bg-brand hover:bg-brand/90 disabled:opacity-60 text-white font-semibold py-3 rounded-2xl transition-colors text-sm mb-6">
         {saving ? "Saving…" : saved ? "Saved ✓" : "Save changes"}

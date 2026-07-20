@@ -1,8 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { signOut } from "@/lib/appwrite/auth";
-import { useRouter } from "next/navigation";
+import { signOut } from "@/lib/auth/client";
 import { useState } from "react";
 
 interface SignOutButtonProps {
@@ -11,21 +10,18 @@ interface SignOutButtonProps {
 }
 
 export default function SignOutButton({ className, variant = "ghost" }: SignOutButtonProps) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  async function handleSignOut() {
+  /**
+   * `signOut()` is a full-page navigation to `/auth/logout`, not a promise — Auth0
+   * clears the session cookie and redirects on its own, so there is no router
+   * push to make and nothing to await. `loading` stays true for the brief moment
+   * before the browser leaves the page, which also debounces double clicks.
+   */
+  function handleSignOut() {
     if (loading) return;
     setLoading(true);
-    try {
-      await signOut();
-      router.push("/signin");
-      router.refresh();
-    } catch (error) {
-      console.error("Sign out failed:", error);
-    } finally {
-      setLoading(false);
-    }
+    signOut();
   }
 
   if (variant === "sidebar") {

@@ -6,10 +6,10 @@ import AdminBadge, {
   riskBadge,
   sessionStatusBadge,
 } from "@/app/admin/_components/AdminBadge";
-import type { Models } from "appwrite";
+import { mockUser } from "@/test-utils/session";
 import AuthInput from "@/app/components/AuthInput";
 import PriceTag from "@/app/components/PriceTag";
-import { UserProvider, useUser } from "@/app/components/UserProvider";
+import { UserProvider, useUser, useSession } from "@/app/components/UserProvider";
 import { useCurrency } from "@/lib/useCurrency";
 
 jest.mock("@/lib/useCurrency", () => ({
@@ -60,7 +60,7 @@ describe("small shared components", () => {
     }
 
     render(
-      <UserProvider user={{ $id: "user-1", email: "ada@example.com" } as unknown as Models.User<Models.Preferences>}>
+      <UserProvider user={mockUser({ $id: "user-1", email: "ada@example.com" })}>
         <Consumer />
       </UserProvider>
     );
@@ -95,5 +95,72 @@ describe("small shared components", () => {
     expect(screen.getByText("Verified")).toBeInTheDocument();
     expect(screen.getByText("In Progress")).toBeInTheDocument();
     expect(screen.getByText("Critical")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Regression guard for a redirect loop.
+ *
+ * `user` is null both while /api/me is in flight and when signed out. A
+ * consumer that reads `!user` as "signed out" redirects a valid session to the
+ * login page, which returns it here — forever. `loading` is what distinguishes
+ * the two, so it must be true before the fetch resolves and false after.
+ */
+describe("UserProvider hydration state", () => {
+  function Probe() {
+    const { user, loading } = useSession();
+    return <span data-testid="probe">{loading ? "loading" : user ? user.email : "anon"}</span>;
+  }
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch;
+  });
+
+  it("reports loading while hydrating, never a premature null", async () => {
+    let resolveFetch: (v: unknown) => void = () => {};
+    global.fetch = jest.fn(
+      () => new Promise((resolve) => { resolveFetch = resolve; })
+    ) as unknown as typeof fetch;
+
+    render(
+      <UserProvider hydrate>
+        <Probe />
+      </UserProvider>
+    );
+
+    // Before /api/me resolves: must NOT look signed out.
+    expect(screen.getByTestId("probe")).toHaveTextContent("loading");
+
+    resolveFetch({
+      ok: true,
+      json: async () => ({ user: mockUser({ email: "ada@example.com" }) }),
+    });
+
+    expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
+  });
+
+  it("does not report loading when a server-supplied user is passed", () => {
+    render(
+      <UserProvider user={mockUser({ email: "server@example.com" })}>
+        <Probe />
+      </UserProvider>
+    );
+
+    // A Server Layout already resolved this; there is nothing to wait for.
+    expect(screen.getByTestId("probe")).toHaveTextContent("server@example.com");
+  });
+
+  it("clears loading even when the hydration fetch fails", async () => {
+    global.fetch = jest.fn(() => Promise.reject(new Error("offline"))) as unknown as typeof fetch;
+
+    render(
+      <UserProvider hydrate>
+        <Probe />
+      </UserProvider>
+    );
+
+    // Stuck on "loading" would hang every consumer gated on it — worse than
+    // showing signed-out.
+    expect(await screen.findByText("anon")).toBeInTheDocument();
   });
 });

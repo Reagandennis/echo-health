@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@/app/components/UserProvider";
 import { getProfileByUserIdAction, updateProfileAction } from "@/app/actions/database";
-import { account } from "@/lib/appwrite/client";
-import { User, Bell, Shield, Save, Eye, EyeOff, Loader2 } from "lucide-react";
+import { goToPasswordReset } from "@/lib/auth/client";
+import { User, Bell, Shield, Save, ExternalLink, Loader2 } from "lucide-react";
 
 interface Profile { $id: string; name: string; email: string; }
 
@@ -19,10 +19,6 @@ export default function TherapistSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notifications, setNotifications] = useState({ newSession: true, sessionReminder: true, newMessage: true, weeklyReport: false });
-  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
-  const [showPw, setShowPw] = useState(false);
-  const [pwError, setPwError] = useState("");
-  const [pwSaved, setPwSaved] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -54,20 +50,6 @@ export default function TherapistSettingsPage() {
       setTimeout(() => setSaved(false), 2500);
     } catch { /* empty */ }
     setSaving(false);
-  }
-
-  async function changePassword() {
-    setPwError("");
-    if (pwForm.next !== pwForm.confirm) { setPwError("Passwords do not match."); return; }
-    if (pwForm.next.length < 8) { setPwError("Password must be at least 8 characters."); return; }
-    try {
-      await account.updatePassword(pwForm.next, pwForm.current);
-      setPwSaved(true);
-      setPwForm({ current: "", next: "", confirm: "" });
-      setTimeout(() => setPwSaved(false), 2500);
-    } catch (e) {
-      setPwError((e as Error).message ?? "Failed to update password.");
-    }
   }
 
   function toggleNotif(key: keyof typeof notifications) {
@@ -138,28 +120,19 @@ export default function TherapistSettingsPage() {
       {tab === "Security" && (
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-5">
           <h2 className="font-semibold text-stone-800">Change Password</h2>
-          {pwError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2">{pwError}</p>}
-          {pwSaved && <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-xl px-4 py-2">Password updated successfully.</p>}
-          {(["current", "next", "confirm"] as const).map((field) => (
-            <div key={field} className="space-y-1.5">
-              <label htmlFor={`pw-${field}`} className="text-sm font-medium text-stone-700 capitalize">
-                {field === "current" ? "Current password" : field === "next" ? "New password" : "Confirm new password"}
-              </label>
-              <div className="relative">
-                <input id={`pw-${field}`} type={showPw ? "text" : "password"} value={pwForm[field]}
-                  onChange={(e) => setPwForm((f) => ({ ...f, [field]: e.target.value }))}
-                  className="w-full px-4 py-3 pr-10 rounded-xl border border-stone-200 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-                {field === "next" && (
-                  <button type="button" onClick={() => setShowPw((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
-                    {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          <button onClick={() => void changePassword()}
+          {/*
+            Passwords live in Auth0 now, not Appwrite. Universal Login owns the
+            whole flow — the app never sees a current or new password — so the
+            three-field form was replaced with a hand-off to Auth0's own reset.
+          */}
+          <p className="text-sm text-stone-500 leading-relaxed">
+            Your password is managed on our secure sign-in page. Choose{" "}
+            <span className="font-medium text-stone-700">Forgot password?</span> there
+            and we&apos;ll email you a link to set a new one.
+          </p>
+          <button onClick={() => goToPasswordReset()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:opacity-90 transition-opacity">
-            <Shield size={14} /> Update password
+            <ExternalLink size={14} /> Change password
           </button>
         </div>
       )}

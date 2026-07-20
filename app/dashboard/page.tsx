@@ -6,7 +6,7 @@ import {
   CalendarCheck, TrendingUp, Clock, HeartHandshake, ChevronRight,
   Sparkles, Video, MessageCircle, Plus, AlertCircle, Star, Target,
 } from "lucide-react";
-import type { TherapySession, MoodLog, Goal } from "@/lib/appwrite/database";
+import type { TherapySession, MoodLog, Goal } from "@/lib/types/documents";
 import { PLAN_SESSIONS, MOOD_EMOJIS, PLACEHOLDER_THERAPIST_ID } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 import { 

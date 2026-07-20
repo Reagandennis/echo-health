@@ -1,90 +1,52 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock } from "lucide-react";
-import AuthInput from "../../components/AuthInput";
-import { getCurrentUser, signIn, signInWithGoogle } from "@/lib/appwrite/auth";
+import { signIn, signInWithGoogle } from "@/lib/auth/client";
 import posthog from "posthog-js";
 
-function SignInForm() {
-  const router = useRouter();
+/** Turn Auth0's `?error=…&error_description=…` bounce-back into display copy. */
+function readAuthError(params: URLSearchParams): string | null {
+  const description = params.get("error_description");
+  if (description) return description;
+
+  const err = params.get("error");
+  if (err === "access_denied") return "Access denied. Please try signing in again.";
+  return err;
+}
+
+/**
+ * Sign-in entry point.
+ *
+ * Under Appwrite this page collected the email and password itself. Auth0
+ * Universal Login hosts that form now, so the page is reduced to a launchpad:
+ * both buttons are browser navigations to `/auth/login`, and the app never sees
+ * a credential. Role-based routing after login lives in `/post-login`, which
+ * is the `returnTo` target the Auth0 callback lands on.
+ */
+function SignInLaunch() {
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
-  useEffect(() => {
-    const err = searchParams.get("error");
-    if (err) {
-      if (err === "OAuthFailed") setError("Google authentication failed. Please try again.");
-      else if (err === "OAuthError") setError("An unexpected error occurred during Google authentication.");
-      else setError(err);
-    }
-  }, [searchParams]);
+  // Auth0 reports failures by bouncing back with `error` / `error_description`.
+  // Derived during render rather than mirrored into state via an effect — the
+  // message is a pure function of the URL and never changes on its own.
+  const error = readAuthError(searchParams);
 
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const form = new FormData(e.currentTarget as HTMLFormElement);
-    const email = form.get("email") as string;
-    const password = form.get("password") as string;
-
-    try {
-      const result = await signIn(email, password);
-
-      if (!result.success) {
-        setError(result.error || "Sign in failed. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      setRedirecting(true);
-      router.refresh();
-
-      const u = result.user;
-      if (!u) {
-        setError("Sign in failed. Could not retrieve user profile.");
-        setLoading(false);
-        setRedirecting(false);
-        return;
-      }
-
-      posthog.identify(u.$id, { email, name: u.name });
-      posthog.capture("user_signed_in", { email, method: "email" });
-
-      if (u.labels?.includes("admin")) {
-        router.push("/admin");
-        return;
-      }
-
-      if (u.labels?.includes("therapist")) {
-        router.push("/therapist");
-        return;
-      }
-
-      // No role yet (e.g. signed in before completing role-select)
-      if (!u.labels?.includes("client")) {
-        router.push("/role-select");
-        return;
-      }
-
-      router.push("/dashboard");
-    } catch (err: unknown) {
-      posthog.captureException(err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Sign in failed. Please check your credentials."
-      );
-      setLoading(false);
-    }
+  function handleSignIn() {
+    setLeaving(true);
+    posthog.capture("sign_in_started", { method: "auth0" });
+    signIn();
   }
 
-  if (redirecting) {
+  function handleGoogle() {
+    setLeaving(true);
+    posthog.capture("sign_in_started", { method: "google" });
+    signInWithGoogle();
+  }
+
+  if (leaving) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
@@ -112,53 +74,19 @@ function SignInForm() {
         </div>
       )}
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <AuthInput
-          id="email"
-          label="Email address"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          required
-          icon={Mail}
-        />
-        <AuthInput
-          id="password"
-          label="Password"
-          type="password"
-          placeholder="••••••••"
-          autoComplete="current-password"
-          required
-          icon={Lock}
-        />
-
-        {/* Remember me + forgot */}
-        <div className="flex items-center justify-between text-sm">
-          <label className="flex items-center gap-2 cursor-pointer select-none text-brand/60">
-            <input
-              type="checkbox"
-              name="remember"
-              className="w-4 h-4 rounded border-cream accent-brand"
-            />
-            Remember me
-          </label>
-          <Link
-            href="/forgot-password"
-            className="text-brand font-medium hover:opacity-75 transition-opacity underline underline-offset-2"
-          >
-            Forgot password?
-          </Link>
-        </div>
-
+      {/* Primary CTA — hands off to Auth0 Universal Login */}
+      <div className="flex flex-col gap-3">
         <button
-          type="submit"
-          disabled={loading}
-          className="mt-1 w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          type="button"
+          onClick={handleSignIn}
+          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? "Signing in…" : "Sign in"}
+          Sign in
         </button>
-      </form>
+        <p className="text-center text-xs text-brand/40 leading-relaxed">
+          You&apos;ll be taken to our secure sign-in page to enter your email and password.
+        </p>
+      </div>
 
       {/* Divider */}
       <div className="flex items-center gap-3">
@@ -171,7 +99,7 @@ function SignInForm() {
       <div className="flex flex-col gap-3">
         <button
           type="button"
-          onClick={signInWithGoogle}
+          onClick={handleGoogle}
           className="flex items-center justify-center gap-3 w-full rounded-xl border border-cream py-3 text-sm font-medium text-brand/70 hover:bg-cream/30 transition-colors"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -182,6 +110,16 @@ function SignInForm() {
           </svg>
           Continue with Google
         </button>
+      </div>
+
+      {/* Password help */}
+      <div className="flex items-center justify-center text-sm">
+        <Link
+          href="/forgot-password"
+          className="text-brand/60 font-medium hover:text-brand transition-colors underline underline-offset-2"
+        >
+          Forgot password?
+        </Link>
       </div>
     </div>
   );
@@ -194,7 +132,7 @@ export default function SignInPage() {
         <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
       </div>
     }>
-      <SignInForm />
+      <SignInLaunch />
     </Suspense>
   );
 }

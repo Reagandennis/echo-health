@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, use } from "react";
-import { databases, realtime } from "@/lib/appwrite/client";
-import { appwriteConfig } from "@/lib/appwrite/config";
-import { Query } from "appwrite";
+import { useRealtime } from "@/hooks/useRealtime";
+import { listChatMessagesAction, listChatSessionsAction } from "@/app/actions/database";
 import { Send, ArrowLeft, Loader2, User } from "lucide-react";
 import Link from "next/link";
 
@@ -12,7 +11,7 @@ interface ChatMessage {
   role: "user" | "bot" | "admin" | "system";
   text: string;
   sessionId: string;
-  $createdAt: string;
+  createdAt: string;
 }
 
 interface ChatSession {
@@ -32,33 +31,15 @@ export default function ChatSessionPage({ params }: { params: Promise<{ sessionI
 
   const fetchSessionData = async () => {
     try {
-      // Fetch session info
-      const sessionRes = await databases.listDocuments(
-        appwriteConfig.databaseId,
-        appwriteConfig.collections.chatSessions,
-        [Query.equal("sessionId", [sessionId])]
-      );
-      if (sessionRes.total > 0) {
-        setSession(sessionRes.documents[0] as unknown as ChatSession);
-      }
+      // Session info. There is no read-one action for a chat session, so the
+      // inbox listing is scanned for the visitor's opaque session id.
+      const sessions = await listChatSessionsAction(200) as unknown as ChatSession[];
+      const match = sessions.find((s) => s.sessionId === sessionId);
+      if (match) setSession(match);
 
-      // Fetch messages
-      const messagesRes = await databases.listDocuments(
-        appwriteConfig.databaseId,
-        appwriteConfig.collections.chatMessages,
-        [
-          Query.equal("sessionId", [sessionId]),
-          Query.orderAsc("$createdAt"),
-          Query.limit(100),
-        ]
-      );
-      setMessages(messagesRes.documents as unknown as ChatMessage[]);
-    } catch (error: any) {
-      if (error?.code === 404) {
-        setMessages([]);
-      } else {
-        console.error("Error fetching chat data:", error);
-      }
+      setMessages(await listChatMessagesAction(sessionId, 100) as unknown as ChatMessage[]);
+    } catch (error) {
+      console.error("Error fetching chat data:", error);
     } finally {
       setLoading(false);
     }
@@ -66,33 +47,16 @@ export default function ChatSessionPage({ params }: { params: Promise<{ sessionI
 
   useEffect(() => {
     fetchSessionData();
-
-    let unsubscribe: any;
-
-    try {
-      unsubscribe = realtime.subscribe(
-        [`databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.chatMessages}.documents`],
-        (response) => {
-          if (response.events.includes("databases.*.collections.*.documents.*.create")) {
-            const payload = response.payload as ChatMessage;
-            if (payload.sessionId === sessionId) {
-              setMessages((prev) => {
-                if (prev.find((m) => m.$id === payload.$id)) return prev;
-                return [...prev, payload];
-              });
-            }
-          }
-        }
-      );
-    } catch (error) {
-      console.error("Realtime subscription error:", error);
-    }
-
-    return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
-      else if (unsubscribe?.unsubscribe) unsubscribe.unsubscribe();
-    };
   }, [sessionId]);
+
+  // These rows are addressed to the visitor's opaque session id rather than to
+  // a user, so staff subscribe by that id too. Events carry no row contents,
+  // so the append-from-payload this used to do is now a refetch of the thread.
+  useRealtime(
+    ["chat_messages"],
+    () => { fetchSessionData(); },
+    { chatSession: sessionId }
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,7 +146,7 @@ export default function ChatSessionPage({ params }: { params: Promise<{ sessionI
             >
               {msg.text}
               <div className={`text-[10px] mt-1.5 opacity-60 ${msg.role === 'admin' ? 'text-teal-50' : 'text-stone-400'}`}>
-                {new Date(msg.$createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
           </div>

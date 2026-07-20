@@ -1,7 +1,14 @@
-import { createAdminClient, getLoggedInUser } from "@/lib/appwrite/server";
+import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
+import { getProfileByUserId } from "../../../_lib/queries";
 import { Clock, Monitor, LogIn, LogOut, Edit, ShieldAlert, CreditCard } from "lucide-react";
+
+/**
+ * The audit entries below are hardcoded mock UI. There is no audit table in the
+ * Postgres schema and no application code writes one; login/logout events live
+ * only in Auth0's own log stream. Only the client identity is live data.
+ */
 
 const ICON_MAP: Record<string, React.ElementType> = {
   login: LogIn, logout: LogOut, profile_update: Edit,
@@ -26,9 +33,9 @@ export default async function AuditLogPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const { users } = createAdminClient();
-  let client;
-  try { client = await users.get(id); } catch { notFound(); }
+
+  const client = await getProfileByUserId(id);
+  if (!client) notFound();
 
   return (
     <div>

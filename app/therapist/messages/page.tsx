@@ -1,18 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import appwriteClient from "@/lib/appwrite/client";
-import { 
-  listChatSessionsAction, 
-  listChatMessagesAction, 
-  getProfileByUserIdAction, 
-  sendChatReplyAction 
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
+import {
+  listChatSessionsAction,
+  listChatMessagesAction,
+  getProfileByUserIdAction,
+  sendChatReplyAction
 } from "@/app/actions/database";
-import { appwriteConfig } from "@/lib/appwrite/config";
 import { Send, MessageSquare, User, Search, AlertTriangle } from "lucide-react";
 
-interface ChatSession { $id: string; userId: string; status: string; createdAt: string; }
-interface ChatMessage { $id: string; sessionId: string; sender: string; body: string; createdAt: string; }
+/**
+ * Shapes follow the real `chat_sessions` / `chat_messages` columns. This page
+ * was written against `{ sender, body }` on messages and `status` on sessions,
+ * none of which have ever existed — every message rendered blank. `role`/`text`
+ * are the columns the working writer (`app/api/chat/route.ts`) and
+ * `sendChatReplyAction` actually use.
+ *
+ * `userId` is null for anonymous visitors, so the session's own `name` is the
+ * reliable label; the profile lookup only adds anything for signed-in users.
+ */
+interface ChatSession { $id: string; sessionId: string; userId: string | null; name: string; isOnline: boolean; createdAt: string; }
+interface ChatMessage { $id: string; sessionId: string; role: string; text: string; createdAt: string; }
 interface Profile { $id: string; name: string; }
 
 export default function MessagesPage() {
@@ -30,7 +39,10 @@ export default function MessagesPage() {
       try {
         const sessions = await listChatSessionsAction(50) as unknown as ChatSession[];
         setChatSessions(sessions);
-        const userIds = [...new Set(sessions.map((s) => s.userId))];
+        // Anonymous visitors have no userId — skip them rather than querying null.
+        const userIds = [...new Set(sessions.map((s) => s.userId))].filter(
+          (uid): uid is string => !!uid
+        );
         const pMap: Record<string, Profile> = {};
         await Promise.all(userIds.map(async (uid) => {
           try {
@@ -43,22 +55,26 @@ export default function MessagesPage() {
     })();
   }, []);
 
+  const loadMessages = useCallback(async (sess: ChatSession) => {
+    try {
+      const msgs = await listChatMessagesAction(sess.$id, 100);
+      setMessages(msgs as unknown as ChatMessage[]);
+    } catch { /* empty */ }
+  }, []);
+
   useEffect(() => {
     if (!active) return;
-    (async () => {
-      try {
-        const msgs = await listChatMessagesAction(active.$id, 100);
-        setMessages(msgs as unknown as ChatMessage[]);
-      } catch { /* empty */ }
-    })();
+    (async () => { await loadMessages(active); })();
+  }, [active, loadMessages]);
 
-    const channel = `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.collections.chatMessages}.documents`;
-    const unsub = appwriteClient.subscribe(channel, (event: { payload: unknown }) => {
-      const msg = event.payload as ChatMessage;
-      if (msg.sessionId === active.$id) setMessages((prev) => [...prev, msg]);
-    });
-    return () => unsub();
-  }, [active]);
+  // Chat rows are addressed to the visitor's opaque session id (`sessionId`),
+  // not to a user, so staff subscribe by that rather than by their own identity.
+  // Events carry no row contents, so the old append-from-payload is a refetch.
+  useRealtime(
+    ["chat_messages"],
+    () => { if (active) void loadMessages(active); },
+    { chatSession: active?.sessionId, enabled: !!active }
+  );
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -72,10 +88,14 @@ export default function MessagesPage() {
     setSending(false);
   }
 
-  const filteredSessions = chatSessions.filter((s) => {
-    const name = profiles[s.userId]?.name ?? s.userId;
-    return name.toLowerCase().includes(search.toLowerCase());
-  });
+  // Signed-in visitors get their profile name; anonymous ones the name they
+  // typed on the gate form, which is the only label their row carries.
+  const displayName = (s: ChatSession) =>
+    (s.userId ? profiles[s.userId]?.name : undefined) ?? s.name ?? "Unknown";
+
+  const filteredSessions = chatSessions.filter((s) =>
+    displayName(s).toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -96,11 +116,11 @@ export default function MessagesPage() {
               <button key={s.$id} onClick={() => setActive(s)}
                 className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-stone-50 transition-colors ${active?.$id === s.$id ? "bg-brand/5 border-l-2 border-brand" : ""}`}>
                 <div className="w-9 h-9 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-sm shrink-0">
-                  {(profiles[s.userId]?.name ?? "U").charAt(0)}
+                  {displayName(s).charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-stone-800 truncate">{profiles[s.userId]?.name ?? s.userId}</p>
-                  <p className="text-xs text-stone-400">{s.status}</p>
+                  <p className="text-sm font-semibold text-stone-800 truncate">{displayName(s)}</p>
+                  <p className="text-xs text-stone-400">{s.isOnline ? "Online" : "Offline"}</p>
                 </div>
               </button>
             ))}
@@ -113,25 +133,25 @@ export default function MessagesPage() {
             <>
               <div className="px-5 py-4 border-b border-stone-100 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-sm shrink-0">
-                  {(profiles[active.userId]?.name ?? "U").charAt(0)}
+                  {displayName(active).charAt(0)}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-stone-800">{profiles[active.userId]?.name ?? active.userId}</p>
-                  <p className="text-xs text-stone-400 capitalize">{active.status}</p>
+                  <p className="text-sm font-semibold text-stone-800">{displayName(active)}</p>
+                  <p className="text-xs text-stone-400 capitalize">{active.isOnline ? "Online" : "Offline"}</p>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.map((m) => {
-                  const isAdmin = m.sender === "admin";
+                  const isAdmin = m.role === "admin";
                   return (
                     <div key={m.$id} className={`flex items-end gap-2 ${isAdmin ? "flex-row-reverse" : ""}`}>
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isAdmin ? "bg-brand text-white" : "bg-stone-200 text-stone-600"}`}>
                         <User size={12} />
                       </div>
                       <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm ${isAdmin ? "bg-brand text-white rounded-br-sm" : "bg-stone-100 text-stone-800 rounded-bl-sm"}`}>
-                        {m.body}
+                        {m.text}
                       </div>
-                      {m.body.toLowerCase().includes("suicid") && (
+                      {m.text.toLowerCase().includes("suicid") && (
                         <span title="Risk indicator"><AlertTriangle size={14} className="text-red-500 shrink-0" /></span>
                       )}
                     </div>

@@ -1,66 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, User } from "lucide-react";
-import AuthInput from "../../components/AuthInput";
-import { signInWithGoogle, signUp } from "@/lib/appwrite/auth";
+import { signInWithGoogle, signUp } from "@/lib/auth/client";
 import posthog from "posthog-js";
 
+/**
+ * Sign-up entry point.
+ *
+ * Auth0 Universal Login owns account creation (name, email, password) via
+ * `screen_hint=signup`, so this page keeps only what Auth0 cannot ask on our
+ * behalf: agreement to the Terms and Privacy Policy, which gates the CTA.
+ *
+ * New accounts come back with no role claim, so `/post-login` forwards them
+ * to `/role-select` — the same destination the old Appwrite flow pushed to.
+ */
 export default function SignUpPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
+  function handleSignUp() {
+    setLeaving(true);
+    posthog.capture("sign_up_started", { method: "auth0" });
+    signUp();
+  }
 
-    const form = new FormData(e.currentTarget as HTMLFormElement);
-    const firstName = form.get("first-name") as string;
-    const lastName = form.get("last-name") as string;
-    const email = form.get("email") as string;
-    const password = form.get("password") as string;
-    const confirm = form.get("confirm-password") as string;
+  function handleGoogle() {
+    setLeaving(true);
+    posthog.capture("sign_up_started", { method: "google" });
+    signInWithGoogle();
+  }
 
-    if (password !== confirm) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const goal = form.get("goal") as string;
-      const result = await signUp(email, password, `${firstName} ${lastName}`.trim(), goal);
-
-      if (!result.success) {
-        throw new Error(result.error || "Could not create account.");
-      }
-
-      if (result.user?.$id) {
-        posthog.identify(result.user.$id, {
-          email,
-          name: `${firstName} ${lastName}`.trim(),
-        });
-      }
-      posthog.capture("user_signed_up", {
-        email,
-        goal: goal || null,
-        method: "email",
-      });
-
-      router.push("/role-select");
-    } catch (err: unknown) {
-      posthog.captureException(err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not create account. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
+  if (leaving) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -76,113 +52,41 @@ export default function SignUpPage() {
         </p>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <div className="grid grid-cols-2 gap-4">
-          <AuthInput
-            id="first-name"
-            label="First name"
-            placeholder="Jane"
-            autoComplete="given-name"
-            required
-            icon={User}
-          />
-          <AuthInput
-            id="last-name"
-            label="Last name"
-            placeholder="Doe"
-            autoComplete="family-name"
-            required
-          />
-        </div>
-
-        <AuthInput
-          id="email"
-          label="Email address"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          required
-          icon={Mail}
+      {/* Terms */}
+      <label className="flex items-start gap-3 cursor-pointer select-none text-sm text-brand/60 leading-5">
+        <input
+          type="checkbox"
+          name="terms"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-cream accent-brand shrink-0"
         />
+        <span>
+          I agree to the{" "}
+          <a href="https://echohealth.app/terms" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="https://echohealth.app/privacy" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
+            Privacy Policy
+          </a>
+        </span>
+      </label>
 
-        <AuthInput
-          id="password"
-          label="Password"
-          type="password"
-          placeholder="Min. 8 characters"
-          autoComplete="new-password"
-          required
-          icon={Lock}
-        />
-
-        <AuthInput
-          id="confirm-password"
-          label="Confirm password"
-          type="password"
-          placeholder="Re-enter password"
-          autoComplete="new-password"
-          required
-          icon={Lock}
-        />
-
-        {/* Goal selector */}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="goal" className="text-sm font-medium text-brand/80">
-            What brings you here? <span className="text-brand/40 font-normal">(optional)</span>
-          </label>
-          <select
-            id="goal"
-            name="goal"
-            className="w-full rounded-xl border border-cream bg-white px-4 py-3 text-sm text-brand/70 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15 appearance-none"
-          >
-            <option value="">Select a goal…</option>
-            <option value="anxiety">Managing anxiety or stress</option>
-            <option value="depression">Coping with depression</option>
-            <option value="relationships">Improving relationships</option>
-            <option value="grief">Processing grief or loss</option>
-            <option value="trauma">Healing from trauma</option>
-            <option value="couples">Couples therapy</option>
-            <option value="general">General mental wellness</option>
-            <option value="other">Something else</option>
-          </select>
-        </div>
-
-        {/* Terms */}
-        <label className="flex items-start gap-3 cursor-pointer select-none text-sm text-brand/60 leading-5">
-          <input
-            type="checkbox"
-            name="terms"
-            required
-            className="mt-0.5 w-4 h-4 rounded border-cream accent-brand shrink-0"
-          />
-          <span>
-            I agree to the{" "}
-            <a href="https://echohealth.app/terms" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href="https://echohealth.app/privacy" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
-              Privacy Policy
-            </a>
-          </span>
-        </label>
-
+      {/* Primary CTA — hands off to Auth0 Universal Login */}
+      <div className="flex flex-col gap-3">
         <button
-          type="submit"
-          disabled={loading}
-          className="mt-1 w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          type="button"
+          onClick={handleSignUp}
+          disabled={!agreed}
+          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? "Creating account…" : "Create account"}
+          Create account
         </button>
-      </form>
+        <p className="text-center text-xs text-brand/40 leading-relaxed">
+          You&apos;ll be taken to our secure sign-up page to choose an email and password.
+        </p>
+      </div>
 
       {/* Divider */}
       <div className="flex items-center gap-3">
@@ -191,11 +95,12 @@ export default function SignUpPage() {
         <span className="flex-1 h-px bg-cream/70" />
       </div>
 
-      {/* OAuth stubs */}
+      {/* OAuth */}
       <button
         type="button"
-        onClick={signInWithGoogle}
-        className="flex items-center justify-center gap-3 w-full rounded-xl border border-cream py-3 text-sm font-medium text-brand/70 hover:bg-cream/30 transition-colors"
+        onClick={handleGoogle}
+        disabled={!agreed}
+        className="flex items-center justify-center gap-3 w-full rounded-xl border border-cream py-3 text-sm font-medium text-brand/70 hover:bg-cream/30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>

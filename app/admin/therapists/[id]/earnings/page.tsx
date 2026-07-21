@@ -1,20 +1,22 @@
 import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
-import { getTherapist } from "../../../_lib/queries";
-import AdminBadge from "../../../_components/AdminBadge";
-import { DollarSign, TrendingUp, Download } from "lucide-react";
-
-const MOCK_PAYOUTS = [
-  { id: "p1", period: "April 2026", sessions: 22, gross: "$1,760", fee: "$176", net: "$1,584", status: "pending" },
-  { id: "p2", period: "March 2026", sessions: 20, gross: "$1,600", fee: "$160", net: "$1,440", status: "paid" },
-  { id: "p3", period: "February 2026", sessions: 18, gross: "$1,440", fee: "$144", net: "$1,296", status: "paid" },
-];
+import AdminEmptyState from "../../../_components/AdminEmptyState";
+import { getTherapist, getTherapistEarnings } from "../../../_lib/queries";
+import { formatKes } from "../../../_lib/money";
+import { THERAPIST_REVENUE_SHARE } from "@/lib/constants";
+import { DollarSign, TrendingUp, Wallet, CalendarCheck } from "lucide-react";
 
 /**
- * Every figure below is hardcoded mock UI. There is no payments integration and
- * no payouts table; `therapy_sessions.amount` exists but nothing populates it.
- * Only the therapist identity is live data.
+ * Earnings computed from this therapist's completed sessions and the revenue
+ * share in `lib/constants.ts`. `therapy_sessions.amount` is now populated at
+ * booking time from the payment the session draws against, so the figures below
+ * trace back to money actually received.
+ *
+ * This is an earnings statement, NOT a payout record. The page used to render a
+ * "Payout History" table of USD amounts marked paid and pending, implying
+ * disbursements that never happened — there is no payouts table. Accrued is
+ * stated as accrued.
  */
 export default async function TherapistEarningsPage({
   params,
@@ -22,27 +24,30 @@ export default async function TherapistEarningsPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const t = await getTherapist(id);
+
+  const [t, earnings] = await Promise.all([
+    getTherapist(id),
+    getTherapistEarnings(id),
+  ]);
   if (!t) notFound();
+
+  const sharePercent = Math.round(THERAPIST_REVENUE_SHARE * 100);
+  const maxMonth = Math.max(...earnings.monthly.map((m) => m.therapistShareMinor), 1);
 
   return (
     <div>
       <AdminPageHeader
         title="Earnings Summary"
+        description="Accrued from completed sessions. No amount here has been disbursed."
         breadcrumbs={[{ label: "Therapists", href: "/admin/therapists" }, { label: t.name, href: `/admin/therapists/${id}` }, { label: "Earnings" }]}
-        actions={
-          <button className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors">
-            <Download className="w-4 h-4" /> Export
-          </button>
-        }
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Total Earned", value: "$4,320", icon: DollarSign, color: "bg-emerald-100 text-emerald-700" },
-          { label: "Pending Payout", value: "$1,584", icon: TrendingUp, color: "bg-amber-100 text-amber-700" },
-          { label: "Platform Fee (10%)", value: "$480", icon: DollarSign, color: "bg-stone-100 text-stone-700" },
-          { label: "Sessions This Month", value: "22", icon: TrendingUp, color: "bg-teal-100 text-teal-700" },
+          { label: `Therapist Share (${sharePercent}%)`, value: formatKes(earnings.therapistShareMinor), icon: Wallet, color: "bg-emerald-100 text-emerald-700" },
+          { label: "Client Value Delivered", value: formatKes(earnings.grossMinor), icon: DollarSign, color: "bg-teal-100 text-teal-700" },
+          { label: `Platform Share (${100 - sharePercent}%)`, value: formatKes(earnings.platformShareMinor), icon: TrendingUp, color: "bg-stone-100 text-stone-700" },
+          { label: "Sessions Completed", value: earnings.completedSessions.toString(), icon: CalendarCheck, color: "bg-amber-100 text-amber-700" },
         ].map((m) => (
           <div key={m.label} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
             <div className={`w-9 h-9 rounded-xl ${m.color} flex items-center justify-center mb-3`}>
@@ -54,40 +59,59 @@ export default async function TherapistEarningsPage({
         ))}
       </div>
 
+      {/* A completed session with no `amount` contributes nothing to the totals.
+          Saying so distinguishes "earned little" from "we cannot tell", which
+          matters before anyone pays against these numbers. */}
+      {earnings.unpricedSessions > 0 && (
+        <div className="mb-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          {earnings.unpricedSessions} completed{" "}
+          {earnings.unpricedSessions === 1 ? "session carries" : "sessions carry"} no
+          recorded value and {earnings.unpricedSessions === 1 ? "is" : "are"} excluded
+          from these totals.
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-stone-100">
-          <h3 className="text-sm font-bold text-stone-800">Payout History</h3>
+          <h3 className="text-sm font-bold text-stone-800">Monthly Accrual</h3>
+          <p className="text-xs text-stone-400 mt-0.5">Last 6 months, by session date.</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[500px]">
-            <thead className="bg-stone-50 border-b border-stone-100">
-              <tr>
-                {["Period", "Sessions", "Gross", "Platform Fee", "Net Payout", "Status", ""].map((h) => (
-                  <th key={h} className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-50">
-              {MOCK_PAYOUTS.map((p) => (
-                <tr key={p.id} className="hover:bg-stone-50/50 transition-colors">
-                  <td className="px-5 py-4 text-sm font-medium text-stone-800">{p.period}</td>
-                  <td className="px-5 py-4 text-sm text-stone-600">{p.sessions}</td>
-                  <td className="px-5 py-4 text-sm text-stone-600">{p.gross}</td>
-                  <td className="px-5 py-4 text-sm text-stone-500">{p.fee}</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-stone-900">{p.net}</td>
-                  <td className="px-5 py-4">
-                    <AdminBadge label={p.status === "paid" ? "Paid" : "Pending"} variant={p.status === "paid" ? "success" : "warning"} dot />
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    {p.status === "pending" && (
-                      <button className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Approve →</button>
-                    )}
-                  </td>
+        {earnings.completedSessions === 0 ? (
+          <AdminEmptyState
+            title="No completed sessions"
+            description="Earnings accrue once this therapist completes a session that a client has paid for."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[500px]">
+              <thead className="bg-stone-50 border-b border-stone-100">
+                <tr>
+                  {["Month", "Sessions", "Client Value", `Therapist Share (${sharePercent}%)`, ""].map((h) => (
+                    <th key={h} className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-stone-50">
+                {earnings.monthly.map((m) => (
+                  <tr key={m.month} className="hover:bg-stone-50/50 transition-colors">
+                    <td className="px-5 py-4 text-sm font-medium text-stone-800">{m.month}</td>
+                    <td className="px-5 py-4 text-sm text-stone-600">{m.sessions}</td>
+                    <td className="px-5 py-4 text-sm text-stone-600">{formatKes(m.grossMinor)}</td>
+                    <td className="px-5 py-4 text-sm font-semibold text-stone-900">{formatKes(m.therapistShareMinor)}</td>
+                    <td className="px-5 py-4 w-1/3">
+                      <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-teal-500 rounded-full" style={{ width: `${(m.therapistShareMinor / maxMonth) * 100}%` }} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="px-5 py-4 border-t border-stone-100 text-xs text-stone-400">
+          Payouts are not yet implemented — these amounts are accrued, not paid.
+        </p>
       </div>
     </div>
   );

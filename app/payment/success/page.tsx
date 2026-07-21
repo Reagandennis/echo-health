@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, ArrowRight, Download, Sparkles } from "lucide-react";
 import { Suspense } from "react";
-import { updateUserMetadataAction } from "@/app/actions/user-metadata";
 
 function PaymentSuccessContent() {
   const router = useRouter();
@@ -12,17 +11,19 @@ function PaymentSuccessContent() {
   const plan = searchParams.get("plan") ?? "Plus";
   const [count, setCount] = useState(5);
 
-  // Persist the chosen plan so signin can skip onboarding next time.
-  //
-  // TODO: this is currently a no-op — `updateUserMetadataAction` is a stub that
-  // throws until Auth0 Management API credentials exist (see the file's header).
-  // Kept best-effort rather than blocking: a failed preference write must never
-  // break the payment confirmation screen the user just paid to reach.
-  useEffect(() => {
-    updateUserMetadataAction({ plan: plan.toLowerCase() }).catch((err) => {
-      console.error("Could not persist plan preference:", err);
-    });
-  }, [plan]);
+  /**
+   * This page NO LONGER grants the plan. Do not reintroduce that.
+   *
+   * It used to call `updateUserMetadataAction({ plan })` with a plan read
+   * straight out of `?plan=` — so visiting `/payment/success?plan=plus` granted
+   * a paid plan to anyone who typed the URL. It was harmless only while that
+   * action was an unimplemented stub that threw; the moment the Auth0
+   * Management API was wired up, it became a working entitlement escalation.
+   *
+   * Entitlements are now granted server-side only, after Paystack has confirmed
+   * the transaction — see `app/api/payments/webhook/route.ts`. The query
+   * parameter here is display-only and is never trusted.
+   */
 
   useEffect(() => {
     if (count <= 0) { router.push("/dashboard"); return; }

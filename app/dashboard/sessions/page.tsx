@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { TherapySession, Therapist } from "@/lib/types/documents";
 import {
-  PLAN_SESSIONS, PLACEHOLDER_THERAPIST_ID
+  PLACEHOLDER_THERAPIST_ID
 } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 import { useRealtime } from "@/hooks/useRealtime";
@@ -17,7 +17,8 @@ import {
   listPatientSessionsAction, 
   updateTherapySessionAction,
   listTherapistsAction,
-  getProfileByUserIdAction
+  getProfileByUserIdAction,
+  getSessionCreditsAction
 } from "@/app/actions/database";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -320,6 +321,7 @@ export default function SessionsPage() {
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [modal, setModal]         = useState<ModalView>(null);
   const [feedbackSess, setFeedbackSess] = useState<TherapySession | null>(null);
+  const [credits, setCredits] = useState({ entitled: 0, used: 0, remaining: 0 });
   const [loading, setLoading]     = useState(true);
   const [tab, setTab]             = useState<"upcoming" | "past">("upcoming");
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
@@ -349,10 +351,12 @@ export default function SessionsPage() {
     (async () => {
       try {
         const profile = await getProfileByUserIdAction(user.$id);
-        const [sess, therapistList] = await Promise.all([
+        const [creditData, sess, therapistList] = await Promise.all([
+          getSessionCreditsAction().catch(() => ({ entitled: 0, used: 0, remaining: 0 })),
           listPatientSessionsAction(user.$id).catch(() => [] as TherapySession[]),
           listTherapistsAction(profile?.therapistId).catch(() => [] as Therapist[]),
         ]);
+        setCredits(creditData);
         applySessions(sess as TherapySession[]);
         setTherapists(therapistList);
       } finally {
@@ -374,12 +378,13 @@ export default function SessionsPage() {
     );
   }
 
-  const plan = (user?.prefs as Record<string, string> | undefined)?.plan ?? "free";
-  const allowance = PLAN_SESSIONS[plan] ?? 1;
+  // Credits come from the server so the display cannot disagree with what
+  // booking actually enforces. Previously computed here from the current
+  // plan and the calendar month, which was wrong on both counts.
+  const allowance = credits.entitled;
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const used = sessions.filter((s) => s.status !== "cancelled" && new Date(s.scheduledAt) >= monthStart).length;
-  const remaining = Math.max(0, allowance - used);
+  const used = credits.used;
+  const remaining = credits.remaining;
   const upcoming = sessions.filter((s) => s.status !== "cancelled" && s.status !== "completed" && new Date(s.scheduledAt) > now);
   const past = sessions.filter((s) => s.status === "completed" || s.status === "cancelled" || new Date(s.scheduledAt) <= now);
 

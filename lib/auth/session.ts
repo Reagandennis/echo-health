@@ -1,19 +1,10 @@
 import { cache } from "react";
 import { auth0 } from "@/lib/auth0";
+import { METADATA_CLAIM, ROLES_CLAIM } from "@/lib/auth/claims";
 
-/**
- * Namespaced custom claim carrying the user's roles. Populated by the Auth0
- * post-login Action (see `scripts/auth0-roles-action.js`). Auth0 silently drops
- * non-namespaced custom claims from the ID token, so this prefix is required.
- */
-export const ROLES_CLAIM = "https://echo-health.app/roles";
-
-/**
- * Namespaced custom claim carrying Auth0 `user_metadata`. This is the direct
- * analogue of Appwrite's user "prefs" object (plan, sessionType, commStyle,
- * emergency contact) and is surfaced as `user.prefs` for continuity.
- */
-export const METADATA_CLAIM = "https://echo-health.app/user_metadata";
+// Claim names live in their own module so `lib/auth0.ts` can whitelist them in
+// `beforeSessionSaved` without importing this file (which imports it).
+export { ROLES_CLAIM, METADATA_CLAIM } from "@/lib/auth/claims";
 
 /**
  * Bootstrap roles by email address, from `ADMIN_EMAILS`, `THERAPIST_EMAILS` and

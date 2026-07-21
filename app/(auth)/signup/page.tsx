@@ -15,6 +15,24 @@ import posthog from "posthog-js";
  * New accounts come back with no role claim, so `/post-login` forwards them
  * to `/role-select` — the same destination the old Appwrite flow pushed to.
  */
+/**
+ * Carry a plan chosen on the landing page across the Auth0 round trip.
+ *
+ * The pricing CTAs link here as `/signup?plan=couples`. Without this the
+ * parameter dies at the redirect to Auth0 and the visitor arrives at
+ * /onboarding with the default plan selected, having to make the same choice a
+ * second time.
+ *
+ * Read from the live URL inside the handler rather than through
+ * `useSearchParams`, which would force this page behind a Suspense boundary for
+ * no benefit — the handler only ever runs in the browser. `/post-login`
+ * validates the value against the real plan ids before acting on it.
+ */
+function postLoginReturnTo(): string {
+  const plan = new URLSearchParams(window.location.search).get("plan");
+  return plan ? `/post-login?plan=${encodeURIComponent(plan)}` : "/post-login";
+}
+
 export default function SignUpPage() {
   const [agreed, setAgreed] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -22,13 +40,13 @@ export default function SignUpPage() {
   function handleSignUp() {
     setLeaving(true);
     posthog.capture("sign_up_started", { method: "auth0" });
-    signUp();
+    signUp(postLoginReturnTo());
   }
 
   function handleGoogle() {
     setLeaving(true);
     posthog.capture("sign_up_started", { method: "google" });
-    signInWithGoogle();
+    signInWithGoogle(postLoginReturnTo());
   }
 
   if (leaving) {

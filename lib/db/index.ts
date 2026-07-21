@@ -52,8 +52,31 @@ const sql =
   postgres(connectionString, {
     ssl: "require",
     max: 5,
-    idle_timeout: 20,
-    connect_timeout: 10,
+
+    /**
+     * Keep connections warm for 10 minutes.
+     *
+     * This was 20s, which is a sensible default on a local network and a serious
+     * mistake here. Round-trip time to this Azure instance is ~230ms, so a fresh
+     * connection — TCP plus TLS handshake — costs ~1.7 SECONDS. At 20s, anyone
+     * clicking through the admin or therapist menus at human pace found the pool
+     * empty on nearly every navigation and paid that reconnect each time.
+     *
+     * The cost of holding connections is the server's limit (~24 usable), and at
+     * `max: 5` per instance that is affordable. Latency is the scarce resource
+     * here, not connections.
+     */
+    idle_timeout: 600,
+
+    // Generous: the handshake alone is ~1.7s on this link, so a tight timeout
+    // would abort connections that were about to succeed.
+    connect_timeout: 30,
+
+    // Prepared statements are left ON (the default). They cost one extra
+    // round-trip the first time a statement is seen on a connection, then save
+    // parse/plan work on every reuse — which is the common case now that
+    // connections stay warm for 10 minutes. Turn this off ONLY if PgBouncer in
+    // transaction mode is ever put in front of this pool; it cannot support them.
   });
 
 if (process.env.NODE_ENV !== "production") {

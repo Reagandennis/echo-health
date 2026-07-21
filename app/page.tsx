@@ -7,15 +7,16 @@ import {
   CalendarCheck,
   HeartHandshake,
   ShieldCheck,
-  Clock,
-  MessageCircle,
+  Lock,
+  CalendarX2,
+  Infinity as InfinityIcon,
+  Wallet,
   Check,
 } from "lucide-react";
-import StatCounter from "./components/StatCounter";
-import ProgressBar from "./components/ProgressBar";
 import TestimonialCard from "./components/TestimonialCard";
 import PriceTag from "./components/PriceTag";
 import Footer from "./components/Footer";
+import { PLAN_PRICES, PLAN_SESSIONS, PLAN_PERIOD_LABELS } from "@/lib/constants";
 
 /* ─── Data ─────────────────────────────────────────── */
 
@@ -37,11 +38,41 @@ const steps = [
   },
 ];
 
-const outcomes = [
-  { label: "Report reduced anxiety within 8 weeks", value: 94 },
-  { label: "Say they feel genuinely understood", value: 91 },
-  { label: "Continue therapy beyond 3 months", value: 78 },
-  { label: "Would recommend Echo Health to a friend", value: 97 },
+/**
+ * How the offer works, stated as facts rather than as statistics.
+ *
+ * This replaced a band of animated counters — "10,000+ people helped",
+ * "500+ licensed therapists", "94% report improvement" — and a chart of
+ * outcome percentages footnoted "based on outcome surveys across 10,000+ Echo
+ * Health users". None of those numbers existed anywhere but in the JSX: there
+ * is no survey table, no aggregation query, no seed data, and the database has
+ * almost no users. Sitting directly above a price, they were a misleading
+ * representation under the Consumer Protection Act 2012 (Kenya) s.12–13.
+ *
+ * Everything below is enforced in code, so it stays true without anyone having
+ * to remember to check it.
+ */
+const guarantees = [
+  {
+    icon: Wallet,
+    title: "Pay once",
+    body: "One-time payment for a bundle of sessions. No subscription, no auto-renewal, nothing to cancel.",
+  },
+  {
+    icon: InfinityIcon,
+    title: "Credits never expire",
+    body: "Sessions you have paid for stay in your account until you use them, however long that takes.",
+  },
+  {
+    icon: CalendarX2,
+    title: "Reschedule freely",
+    body: "Cancel a booking at least 24 hours ahead and the credit goes straight back to your account.",
+  },
+  {
+    icon: Lock,
+    title: "Private by design",
+    body: "Sessions and messages are encrypted in transit and visible only to you and your therapist.",
+  },
 ];
 
 const therapists = [
@@ -98,15 +129,31 @@ const testimonials = [
   },
 ];
 
+/**
+ * Public pricing. These MUST match `PLAN_PRICES` / `PLAN_SESSIONS` exactly —
+ * this is the page a customer forms their expectation from.
+ *
+ * It previously advertised "/ week" on every plan and "2 sessions per week" on
+ * Plus, which described a weekly subscription that does not exist: these are
+ * one-time bundles of 1 or 2 sessions. Someone reading it could reasonably have
+ * believed KES 6,500 bought them a session every week.
+ *
+ * `id` matches the keys in `PLAN_PRICES` because it travels: every CTA below
+ * carries it to /signup, and it survives all the way to /checkout. Without it
+ * the section was decorative — clicking "Couples" dropped you on /onboarding
+ * with "Plus" pre-selected and no memory of the choice you had just made.
+ */
 const plans = [
   {
+    id: "individual",
     name: "Individual",
-    price: 69,
-    period: "/ week",
-    description: "One-on-one sessions with a licensed therapist.",
+    price: PLAN_PRICES.individual,
+    sessions: PLAN_SESSIONS.individual,
+    period: PLAN_PERIOD_LABELS.individual,
+    description: "One session with a licensed therapist. Book another whenever you need it.",
     features: [
-      "Weekly 50-min video or phone session",
-      "Unlimited in-app messaging",
+      "One 50-min video or phone session",
+      "Secure in-app messaging with your therapist",
       "Therapist matching within 24 h",
       "Progress tracking dashboard",
     ],
@@ -114,28 +161,32 @@ const plans = [
     cta: "Get started",
   },
   {
+    id: "plus",
     name: "Plus",
-    price: 99,
-    period: "/ week",
-    description: "More support, more flexibility.",
+    price: PLAN_PRICES.plus,
+    sessions: PLAN_SESSIONS.plus,
+    period: PLAN_PERIOD_LABELS.plus,
+    description: "Two sessions plus therapy materials — the best value per session.",
     features: [
-      "Everything in Individual",
-      "2 sessions per week",
+      "Two 50-min video or phone sessions",
+      "Therapy materials & worksheets",
       "Priority therapist matching",
-      "On-demand crisis support",
-      "Monthly care plan review",
+      "Secure in-app messaging with your therapist",
+      "Progress tracking dashboard",
     ],
     highlighted: true,
-    cta: "Start free trial",
+    cta: "Get started",
   },
   {
+    id: "couples",
     name: "Couples",
-    price: 109,
-    period: "/ week",
-    description: "Guided sessions for you and your partner.",
+    price: PLAN_PRICES.couples,
+    sessions: PLAN_SESSIONS.couples,
+    period: PLAN_PERIOD_LABELS.couples,
+    description: "Two joint sessions for you and your partner, with shared resources.",
     features: [
-      "Weekly 50-min couples session",
-      "Individual check-ins between sessions",
+      "Two 50-min joint sessions for both partners",
+      "Couples resource library & exercises",
       "Shared progress insights",
       "Specialised couples therapists",
     ],
@@ -144,10 +195,24 @@ const plans = [
   },
 ];
 
+/**
+ * Hero trust strip.
+ *
+ * The first badge used to read "HIPAA compliant". HIPAA is a United States
+ * statute and has no application to a Kenyan service — the instrument that
+ * actually governs this data is the Data Protection Act 2019 (Kenya). Claiming
+ * compliance with the wrong regime is worse than claiming none: it is both
+ * false and unverifiable. These describe the protections that exist instead of
+ * naming a regime.
+ *
+ * "Available 7 days a week" and "Unlimited messaging" went with it — the first
+ * depends entirely on individual therapist availability, and neither is
+ * enforced anywhere in the product.
+ */
 const trust = [
-  { icon: ShieldCheck, label: "HIPAA compliant" },
-  { icon: Clock, label: "Available 7 days a week" },
-  { icon: MessageCircle, label: "Unlimited messaging" },
+  { icon: ShieldCheck, label: "Licence-verified therapists" },
+  { icon: Lock, label: "Encrypted in transit" },
+  { icon: CalendarCheck, label: "Book around your schedule" },
 ];
 
 /* ─── Page ─────────────────────────────────────────── */
@@ -219,14 +284,17 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Stats ────────────────────────────────── */}
+        {/* ── How the money works ──────────────────── */}
         <section className="bg-teal-700 px-6 py-20 text-white">
           <div className="mx-auto max-w-5xl">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-12  ">
-              <StatCounter end={10000} suffix="+" label="People helped" className="text-white" labelClassName="text-white/70" />
-              <StatCounter end={500} suffix="+" label="Licensed therapists" className="text-white" labelClassName="text-white/70" />
-              <StatCounter end={94} suffix="%" label="Report improvement" className="text-white" labelClassName="text-white/70" />
-              <StatCounter end={3} label="Avg. days to first session" className="text-white" labelClassName="text-white/70" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+              {guarantees.map(({ icon: Icon, title, body }) => (
+                <div key={title} className="flex flex-col gap-3">
+                  <Icon className="w-6 h-6 text-white/80" strokeWidth={1.8} />
+                  <h3 className="font-semibold text-white">{title}</h3>
+                  <p className="text-sm leading-6 text-white/70">{body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -266,33 +334,14 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Outcomes chart ───────────────────────── */}
-        <section className="px-6 py-24 bg-teal-700">
-          <div className="mx-auto max-w-5xl grid gap-16 sm:grid-cols-2 items-center">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-widest text-white/70">Real results</span>
-              <h2 className="mt-3 text-3xl sm:text-4xl font-bold  text-white leading-tight ">
-                Therapy that actually moves the needle
-              </h2>
-              <p className="mt-4 text-white leading-7">
-                Based on outcome surveys across 10,000+ Echo Health users after
-                8 weeks of consistent therapy. Results are from self-reported
-                assessments.
-              </p>
-              <a
-                href="#get-started"
-                className="mt-8 inline-block rounded-full bg-teal-900 px-7 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity"
-              >
-                Start your journey
-              </a>
-            </div>
-            <div className="flex flex-col gap-6 rounded-2xl border border-cream/70 bg-white p-8 shadow-sm">
-              {outcomes.map((o, i) => (
-                <ProgressBar key={o.label} label={o.label} value={o.value} delay={i * 150} />
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* An "Outcomes" section stood here: a "Real results" headline over four
+            progress bars (94% reduced anxiety, 91% feel understood, 78% continue
+            past 3 months, 97% would recommend) footnoted "based on outcome
+            surveys across 10,000+ Echo Health users after 8 weeks". No such
+            survey, aggregation or user base exists — the numbers were literals
+            in this file. Removed rather than rewritten: there is no honest
+            version of a clinical-outcomes claim we have not measured. Restore it
+            the day `sessionFeedback` is actually aggregated. */}
 
         {/* ── Therapists ───────────────────────────── */}
         <section id="therapists" className="px-6 py-24 bg-white">
@@ -340,8 +389,12 @@ export default function Home() {
               ))}
             </div>
             <div className="mt-12 text-center">
-              <a href="#get-started" className="rounded-full border-2 border-brand px-8 py-3 text-sm font-semibold text-brand hover:bg-cream/40 transition-colors">
-                Browse all therapists
+              {/* Pointed at `#get-started`, an id that does not exist on this
+                  page — the button did nothing. Sends visitors to pricing, the
+                  next real step, since browsing the full roster requires an
+                  account. */}
+              <a href="#pricing" className="rounded-full border-2 border-brand px-8 py-3 text-sm font-semibold text-brand hover:bg-cream/40 transition-colors">
+                See plans &amp; get matched
               </a>
             </div>
           </div>
@@ -373,10 +426,16 @@ export default function Home() {
                 Simple, transparent plans
               </h2>
               <p className="mt-4 text-slate-500 max-w-md mx-auto leading-7">
-                No hidden fees. Cancel or change plans anytime. First week is free on Plus.
+                One-time payment — no subscription and no auto-renewal. Your session
+                credits never expire. Pay with M-Pesa, card, or bank transfer.
               </p>
             </div>
-            <div className="grid gap-6 sm:grid-cols-3 items-stretch">
+            {/* Three-up only from `md`. At the old `sm` breakpoint (640px) each
+                card had roughly 145px of content width, which is not enough for
+                a plan price at any weight that reads as a headline. The extra
+                row gap on mobile is for the "Most popular" badge, which hangs
+                above its card and clipped the card stacked above it. */}
+            <div className="grid gap-x-6 gap-y-10 md:gap-6 md:grid-cols-3 items-stretch">
               {plans.map((plan) => (
                 <div
                   key={plan.name}
@@ -401,7 +460,7 @@ export default function Home() {
                   </div>
                   <div className="mb-8">
                     <PriceTag
-                      usd={plan.price}
+                      amount={plan.price}
                       period={plan.period}
                       priceClass={plan.highlighted ? "text-white" : "text-brand"}
                       periodClass={plan.highlighted ? "text-white/60" : "text-brand/50"}
@@ -418,8 +477,12 @@ export default function Home() {
                       </li>
                     ))}
                   </ul>
+                  {/* Carries the choice the visitor just made. `?plan=` survives
+                      sign-up, /post-login and /role-select, and lands as the
+                      pre-selected plan on /onboarding — so picking "Couples"
+                      here means never being asked again. */}
                   <Link
-                    href="/signup"
+                    href={`/signup?plan=${plan.id}`}
                     className={`block text-center rounded-full py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${
                       plan.highlighted ? "bg-white text-brand" : "bg-brand text-white"
                     }`}
@@ -438,15 +501,19 @@ export default function Home() {
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
               Your first step starts here.
             </h2>
+            {/* Was "Thousands of people have already taken control of their
+                mental health with Echo Health" — the same unevidenced volume
+                claim as the counters above, in prose. The CTA also said "free to
+                start", which it is not: the cheapest way in is a paid session. */}
             <p className="mt-4 text-white/80 leading-7">
-              Thousands of people have already taken control of their mental
-              health with Echo Health. Today can be your day one.
+              Answer a few questions, meet a licensed therapist, and pay only for
+              the sessions you book. Today can be your day one.
             </p>
             <Link
               href="/signup"
               className="mt-8 inline-block rounded-full bg-white px-10 py-4 text-sm font-semibold text-teal-700 shadow-lg hover:opacity-90 transition-opacity"
             >
-              Match with a therapist — it&apos;s free to start
+              Match with a therapist
             </Link>
           </div>
         </section>

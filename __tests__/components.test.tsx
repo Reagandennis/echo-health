@@ -68,17 +68,89 @@ describe("small shared components", () => {
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
   });
 
-  it("formats prices through the currency hook", () => {
+  it("shows the base price exactly when no conversion applies", () => {
     mockedUseCurrency.mockReturnValue({
-      formatPrice: (amount: number) => `KES ${amount * 130}`,
+      formatPrice: (amount: number) => `KES ${amount}`,
+      formatExact: (amount: number) => `KES ${amount}`,
+      isConverted: false,
       loading: false,
       currency: "KES",
+      baseCurrency: "KES",
     });
 
-    render(<PriceTag usd={40} period="/ session" />);
+    render(<PriceTag amount={8900} period="/ session" />);
 
-    expect(screen.getByText("KES 5200")).toBeInTheDocument();
-    expect(screen.getByText("/ session")).toBeInTheDocument();
+    // No "≈" and no charge notice: this IS the amount that will be charged.
+    expect(screen.getByText("KES 8900")).toBeInTheDocument();
+    expect(screen.queryByText(/Charged in/)).not.toBeInTheDocument();
+  });
+
+  it("marks a converted price as approximate and still shows the charge amount", () => {
+    mockedUseCurrency.mockReturnValue({
+      formatPrice: (amount: number) => `$${Math.round(amount * 0.0077)}`,
+      formatExact: (amount: number) => `KES ${amount}`,
+      isConverted: true,
+      loading: false,
+      currency: "USD",
+      baseCurrency: "KES",
+    });
+
+    render(<PriceTag amount={8900} period="/ session" />);
+
+    // Quoting a converted figure without saying so — and without showing what is
+    // actually charged — is what produces chargebacks.
+    expect(screen.getByText(/≈/)).toBeInTheDocument();
+    expect(screen.getByText(/KES 8900/)).toBeInTheDocument();
+  });
+
+  /**
+   * Regression guard for a blank price.
+   *
+   * `formatPrice` used to return "…" while two third-party lookups (ipapi.co,
+   * then open.er-api.com) resolved, and PriceTag dimmed it to `opacity-40`. On a
+   * Kenyan mobile connection that made the single most important element on the
+   * pricing page a faded ellipsis for up to a couple of seconds — for visitors
+   * whose price needed no lookup at all, since KES is the base currency.
+   */
+  it("renders the base price at full opacity while detection is still in flight", () => {
+    mockedUseCurrency.mockReturnValue({
+      formatPrice: (amount: number) => `KES ${amount}`,
+      formatExact: (amount: number) => `KES ${amount}`,
+      isConverted: false,
+      loading: true,
+      currency: "KES",
+      baseCurrency: "KES",
+    });
+
+    render(<PriceTag amount={6500} period="per session" />);
+
+    const price = screen.getByText("KES 6500");
+    expect(price).toBeInTheDocument();
+    expect(screen.queryByText("…")).not.toBeInTheDocument();
+    expect(price.className).not.toMatch(/opacity-40/);
+  });
+
+  /**
+   * The size used to be hard-coded as `text-4xl` in the base className while
+   * callers passed a competing size through `priceClass`. Tailwind resolves
+   * conflicting utilities by stylesheet order rather than class-string order, so
+   * `text-4xl` won regardless and checkout's `text-2xl` was silently ignored.
+   */
+  it("lets the caller own the price font size", () => {
+    mockedUseCurrency.mockReturnValue({
+      formatPrice: (amount: number) => `KES ${amount}`,
+      formatExact: (amount: number) => `KES ${amount}`,
+      isConverted: false,
+      loading: false,
+      currency: "KES",
+      baseCurrency: "KES",
+    });
+
+    render(<PriceTag amount={6500} sizeClass="text-2xl" />);
+
+    const price = screen.getByText("KES 6500");
+    expect(price.className).toContain("text-2xl");
+    expect(price.className).not.toMatch(/text-4xl/);
   });
 
   it("renders admin badge helper mappings", () => {

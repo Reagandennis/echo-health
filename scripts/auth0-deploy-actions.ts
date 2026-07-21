@@ -52,6 +52,13 @@ const ACTIONS = [
       { name: "M2M_CLIENT_SECRET", value: E.AUTH0_M2M_CLIENT_SECRET },
     ],
   },
+  {
+    // Roles + user_metadata claims. Managed here so the tenant matches the repo
+    // rather than whatever was last pasted into the dashboard.
+    name: "auth",
+    file: "scripts/auth0-roles-action.js",
+    secrets: [],
+  },
 ];
 
 /** Final binding order for the post-login trigger. */

@@ -3,17 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=6144' next dev --webpack",
-    "dev:turbo": "next dev",
+    "dev": "next dev",
+    "dev:webpack": "NODE_OPTIONS='--max-old-space-size=6144' next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate --custom",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:generate:auto": "drizzle-kit generate"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",

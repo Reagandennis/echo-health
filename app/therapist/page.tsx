@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@/app/components/UserProvider";
 import { 
-  getTherapistByUserIdAction, 
-  listTherapistDashboardStatsAction,
-  listPendingTherapistSessionsAction,
+  getTherapistDashboardAction,
   updateTherapySessionAction
 } from "@/app/actions/database";
 import {
@@ -16,7 +14,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-interface Session { $id: string; patientId: string; scheduledAt: string; status: string; notes?: string; }
+interface Session {
+  $id: string;
+  patientId: string;
+  scheduledAt: string;
+  status: string;
+  /** Real column since the Postgres migration; was packed into `notes` before. */
+  sessionType?: string;
+  notes?: string;
+}
 
 function fmt(iso: string) {
   const d = new Date(iso);
@@ -36,30 +42,35 @@ export default function TherapistHomePage() {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState<string | null>(null);
 
+  // Ticks every 30s. Calling Date.now() during render is impure — React may
+  // render at any time, so the value is non-deterministic — and it also meant
+  // the "starting soon" badge never updated until something else re-rendered.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     (async () => {
       setTherapistName(user.name?.split(" ")[0] ?? "Doctor");
-      const therapist = await getTherapistByUserIdAction();
-      if (!therapist) {
-        setLoading(false);
-        return;
-      }
 
-      setKycStatus(therapist.kycStatus ?? "incomplete");
-
+      // One round-trip-efficient call instead of three. The therapist lookup used
+      // to gate a second wave of queries, so nothing could start until it
+      // resolved; this resolves and reads in a single transaction.
       try {
-        const [statsData, pendingData] = await Promise.all([
-          listTherapistDashboardStatsAction(therapist.$id),
-          listPendingTherapistSessionsAction(therapist.$id)
-        ]);
-        setTodaySessions(statsData.today);
-        setPendingRequests(pendingData as unknown as Session[]);
-        setStats({ 
-          total: statsData.all, 
-          thisWeek: statsData.thisWeek, 
-          pending: statsData.pending 
-        });
+        const { therapist, stats: s, today, pending } = await getTherapistDashboardAction();
+
+        if (!therapist) {
+          setLoading(false);
+          return;
+        }
+
+        setKycStatus(therapist.kycStatus ?? "incomplete");
+        setTodaySessions(today);
+        setPendingRequests(pending as unknown as Session[]);
+        if (s) setStats({ total: s.all, thisWeek: s.thisWeek, pending: s.pending });
       } catch { /* empty collections */ }
       setLoading(false);
     })();
@@ -71,12 +82,11 @@ export default function TherapistHomePage() {
       await updateTherapySessionAction(sessionId, { status: "confirmed" });
       setPendingRequests(prev => prev.filter(s => s.$id !== sessionId));
       setStats(prev => ({ ...prev, pending: prev.pending - 1 }));
-      // Refresh today's agenda if it was for today
-      const therapist = await getTherapistByUserIdAction();
-      if (therapist) {
-        const statsData = await listTherapistDashboardStatsAction(therapist.$id);
-        setTodaySessions(statsData.today);
-      }
+      // Refresh today's agenda in case the confirmed session is today. Same
+      // single-transaction call as the initial load rather than re-resolving the
+      // therapist and re-querying stats separately.
+      const { today } = await getTherapistDashboardAction();
+      setTodaySessions(today);
     } catch (err) {
       console.error(err);
       alert("Failed to confirm session.");
@@ -250,11 +260,12 @@ export default function TherapistHomePage() {
             ) : (
               todaySessions.map((s) => {
                 const scheduledTime = new Date(s.scheduledAt).getTime();
-                const now = Date.now();
                 const diffMinutes = (scheduledTime - now) / (1000 * 60);
                 const isSoon = diffMinutes <= 10 && diffMinutes >= -60; // 10 mins before to 1 hour after start
-                const isVideo = s.notes?.toLowerCase().includes("video");
-                const isChat = s.notes?.toLowerCase().includes("chat");
+                // `sessionType` is a real column now. This used to sniff the
+                // word "video" out of the free-text notes, because the booking
+                // form packed the type into them as `${type}|${note}`.
+                const isVideo = s.sessionType === "video";
 
                 return (
                   <div key={s.$id} className="flex items-center gap-4 px-6 py-4 hover:bg-stone-50 transition-colors group">

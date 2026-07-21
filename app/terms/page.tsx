@@ -23,7 +23,7 @@ These Terms constitute a legally binding agreement between you and Echo Health, 
   {
     id: "not-medical-emergency",
     title: "2. Not for Medical Emergencies",
-    content: `**IF YOU ARE EXPERIENCING A MEDICAL EMERGENCY, ARE IN DANGER, OR ARE FEELING SUICIDAL, CALL 911 (OR YOUR LOCAL EMERGENCY NUMBER) IMMEDIATELY OR GO TO THE NEAREST EMERGENCY ROOM.**
+    content: `**IF YOU ARE EXPERIENCING A MEDICAL EMERGENCY, ARE IN DANGER, OR ARE FEELING SUICIDAL, CALL YOUR LOCAL EMERGENCY NUMBER IMMEDIATELY OR GO TO THE NEAREST EMERGENCY ROOM.** In Kenya that is 999, 112 or 911; in the United States it is 911.
 
 Echo Health is not a suicide prevention lifeline, and our therapists cannot provide emergency psychiatric or medical care. Our Platform is not designed for crisis situations. Please use our Crisis Support page for immediate resources.`,
   },
@@ -46,10 +46,18 @@ You are responsible for maintaining the confidentiality of your account credenti
   },
   {
     id: "payments",
-    title: "5. Payments & Subscriptions",
-    content: `**Fees:** You agree to pay all fees associated with your selected subscription plan or individual sessions. All fees are listed on our Pricing page.
-    
-**Subscriptions:** Subscriptions auto-renew automatically unless cancelled before the end of the current billing period. You can manage your subscription in your Account Settings.
+    // Retitled from "Payments & Subscriptions". Echo Health sells one-time
+    // session bundles; there is no subscription product, and the section
+    // opened by referring to "your selected subscription plan" — a term of
+    // art that describes recurring billing we do not operate. A contract that
+    // contradicts the thing being sold is unenforceable in the parts that
+    // matter and misleading in the rest.
+    title: "5. Payments",
+    content: `**Fees:** You agree to pay the fee for the session bundle you select. All fees are listed on our Pricing page and are charged in Kenyan Shillings.
+
+**One-time purchases:** Session bundles are one-time purchases. Nothing auto-renews, there is no recurring billing and there is no subscription to cancel. Session credits do not expire, and cancelling a booking at least 24 hours ahead returns the credit to your account. You can review your purchase history in your Account Settings.
+
+**Switching therapists:** There is no charge to be matched with a different therapist, and doing so does not affect any session credits you hold.
 
 **Refunds:** All payments are generally non-refundable, except as required by law or as explicitly stated in our Refund Policy. If you cancel a session with less than 24 hours' notice, you may be charged a cancellation fee.`,
   },

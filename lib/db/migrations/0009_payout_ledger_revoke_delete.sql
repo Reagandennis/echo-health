@@ -1,0 +1,35 @@
+-- Make "append-only" actually append-only on payout_ledger.
+--
+-- Migration 0008 grants only SELECT, INSERT and UPDATE and comments that DELETE
+-- is therefore withheld. That comment was wrong, and the same wrongness applies
+-- to `payments` (migration 0006), which relies on the identical assumption.
+--
+-- This database has a default ACL in place:
+--
+--   SELECT defaclrole::regrole, defaclacl FROM pg_default_acl;
+--    echo_admin | {echo_app=arwd/echo_admin}
+--
+-- `arwd` is INSERT, SELECT, UPDATE and DELETE. It was configured during role
+-- provisioning rather than in a migration, so it is invisible to anyone reading
+-- this directory — and it fires on every table echo_admin subsequently creates.
+-- Listing three privileges in a GRANT does not withhold the fourth; the default
+-- ACL had already granted it before the GRANT statement ran.
+--
+-- Verified after 0008 applied:
+--   has_table_privilege('echo_app','payout_ledger','DELETE') → true
+--
+-- The data was never actually at risk: with no DELETE policy, RLS matches zero
+-- rows and a delete removes nothing. But it removes nothing SILENTLY — the
+-- statement succeeds and reports success. On a financial ledger the difference
+-- between "refused" and "quietly did nothing" is the difference between an
+-- incident you find immediately and one you find during an audit.
+--
+-- REVOKE makes the refusal explicit and loud (permission denied for table
+-- payout_ledger). Both layers now agree, and neither is load-bearing alone.
+
+REVOKE DELETE, TRUNCATE ON payout_ledger FROM echo_app;
+
+-- NOT applied to `payments` here on purpose: it has the same latent issue and
+-- deserves the same fix, but it belongs to the payments migration lineage and
+-- changing another table's privileges from a payout migration is how a schema
+-- becomes impossible to reason about. Tracked separately.

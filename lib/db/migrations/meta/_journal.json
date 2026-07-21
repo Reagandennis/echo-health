@@ -43,6 +43,55 @@
       "when": 1784539166049,
       "tag": "0005_avatars_table",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784566575679,
+      "tag": "0006_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784568380617,
+      "tag": "0007_promo_redemptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784610064871,
+      "tag": "0008_payout_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784610465913,
+      "tag": "0009_payout_ledger_revoke_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784610585697,
+      "tag": "0010_system_context_for_webhook",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784610830636,
+      "tag": "0011_session_funding_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784611476823,
+      "tag": "0012_revoke_delete_on_ledgers",
+      "breakpoints": true
     }
   ]
 }

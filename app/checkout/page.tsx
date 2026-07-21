@@ -2,68 +2,84 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Lock, CreditCard, Check, Tag, X, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  Lock,
+  Check,
+  Tag,
+  X,
+  Sparkles,
+  RefreshCw,
+  Infinity as InfinityIcon,
+  CalendarX2,
+  Wallet,
+} from "lucide-react";
 import { Suspense } from "react";
 import PriceTag from "@/app/components/PriceTag";
 import { useUser } from "@/app/components/UserProvider";
+import { PLAN_PRICES, PLAN_PERIOD_LABELS, PLAN_SESSIONS, PROMO_DISCOUNT_PERCENT } from "@/lib/constants";
 
+/**
+ * Kept in step with the lists on /onboarding — a summary that describes a
+ * different product from the one the visitor just picked is worse than no
+ * summary at all. "AI session summaries" and the "24-hr therapist response SLA"
+ * were dropped from both: neither exists in the product.
+ */
 const plans: Record<
   string,
   { name: string; price: number; period: string; features: string[] }
 > = {
   individual: {
     name: "Individual",
-    price: 69,
-    period: "/month",
+    price: PLAN_PRICES.individual,
+    period: PLAN_PERIOD_LABELS.individual,
     features: [
-      "Weekly 50-min video sessions",
-      "Unlimited secure messaging",
-      "Progress tracking dashboard",
-      "AI session summaries",
+      "One 50-minute video session, one to one",
+      "Matched with a licensed therapist",
+      "Secure messaging between sessions",
+      "Mood, goal and progress tracking",
     ],
   },
   plus: {
     name: "Plus",
-    price: 99,
-    period: "/month",
+    price: PLAN_PRICES.plus,
+    period: PLAN_PERIOD_LABELS.plus,
     features: [
-      "Weekly 50-min video sessions",
-      "Priority therapist matching",
-      "Unlimited secure messaging",
-      "24-hr therapist response SLA",
-      "Progress tracking dashboard",
-      "AI session summaries",
+      "Two 50-minute video sessions",
+      "Everything in Individual",
+      "Therapy worksheets and guided exercises",
+      "Lowest cost per session of any plan",
     ],
   },
   couples: {
     name: "Couples",
-    price: 109,
-    period: "/month",
+    price: PLAN_PRICES.couples,
+    period: PLAN_PERIOD_LABELS.couples,
     features: [
-      "Weekly 50-min joint sessions",
-      "Couples progress dashboard",
-      "Secure partner messaging channel",
-      "Relationship milestone tracking",
-      "AI session summaries",
+      "Two 50-minute sessions with both partners on the call",
+      "Everything in Individual, for both of you",
+      "Couples worksheets and shared exercises",
+      "Matched with a therapist who works with couples",
     ],
   },
 };
 
-// Format card number with spaces every 4 digits
-function formatCardNumber(value: string) {
-  return value
-    .replaceAll(/\D/g, "")
-    .slice(0, 16)
-    .replaceAll(/(.{4})/g, "$1 ")
-    .trim();
-}
-
-// Format expiry as MM / YY
-function formatExpiry(value: string) {
-  const digits = value.replaceAll(/\D/g, "").slice(0, 4);
-  if (digits.length >= 3) return `${digits.slice(0, 2)} / ${digits.slice(2)}`;
-  return digits;
-}
+/**
+ * The same four promises as /onboarding, restated at the last possible moment.
+ *
+ * Repetition is the point: this is the screen where someone is about to part
+ * with money under Terms that make the payment non-refundable, and the previous
+ * version answered none of the questions that stops them.
+ */
+const reassurances = [
+  {
+    icon: RefreshCw,
+    text: "Not the right fit? Ask us to match you with a different therapist — there is no charge to switch.",
+  },
+  { icon: InfinityIcon, text: "Your session credits never expire." },
+  { icon: CalendarX2, text: "Cancel a booking 24 hours ahead and the credit returns to your account." },
+  { icon: Wallet, text: "Pay with M-Pesa, card, or bank transfer." },
+];
 
 function CheckoutContent() {
   const user = useUser();
@@ -71,17 +87,14 @@ function CheckoutContent() {
   const searchParams = useSearchParams();
   const planId = searchParams.get("plan") ?? "plus";
   const plan = plans[planId] ?? plans.plus;
+  const sessions = PLAN_SESSIONS[planId] ?? PLAN_SESSIONS.plus;
 
-  const [form, setForm] = useState({
-    cardName: "",
-    cardNumber: "",
-    expiry: "",
-    cvc: "",
-  });
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<typeof form>>({});
+  const [payError, setPayError] = useState<string | null>(null);
 
-  // Promo code state
+  // Promo code state. `promoOpen` keeps the field collapsed until asked for —
+  // see the note on the disclosure below.
+  const [promoOpen, setPromoOpen] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
@@ -115,44 +128,46 @@ function CheckoutContent() {
 
   function handleRemovePromo() {
     setPromoApplied(false);
+    setPromoOpen(false);
     setPromoInput("");
     setPromoError("");
   }
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const { name, value } = e.target;
-    let formatted = value;
-    if (name === "cardNumber") formatted = formatCardNumber(value);
-    if (name === "expiry") formatted = formatExpiry(value);
-    if (name === "cvc") formatted = value.replaceAll(/\D/g, "").slice(0, 4);
-    setForm((prev) => ({ ...prev, [name]: formatted }));
-    setErrors((prev) => ({ ...prev, [name]: undefined }));
-  }
-
-  function validate() {
-    const errs: Partial<typeof form> = {};
-    if (!form.cardName.trim()) errs.cardName = "Name on card is required.";
-    if (form.cardNumber.replaceAll(/\s/g, "").length < 16)
-      errs.cardNumber = "Enter a valid 16-digit card number.";
-    if (form.expiry.replaceAll(/\W/g, "").length < 4)
-      errs.expiry = "Enter a valid expiry date.";
-    if (form.cvc.length < 3) errs.cvc = "Enter a valid CVC.";
-    return errs;
-  }
-
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!promoApplied) {
-      const errs = validate();
-      if (Object.keys(errs).length > 0) {
-        setErrors(errs);
-        return;
-      }
-    }
+    setPayError(null);
+
     setLoading(true);
-    // Payment provider integration goes here (e.g. Stripe, Paystack, etc.)
-    // On failure: router.push(`/payment/failed?plan=${planId}&reason=declined`)
-    router.push(`/payment/success?plan=${plan.name}`);
+    try {
+      // Only the plan id and the promo CODE are sent — never a price or a
+      // discount. The server looks up the plan, re-validates the code, and
+      // computes the amount. A client that could state its own price is how
+      // people pay one shilling for the top plan.
+      //
+      // A promo is a 50% discount, not a free pass: the remainder is still
+      // charged, so this no longer short-circuits past the payment processor.
+      const res = await fetch("/api/payments/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: planId,
+          ...(promoApplied ? { promoCode: promoInput.trim() } : {}),
+        }),
+      });
+
+      const data = (await res.json()) as { authorizationUrl?: string; error?: string };
+
+      if (!res.ok || !data.authorizationUrl) {
+        throw new Error(data.error ?? "Could not start payment.");
+      }
+
+      // Hand off to Paystack's hosted checkout. `assign`, not `push`: this
+      // leaves the app entirely and must be a full navigation.
+      window.location.assign(data.authorizationUrl);
+    } catch (err: unknown) {
+      setPayError(err instanceof Error ? err.message : "Could not start payment.");
+      setLoading(false);
+    }
   }
 
   return (
@@ -180,18 +195,45 @@ function CheckoutContent() {
           <h1 className="text-2xl font-bold text-brand mb-1">Complete your order</h1>
           <p className="text-sm text-brand/50 mb-8">
             {promoApplied
-              ? "Your promo code has been applied. No payment needed for this session."
-              : "You'll be charged after confirming your details below."}
+              ? `Your promo code gives ${PROMO_DISCOUNT_PERCENT}% off. You'll be charged the discounted amount.`
+              : "You'll be redirected to Paystack to complete payment."}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            {/* Promo code */}
+            {/* No card fields, deliberately.
+                Card details are collected on Paystack's hosted checkout, not
+                here. Accepting a PAN/CVC in this form would place the whole
+                application in PCI DSS scope (SAQ D rather than SAQ A) — and the
+                previous version collected them only to discard them, which is
+                the worst of both worlds. */}
+            {!promoApplied && (
+              <div className="rounded-xl border border-brand/15 bg-white px-4 py-4 flex gap-3 items-start">
+                <Lock size={16} className="text-brand mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-brand">Secure checkout by Paystack</p>
+                  <p className="text-xs text-brand/55 mt-1 leading-relaxed">
+                    You&apos;ll be redirected to Paystack to complete payment by card,
+                    M-Pesa or bank transfer. Echo Health never sees your card details.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Promo code — a disclosure, not a field.
+                This used to be the first and most prominent element on the page:
+                a large empty box demanding a code that almost nobody has. An
+                empty discount field immediately before payment does not win
+                anyone a discount, it just plants "everyone else is paying less
+                than me" and sends people off to search for a code they will not
+                find. Collapsed to a link so the people who do hold one can still
+                use it without the rest being asked a question they cannot
+                answer. */}
             {promoApplied ? (
               <div className="flex items-center gap-3 bg-brand/8 border border-brand/20 rounded-xl px-4 py-3">
                 <Sparkles size={16} className="text-brand shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-brand">Promo code applied!</p>
-                  <p className="text-xs text-brand/50">{promoInput.toUpperCase()} · 1 free session</p>
+                  <p className="text-xs text-brand/50">{promoInput.toUpperCase()} · {PROMO_DISCOUNT_PERCENT}% off</p>
                 </div>
                 <button
                   type="button"
@@ -202,15 +244,16 @@ function CheckoutContent() {
                   <X size={15} />
                 </button>
               </div>
-            ) : (
+            ) : promoOpen ? (
               <div>
                 <label htmlFor="promoCode" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                  Promo code <span className="normal-case font-normal text-brand/35">(optional)</span>
+                  Promo code
                 </label>
                 <div className="flex gap-2">
                   <input
                     id="promoCode"
                     type="text"
+                    autoFocus
                     value={promoInput}
                     onChange={(e) => { setPromoInput(e.target.value); setPromoError(""); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleApplyPromo(); } }}
@@ -232,102 +275,21 @@ function CheckoutContent() {
                   <p className="text-red-500 text-xs mt-1">{promoError}</p>
                 )}
               </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPromoOpen(true)}
+                className="text-sm text-brand/50 hover:text-brand underline underline-offset-4 transition-colors"
+              >
+                Have a promo code?
+              </button>
             )}
 
-            {/* Payment fields — hidden when promo is applied */}
-            {!promoApplied && (<>
-            <div>
-              <label htmlFor="cardName" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                Name on card
-              </label>
-              <input
-                id="cardName"
-                type="text"
-                name="cardName"
-                value={form.cardName}
-                onChange={handleChange}
-                placeholder="Jane Doe"
-                autoComplete="cc-name"
-                className={`w-full rounded-xl border px-4 py-3 text-sm text-brand bg-white placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/40 transition
-                  ${errors.cardName ? "border-red-400" : "border-brand/15"}`}
-              />
-              {errors.cardName && (
-                <p className="text-red-500 text-xs mt-1">{errors.cardName}</p>
-              )}
-            </div>
-
-            {/* Card number */}
-            <div>
-              <label htmlFor="cardNumber" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                Card number
-              </label>
-              <div className="relative">
-                <input
-                  id="cardNumber"
-                  type="text"
-                  name="cardNumber"
-                  value={form.cardNumber}
-                  onChange={handleChange}
-                  placeholder="1234 5678 9012 3456"
-                  autoComplete="cc-number"
-                  inputMode="numeric"
-                  className={`w-full rounded-xl border px-4 py-3 pr-12 text-sm text-brand bg-white placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/40 transition
-                    ${errors.cardNumber ? "border-red-400" : "border-brand/15"}`}
-                />
-                <CreditCard
-                  size={18}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-brand/25"
-                />
+            {payError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm text-red-700">{payError}</p>
               </div>
-              {errors.cardNumber && (
-                <p className="text-red-500 text-xs mt-1">{errors.cardNumber}</p>
-              )}
-            </div>
-
-            {/* Expiry + CVC */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="expiry" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                  Expiry date
-                </label>
-                <input
-                  id="expiry"
-                  type="text"
-                  name="expiry"
-                  value={form.expiry}
-                  onChange={handleChange}
-                  placeholder="MM / YY"
-                  autoComplete="cc-exp"
-                  inputMode="numeric"
-                  className={`w-full rounded-xl border px-4 py-3 text-sm text-brand bg-white placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/40 transition
-                    ${errors.expiry ? "border-red-400" : "border-brand/15"}`}
-                />
-                {errors.expiry && (
-                  <p className="text-red-500 text-xs mt-1">{errors.expiry}</p>
-                )}
-              </div>
-              <div>
-                <label htmlFor="cvc" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                  CVC
-                </label>
-                <input
-                  id="cvc"
-                  type="text"
-                  name="cvc"
-                  value={form.cvc}
-                  onChange={handleChange}
-                  placeholder="123"
-                  autoComplete="cc-csc"
-                  inputMode="numeric"
-                  className={`w-full rounded-xl border px-4 py-3 text-sm text-brand bg-white placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/40 transition
-                    ${errors.cvc ? "border-red-400" : "border-brand/15"}`}
-                />
-                {errors.cvc && (
-                  <p className="text-red-500 text-xs mt-1">{errors.cvc}</p>
-                )}
-              </div>
-            </div>
-            </>)}
+            )}
 
             <button
               type="submit"
@@ -338,18 +300,34 @@ function CheckoutContent() {
               {loading
                 ? "Processing…"
                 : promoApplied
-                ? "Claim free session"
-                : `Subscribe — ${plan.name}`}
+                ? `Pay ${PROMO_DISCOUNT_PERCENT}% off — ${plan.name}`
+                : `Continue to payment — ${plan.name}`}
             </button>
 
             <p className="text-center text-xs text-brand/35 mt-1">
-              By subscribing you agree to our Terms of Service and Privacy Policy. Cancel anytime.
+              By continuing you agree to our Terms of Service and Privacy Policy. This is a one-time purchase, not a subscription.
             </p>
+
+            {/* Objection handling, immediately under the button that costs
+                money. There was none here at all, on the one screen where the
+                Terms make the payment non-refundable. */}
+            <ul className="space-y-2.5 border-t border-brand/8 pt-5">
+              {reassurances.map(({ icon: Icon, text }) => (
+                <li key={text} className="flex items-start gap-2.5 text-sm text-brand/70">
+                  <Icon size={15} className="mt-0.5 shrink-0 text-brand" strokeWidth={2} />
+                  {text}
+                </li>
+              ))}
+            </ul>
           </form>
         </div>
 
-        {/* Right — Order summary */}
-        <div className="w-full max-w-sm lg:sticky lg:top-12">
+        {/* Right — Order summary.
+            `order-first` on mobile. As the second child of a `flex-col` stack
+            this sat BELOW the pay button on anything narrower than 1024px,
+            which is most of our traffic: people were being asked to authorise a
+            payment before they had seen the amount. */}
+        <div className="w-full max-w-sm order-first lg:order-none lg:sticky lg:top-12">
           <div className="bg-white rounded-2xl border border-brand/10 shadow-sm p-6">
             <p className="text-xs font-semibold uppercase tracking-widest text-brand/40 mb-4">
               Order summary
@@ -358,12 +336,16 @@ function CheckoutContent() {
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <p className="text-lg font-bold text-brand">{plan.name} Plan</p>
-                <p className="text-xs text-brand/40 mt-0.5">Billed monthly · cancel anytime</p>
+                <p className="text-xs text-brand/40 mt-0.5">
+                  {sessions} {sessions === 1 ? "session" : "sessions"} · one-time payment · credits never expire
+                </p>
               </div>
               <PriceTag
-                usd={plan.price}
+                showExact
+                amount={plan.price}
                 period={plan.period}
-                priceClass="text-brand text-2xl font-bold"
+                sizeClass="text-2xl"
+                priceClass="text-brand"
                 periodClass="text-brand/40 text-xs"
               />
             </div>
@@ -377,15 +359,21 @@ function CheckoutContent() {
               ))}
             </ul>
 
-            {/* Trust badges */}
+            {/* Trust badges.
+                The first read "HIPAA compliant & encrypted". HIPAA is a US
+                statute with no application in Kenya; the instrument that governs
+                this data is the Data Protection Act 2019. Rather than swap one
+                regime's name for another's — we do not claim certification
+                against either — these state the protections that actually
+                exist. */}
             <div className="flex flex-col gap-2 border-t border-brand/8 pt-4">
               {[
-                { icon: ShieldCheck, label: "HIPAA compliant & encrypted" },
-                { icon: Lock, label: "Secure payment processing" },
-                { icon: CreditCard, label: "No hidden fees, ever" },
+                { icon: Lock, label: "Encrypted in transit" },
+                { icon: Lock, label: "Card details handled by Paystack, never by us" },
+                { icon: Wallet, label: "No hidden fees, ever" },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-2 text-xs text-brand/40">
-                  <Icon size={13} className="text-brand/30" />
+                  <Icon size={13} className="text-brand/30 shrink-0" />
                   {label}
                 </div>
               ))}

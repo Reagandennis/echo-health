@@ -1,5 +1,6 @@
 import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import { CheckCircle, AlertTriangle, Phone, FileText } from "lucide-react";
 
@@ -53,12 +54,49 @@ export default async function EscalationWorkflowPage() {
           ))}
         </div>
 
+        {/*
+          This block used to list "988 (Suicide & Crisis)", "911", and a clinical
+          supervisor on +1 (555) 012-3456 — a reserved fictional number that
+          connects to nothing. A staff member following this runbook during a
+          live escalation would have dialled two numbers that do not work from
+          Kenya and one that does not work anywhere.
+
+          It now points at the maintained list rather than duplicating numbers
+          that then drift out of sync with it, and the supervisor contact states
+          plainly that it is unset instead of showing a placeholder that reads
+          like a configured value.
+        */}
         <div className="mt-4 p-5 bg-rose-50 border border-rose-200 rounded-2xl">
           <h3 className="text-sm font-bold text-rose-800 mb-2">Emergency Contacts</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-rose-700">Crisis Hotline</span><span className="font-semibold text-rose-900">988 (Suicide & Crisis)</span></div>
-            <div className="flex justify-between"><span className="text-rose-700">Clinical Supervisor</span><span className="font-semibold text-rose-900">+1 (555) 012-3456</span></div>
-            <div className="flex justify-between"><span className="text-rose-700">Emergency Services</span><span className="font-semibold text-rose-900">911</span></div>
+          <div className="space-y-3 text-sm">
+            <div>
+              <div className="flex justify-between gap-3">
+                <span className="text-rose-700">Emergency services</span>
+                <span className="font-semibold text-rose-900 text-right">Client&apos;s local number</span>
+              </div>
+              <p className="text-rose-600/80 text-xs mt-1">
+                Kenya 999 / 112 / 911 · US 911. There is no universal number — confirm the
+                client&apos;s location before advising one.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex justify-between gap-3">
+                <span className="text-rose-700">Crisis lines</span>
+                <Link href="/crisis" className="font-semibold text-rose-900 underline text-right">
+                  Verified list
+                </Link>
+              </div>
+              <p className="text-rose-600/80 text-xs mt-1">
+                Kenya has no free 24/7 suicide-prevention line. NACADA 1192 is free, national and
+                round the clock; Befrienders Kenya closes at 17:00.
+              </p>
+            </div>
+
+            <div className="flex justify-between gap-3 pt-1 border-t border-rose-200/70">
+              <span className="text-rose-700">Clinical supervisor</span>
+              <span className="font-semibold text-rose-900/60 text-right">Not configured</span>
+            </div>
           </div>
         </div>
       </div>

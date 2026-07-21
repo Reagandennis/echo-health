@@ -164,8 +164,40 @@ export const therapySessions = pgTable(
     therapistTracks: jsonb("therapist_tracks"),
     patientTracks: jsonb("patient_tracks"),
     /** Read by the earnings page but never declared in Appwrite, so always
-     *  undefined there and silently defaulted to a hardcoded rate. */
+     *  undefined there and silently defaulted to a hardcoded rate.
+     *
+     *  NOTE THE UNIT: whole KES, unlike every other money column in this schema.
+     *  It predates the minor-unit rule and is read by admin pages, so it stays
+     *  as-is; `list_amount_minor` below is the correctly-scaled companion. */
     amount: integer("amount"),
+    /**
+     * The charge this session's credit was drawn from, captured at booking.
+     *
+     * Sessions are priced FIFO from the client's purchases, so which bundle
+     * funds session N is only knowable at the moment of booking: a later
+     * cancellation renumbers the queue and the answer changes. Recording it
+     * makes the payout reconcilable back to a specific Paystack transaction
+     * instead of a re-derivation that quietly drifts.
+     */
+    fundingPaymentReference: text("funding_payment_reference"),
+    /**
+     * Plan key of that bundle, captured at booking (migration 0011).
+     *
+     * Copied onto the payout ledger so a payout row explains its own gross
+     * figure. It cannot be looked up at accrual time: `payments_select` does not
+     * admit therapists, and the accrual runs in the completing user's
+     * transaction.
+     */
+    fundingPlan: text("funding_plan"),
+    /**
+     * LIST value of this session in MINOR units, captured at booking.
+     *
+     * Stored rather than derived so `PLAN_PRICES` can be repriced without
+     * retroactively restating what already-booked sessions were worth — the
+     * same reason `payments.amount_minor` is a stored figure. Null for sessions
+     * with no purchase behind them (admin-comped bookings).
+     */
+    listAmountMinor: integer("list_amount_minor"),
     status: sessionStatusEnum("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -413,15 +445,213 @@ export const riskAlerts = pgTable(
  * none of which Appwrite ever declared — so they always rendered as placeholder
  * dashes. Declared here so the page can actually work.
  */
+/**
+ * Promo DEFINITIONS. A row means "this code exists" — nothing about who used it.
+ *
+ * `used_by` / `used_at` used to live here, which made a code single-use
+ * globally: one row per code meant one redemption, ever, by one person. Uses are
+ * now rows in `promoRedemptions`.
+ */
 export const promos = pgTable("promos", {
   code: varchar("code", { length: 64 }).primaryKey(),
-  usedBy: text("used_by").notNull(),
-  usedAt: timestamp("used_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Percentage off. Null falls back to `PROMO_DISCOUNT_PERCENT`. */
   discount: integer("discount"),
+  /** Max total redemptions across all users. Null = unlimited. */
   redemptionLimit: integer("redemption_limit"),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   disabled: boolean("disabled").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * One row per person per code. The UNIQUE constraint is the "already used it"
+ * guarantee that the old single-table design could not express.
+ *
+ * `paymentReference` is null while checkout is in progress and set when the
+ * payment succeeds — so an abandoned checkout no longer burns the code, and a
+ * discounted charge can be traced back to the promo that produced it.
+ */
+export const promoRedemptions = pgTable(
+  "promo_redemptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: varchar("code", { length: 64 }).notNull(),
+    userId: text("user_id").notNull(),
+    paymentReference: text("payment_reference"),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("promo_redemptions_code_user_unique").on(t.code, t.userId),
+    index("promo_redemptions_code_idx").on(t.code),
+    index("promo_redemptions_user_id_idx").on(t.userId),
+  ]
+);
+
+// ─── Payments ────────────────────────────────────────────────────────────────
+
+export const paymentStatusEnum = pgEnum("payment_status", [
+  "pending",
+  "success",
+  "failed",
+  "abandoned",
+]);
+
+/**
+ * Paystack charge ledger. See migration 0006 for the RLS rationale.
+ *
+ * `amountMinor` is in the currency's minor unit (KES cents) and is an integer on
+ * purpose — money in a float accumulates rounding error that cannot be undone,
+ * and Paystack's API speaks minor units too, so this removes a conversion at the
+ * exact boundary where a mistake means charging 100× the intended amount.
+ */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Paystack reference. UNIQUE — this is the idempotency key for webhooks. */
+    reference: text("reference").notNull().unique(),
+    /** Auth0 sub of the payer. */
+    userId: text("user_id").notNull(),
+    plan: text("plan").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("KES"),
+    status: paymentStatusEnum("status").notNull().default("pending"),
+    /** Paystack's own status string, kept verbatim for reconciliation. */
+    paystackStatus: text("paystack_status"),
+    channel: text("channel"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Verified provider payload, for disputes and reconciliation. */
+    raw: jsonb("raw"),
+  },
+  (t) => [
+    index("payments_user_id_created_at_idx").on(t.userId, t.createdAt),
+    index("payments_status_idx").on(t.status),
+  ]
+);
+
+// ─── Therapist payout ledger ─────────────────────────────────────────────────
+
+/**
+ * `reversed` is a status rather than a deleted row: an accrual that turns out to
+ * be wrong is cancelled in place and stays visible. A payout ledger you can
+ * delete from is not a payout ledger.
+ */
+export const payoutStatusEnum = pgEnum("payout_status", [
+  "accrued",
+  "paid",
+  "reversed",
+]);
+
+/**
+ * What `gross_minor` was measured from — recorded because the answer is a policy
+ * choice (`THERAPIST_PAID_ON_LIST_PRICE`) that may differ between rows once the
+ * flag is ever flipped, and "why was I paid this?" has to be answerable from the
+ * row alone, years later.
+ *
+ *  • `list`     — the plan's undiscounted per-session price.
+ *  • `charged`  — what the client actually paid, after any promo.
+ *  • `unfunded` — no purchase behind the session (admin-comped, or booked before
+ *                 payments existed). Accrues zero, deliberately visibly.
+ */
+export const payoutBasisEnum = pgEnum("payout_basis", [
+  "list",
+  "charged",
+  "unfunded",
+]);
+
+/**
+ * NEW TABLE — no Appwrite equivalent, and no equivalent anywhere else.
+ *
+ * Therapists are contractors paid a share of session revenue, and until this
+ * table existed the platform had no record of what it owed them. The earnings
+ * page recomputed a number in the browser on every render from
+ * `therapy_sessions.amount` — a mutable column — and stored nothing, so unpaid
+ * contractor liability existed only as an arithmetic side effect of loading a
+ * page. Nothing recorded that a payment had been made, which means nothing
+ * prevented paying the same session twice or never.
+ *
+ * One row per completed session, written inside the transaction that completes
+ * it. Every money column is in MINOR units and immutable after insert (enforced
+ * by `payout_ledger_freeze()`); only the payout fields move, and only forward.
+ *
+ * Deliberately self-contained: `session_scheduled_at`, `plan` and the amounts
+ * are copied in rather than joined at read time. A ledger line has to keep
+ * meaning what it meant when it was written, even if the session row it came
+ * from is later edited.
+ */
+export const payoutLedger = pgTable(
+  "payout_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** UNIQUE — the idempotency guarantee. A session accrues exactly once. */
+    sessionId: uuid("session_id")
+      .notNull()
+      .unique()
+      .references(() => therapySessions.id, { onDelete: "restrict" }),
+    therapistId: uuid("therapist_id")
+      .notNull()
+      .references(() => therapists.id, { onDelete: "restrict" }),
+    /**
+     * Auth0 sub of the therapist, denormalised from `therapists.user_id`.
+     *
+     * Carried so the RLS policy is a plain column comparison instead of a
+     * subquery into `therapists` on every row — and so a therapist row being
+     * re-pointed at a different user cannot silently reassign historical
+     * earnings to someone else.
+     */
+    therapistUserId: text("therapist_user_id").notNull(),
+    patientId: text("patient_id").notNull(),
+    sessionScheduledAt: timestamp("session_scheduled_at", {
+      withTimezone: true,
+    }).notNull(),
+    /** Plan the funding bundle was sold as. Null when `basis` is `unfunded`. */
+    plan: text("plan"),
+    /** Paystack reference of the funding charge, for reconciliation. */
+    fundingPaymentReference: text("funding_payment_reference"),
+    /** Session value the share was taken on. See `basis` for which value. */
+    grossMinor: integer("gross_minor").notNull(),
+    /** What the client actually paid for this session, after discounts. Kept
+     *  alongside `gross_minor` so the cost of a promo is measurable rather than
+     *  inferred: the two are equal only when nothing was discounted. */
+    chargedMinor: integer("charged_minor").notNull(),
+    basis: payoutBasisEnum("basis").notNull(),
+    /**
+     * Revenue share in BASIS POINTS (4000 = 40%), not a fraction.
+     *
+     * An integer for the same reason the amounts are: the rate is part of the
+     * financial record, and `0.4` stored as a float is a value that cannot be
+     * compared for equality or summed without drift.
+     */
+    shareBp: integer("share_bp").notNull(),
+    /** Amount owed = round(gross_minor × share_bp / 10000). Computed once. */
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("KES"),
+    status: payoutStatusEnum("status").notNull().default("accrued"),
+    /** Operator's payout run identifier, set when the batch is paid. */
+    payoutBatch: text("payout_batch"),
+    /** The provider's transfer reference for that payout. */
+    payoutReference: text("payout_reference"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: varchar("reversal_reason", { length: 500 }),
+    accruedAt: timestamp("accrued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // The therapist's own earnings view: their rows, newest first.
+    index("payout_ledger_therapist_user_accrued_idx").on(
+      t.therapistUserId,
+      t.accruedAt
+    ),
+    // "What is outstanding?" — the query a payout run starts from.
+    index("payout_ledger_status_idx").on(t.status),
+    index("payout_ledger_therapist_id_idx").on(t.therapistId),
+    index("payout_ledger_payout_batch_idx").on(t.payoutBatch),
+  ]
+);
 
 // ─── Avatars ─────────────────────────────────────────────────────────────────
 

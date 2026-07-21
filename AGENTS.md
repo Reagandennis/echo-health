@@ -33,8 +33,9 @@ npm run db:generate      # generate a migration from lib/db/schema.ts
 npm run db:migrate       # apply pending migrations
 npm run db:studio        # browse the database
 
-# Hand-written SQL (RLS policies, triggers) — generate an empty file to edit:
-npx drizzle-kit generate --custom --name=<name>
+# `db:generate` is --custom on purpose. See the warning below before using
+# `db:generate:auto`.
+npm run db:generate -- --name=<name>
 ```
 
 TypeScript path alias: `@/*` → repo root (e.g. `@/lib/db/schema`).
@@ -53,12 +54,42 @@ Echo Health is a teletherapy platform with three user surfaces — **clients** (
 - `lib/auth/session.ts` is the auth core:
   - `getLoggedInUser()` — React-`cache`d, returns a `SessionUser` or `null`. Resolving a session is a local cookie decrypt with **no network call**, so `null` always means "no valid session", never "provider unreachable".
   - `SessionUser` uses the field names `$id` / `name` / `email` / `labels` / `prefs`. The `$`-prefix is a holdover from the Appwrite era, kept so ~89 call sites and ~76 `labels?.includes(...)` role guards did not have to change. **`$id` is the Auth0 `sub`** (`auth0|…`, `google-oauth2|…`) and is the canonical `user_id` foreign key in Postgres — a `text` column, never uuid.
-  - `labels` ← the namespaced claim `https://echo-health.app/roles`; `prefs` ← `https://echo-health.app/user_metadata`. Both are injected by a post-login Action — the source lives at `scripts/auth0-roles-action.js` and **must be deployed manually in the Auth0 dashboard**. Without it every role check silently evaluates to `false`.
+  - `labels` ← the namespaced claim `https://echo-health.app/roles`; `prefs` ← `https://echo-health.app/user_metadata`. Claim names are defined once in `lib/auth/claims.ts`.
+
+#### ⚠️ Roles require BOTH halves. Breaking either fails silently.
+
+1. **The post-login Action sets the claims** — source at `scripts/auth0-roles-action.js`, deployed by `npx tsx scripts/auth0-deploy-actions.ts`. Order matters: `account-linking` must run before `auth`.
+2. **`lib/auth0.ts` must re-admit them via `beforeSessionSaved`.** SDK v4 runs `session.user = filterDefaultIdTokenClaims(session.user)` and keeps ONLY `sub, name, nickname, given_name, family_name, picture, email, email_verified, org_id, act`. Every custom claim is discarded unless that hook is supplied. (v3 kept them — this is a v4 change.)
+
+This cost real debugging time: the Action reported success, the Auth0 execution log showed no errors, the roles were correctly assigned in the tenant — and `user.labels` was still empty, so every `labels.includes("admin")` returned false and admins were locked out with nothing to point at. **If roles stop working, check `beforeSessionSaved` first.**
+
+Note also that Auth0 returns role names exactly as typed in the dashboard (`Admin`, not `admin`), so `lib/auth/session.ts` lowercases them on read. Don't rely on dashboard capitalisation.
+
+- Roles are stamped into the session at login. Assigning one to a signed-in user does nothing until they log in again — `/api/user/set-role` returns `requiresReauth: true` and `/role-select` acts on it.
+- `ADMIN_EMAILS` / `THERAPIST_EMAILS` / `CLIENT_EMAILS` are a bootstrap escape hatch in `lib/auth/session.ts`, matched against **verified** emails only. They exist to solve the chicken-and-egg of granting the first role. Unset them in production: they match on email, which means they will also mask identity bugs (they hid a duplicate-account defect for hours).
 - `lib/auth/client.ts` holds the browser-side entry points (`signIn`, `signUp`, `signInWithGoogle`, `signOut`). They are plain redirects — Universal Login means the app never handles credentials, so there is no `signIn(email, password)`.
 
 ### Data layer (Drizzle + Postgres, with RLS)
 
-- `lib/db/schema.ts` is the single source of truth for all 17 tables. Change it, then `npm run db:generate` and `npm run db:migrate`. **Never** hand-edit a generated migration; for policies and triggers use `drizzle-kit generate --custom`.
+#### ⚠️ The drizzle snapshot is stale. Do not run `db:generate:auto`.
+
+`drizzle-kit generate --custom` copies the previous snapshot **without reading
+`schema.ts`**, so every table created by a hand-written migration is missing from
+`lib/db/migrations/meta/*_snapshot.json` — currently `payments`,
+`promo_redemptions`, `avatars` and `payout_ledger`.
+
+A plain `drizzle-kit generate` diffs `schema.ts` against that stale snapshot,
+concludes those four tables are new, and emits `CREATE TABLE` for all of them.
+Against the live database that fails; against a fresh one it would create them
+**without the RLS policies**, which live only in the custom migrations. Attempting
+it currently crashes on an interactive column-conflict prompt rather than
+producing anything, which is the safer failure, but do not rely on that.
+
+Until the snapshot is reconciled: **write schema changes as custom SQL** and keep
+`lib/db/schema.ts` updated by hand so Drizzle's types match the database. The
+migrations, not the snapshot, are the source of truth.
+
+- `lib/db/schema.ts` mirrors the database for Drizzle's types. Because of the snapshot drift above, keep it in sync BY HAND and express the actual change as custom SQL: `npm run db:generate -- --name=<name>`, then `npm run db:migrate`.
 - `lib/db/index.ts` exports `db` and the raw `sql` client. **The app connects as `echo_app`, not the migration admin** — this is load-bearing: `echo_admin` owns the tables and has `rolbypassrls = true`, so connecting as it silently disables every policy.
 - **Every query must run inside `withUser()` / `withCurrentUser()` / `withAnonymous()` from `lib/db/session.ts`, using the `tx` handle — never the bare `db` export.** These open a transaction and set `app.user_id` / `app.user_roles`, which is what the RLS policies read. A query issued outside one carries no identity, so every ownership predicate fails closed and returns zero rows. Transaction-local (`set_config(..., true)`) is mandatory, because pooled connections are reused across requests and a session-scoped setting would leak one user's identity into the next.
 - `lib/types/documents.ts` derives the UI row types from the Drizzle schema. Don't hand-write row interfaces.

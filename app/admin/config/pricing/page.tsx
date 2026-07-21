@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import { Save, Plus } from "lucide-react";
 import { listPromos } from "../../_lib/queries";
+import { PLAN_PRICES, PLAN_LABELS, PLAN_SESSIONS, PLAN_CURRENCY, PLAN_PRICES_CONFIGURED, THERAPIST_REVENUE_SHARE } from "@/lib/constants";
 
 /**
  * The commission slider and the three subscription tiers below are static UI —
@@ -29,7 +30,7 @@ export default async function PricingConfigPage() {
   const PROMOS = promoRows.map((p) => ({
     code: p.code,
     discount: p.discount !== null ? `${p.discount}%` : "—",
-    usage: `1 / ${p.redemptionLimit ?? "∞"}`,
+    usage: `${p.redemptions} / ${p.redemptionLimit ?? "∞"}`,
     expires: p.expiresAt ? p.expiresAt.toLocaleDateString() : "Never",
     active: !p.disabled,
   }));
@@ -49,9 +50,13 @@ export default async function PricingConfigPage() {
           
           <div className="flex items-center gap-4 mb-4">
             <input type="range" min="0" max="30" defaultValue="10" className="w-full accent-teal-600" />
-            <span className="text-2xl font-bold text-teal-700">10%</span>
+            <span className="text-2xl font-bold text-teal-700">
+              {Math.round((1 - THERAPIST_REVENUE_SHARE) * 100)}%
+            </span>
           </div>
-          <p className="text-xs font-semibold text-stone-400 text-center">Standard industry rate: 10% - 20%</p>
+          <p className="text-xs font-semibold text-stone-400 text-center">
+            Therapists receive {Math.round(THERAPIST_REVENUE_SHARE * 100)}% of session revenue
+          </p>
         </div>
 
         {/* Current Tiers Overview */}
@@ -64,14 +69,33 @@ export default async function PricingConfigPage() {
             <a href="/admin/billing/plans" className="text-xs font-semibold text-teal-600 hover:text-teal-700">Edit Plans →</a>
           </div>
           <div className="space-y-3">
-            {[
-              { name: "Basic", price: "$39/mo" },
-              { name: "Growth", price: "$79/mo" },
-              { name: "Premium", price: "$149/mo" },
-            ].map((p) => (
-              <div key={p.name} className="flex justify-between items-center p-3 bg-stone-50 rounded-xl border border-stone-100">
-                <span className="text-sm font-medium text-stone-700">{p.name}</span>
-                <span className="text-sm font-bold text-stone-900">{p.price}</span>
+            {/* Reads PLAN_PRICES — the same values the payment routes charge.
+                These were hardcoded as Basic/Growth/Premium at $39/$79/$149:
+                plan names and prices that existed nowhere else in the system, so
+                an admin was reading fiction on an operations screen. */}
+            {(["individual", "plus", "couples"] as const).map((key) => (
+              <div key={key} className="flex justify-between items-center p-3 bg-stone-50 rounded-xl border border-stone-100">
+                <div>
+                  <span className="text-sm font-medium text-stone-700">{PLAN_LABELS[key]}</span>
+                  <span className="block text-[11px] text-stone-400">
+                    {PLAN_SESSIONS[key]} sessions
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-stone-900">
+                    {new Intl.NumberFormat("en-KE", {
+                      style: "currency",
+                      currency: PLAN_CURRENCY,
+                      maximumFractionDigits: 0,
+                    }).format(PLAN_PRICES[key])}
+                    <span className="font-normal text-stone-400">/mo</span>
+                  </span>
+                  {!PLAN_PRICES_CONFIGURED && (
+                    <span className="block text-[10px] font-semibold text-amber-600">
+                      placeholder — not live
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

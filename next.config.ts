@@ -23,6 +23,23 @@ const nextConfig: NextConfig = {
   // ── Experimental: optimise lucide-react icon tree-shaking ─────────
   experimental: {
     optimizePackageImports: ["lucide-react"],
+
+    /**
+     * Server Actions cap request bodies at 1 MB by default, which is smaller
+     * than the therapist onboarding uploads (profile photo up to 5 MB, licence
+     * document up to 10 MB). Without this, those uploads fail inside the
+     * framework — before `uploadAvatarAction` / `uploadKycDocumentAction` run —
+     * so the app's own size check never gets a chance to produce a useful error.
+     *
+     * Sized just above the largest accepted file to leave room for multipart
+     * encoding overhead. Keep it in step with `MAX_AVATAR_BYTES` /
+     * `MAX_DOCUMENT_BYTES` in `app/actions/database.ts`: the framework limit
+     * should always be the looser of the two, so users get the app's message
+     * rather than a raw framework error.
+     */
+    serverActions: {
+      bodySizeLimit: "12mb",
+    },
   },
 
   // ── PostHog reverse proxy ──────────────────────────────────────────
@@ -45,19 +62,18 @@ const nextConfig: NextConfig = {
 
   // ── Security headers ───────────────────────────────────────────────
   async headers() {
-    // Derive Appwrite host (https + wss) from the public endpoint, so the CSP
-    // matches whichever environment we deploy to.
-    const appwriteEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT ?? "";
-    let appwriteHttps = "";
-    let appwriteWss = "";
-    try {
-      const u = new URL(appwriteEndpoint);
-      appwriteHttps = `${u.protocol}//${u.host}`;
-      appwriteWss = `wss://${u.host}`;
-    } catch {
-      // env not set at build time — CSP will still be valid, just without the host.
-    }
-
+    /**
+     * `connect-src` no longer needs a backend host allowlisted.
+     *
+     * Appwrite used to be contacted directly from the browser, so its https and
+     * wss origins were interpolated here. Since the migration, every backend
+     * call is same-origin: the database is reached through Server Actions,
+     * PostHog through the `/ingest` rewrite below, Cloudflare Calls through
+     * `/api/video/*`, and realtime through the `/api/events` SSE stream.
+     *
+     * The one exception is WebRTC media itself, which negotiates STUN/TURN
+     * outside the fetch layer and so is not governed by `connect-src`.
+     */
     const cspDirectives = [
       "default-src 'self'",
       // 'unsafe-inline' is currently required by Next.js for hydration. Tighten
@@ -67,7 +83,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      `connect-src 'self' ${appwriteHttps} ${appwriteWss}`.trim(),
+      "connect-src 'self'",
       "media-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",

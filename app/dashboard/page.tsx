@@ -7,14 +7,15 @@ import {
   Sparkles, Video, MessageCircle, Plus, AlertCircle, Star, Target,
 } from "lucide-react";
 import type { TherapySession, MoodLog, Goal } from "@/lib/types/documents";
-import { PLAN_SESSIONS, MOOD_EMOJIS, PLACEHOLDER_THERAPIST_ID } from "@/lib/constants";
+import { MOOD_EMOJIS, PLACEHOLDER_THERAPIST_ID } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 import { 
   listPatientSessionsAction, 
   listMoodLogsAction, 
   listGoalsAction,
   getTherapistAction,
-  getProfileByUserIdAction
+  getProfileByUserIdAction,
+  getSessionCreditsAction
 } from "@/app/actions/database";
 
 function MoodSparkline({ logs }: { readonly logs: MoodLog[] }) {
@@ -46,6 +47,7 @@ export default function DashboardHome() {
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [therapistName, setTherapistName] = useState<string | null>(null);
+  const [credits, setCredits] = useState({ entitled: 0, used: 0, remaining: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,12 +55,14 @@ export default function DashboardHome() {
     
     (async () => {
       try {
-        const [sess, moods, goalList, profile] = await Promise.all([
+        const [creditData, sess, moods, goalList, profile] = await Promise.all([
+          getSessionCreditsAction().catch(() => ({ entitled: 0, used: 0, remaining: 0 })),
           listPatientSessionsAction(user.$id).catch(() => [] as TherapySession[]),
           listMoodLogsAction(user.$id, 7).catch(() => [] as MoodLog[]),
           listGoalsAction(user.$id).catch(() => [] as Goal[]),
           getProfileByUserIdAction(user.$id).catch(() => null),
         ]);
+        setCredits(creditData);
         setSessions(sess);
         setMoodLogs(moods);
         setGoals(goalList);
@@ -89,13 +93,14 @@ export default function DashboardHome() {
   }
 
   const firstName = user.name?.split(" ")[0] ?? "there";
-  const plan = ((user.prefs as Record<string, string> | undefined)?.plan) ?? "free";
-  const allowance = PLAN_SESSIONS[plan] ?? 1;
+  // Credits come from the server so the display cannot disagree with what
+  // booking actually enforces. Previously computed here from the current
+  // plan and the calendar month, which was wrong on both counts.
+  const allowance = credits.entitled;
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const completed = sessions.filter((s) => s.status === "completed").length;
-  const used = sessions.filter((s) => s.status !== "cancelled" && new Date(s.scheduledAt) >= monthStart).length;
-  const remaining = Math.max(0, allowance - used);
+  const used = credits.used;
+  const remaining = credits.remaining;
   const upcoming = sessions
     .filter((s) => s.status !== "cancelled" && s.status !== "completed" && new Date(s.scheduledAt) > now)
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());

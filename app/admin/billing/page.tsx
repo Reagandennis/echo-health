@@ -3,46 +3,30 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import AdminPageHeader from "../_components/AdminPageHeader";
 import { DollarSign, TrendingUp, CreditCard, Users, ArrowRight } from "lucide-react";
-import { listAllSessions, listProfiles } from "../_lib/queries";
+import { getRevenueSummary, listAllSessions, listProfiles } from "../_lib/queries";
+import { formatKes, formatKesCompact } from "../_lib/money";
 
 /**
- * There is no payments integration, so every currency figure here is an
- * estimate derived from completed-session counts at a flat $50 — that was true
- * before this port and remains true. `therapy_sessions.amount` exists in the
- * schema but nothing writes it. The session and user counts ARE real.
+ * Revenue read from the `payments` ledger.
+ *
+ * This page used to multiply completed sessions by a flat `ESTIMATED_RATE_USD =
+ * 50` and label the result MRR. That was wrong three ways at once: it counted
+ * sessions instead of money, it never touched the payments table, and it printed
+ * the answer in USD for an account that settles in KES. Nothing here is an
+ * estimate any more, so nothing is labelled as one.
  */
-const ESTIMATED_RATE_USD = 50;
-
 export default async function BillingDashboardPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const [sessions, profiles] = await Promise.all([
+  const [revenue, sessions, profiles] = await Promise.all([
+    getRevenueSummary(),
     listAllSessions(),
     listProfiles(),
   ]);
 
-  const completed = sessions.filter((s) => s.status === "completed");
-  const totalCompleted = completed.length;
-  const mrr = totalCompleted * ESTIMATED_RATE_USD;
-  const arr = mrr * 12;
-
-  // Real trailing-six-month distribution, replacing five hardcoded zeroes and a
-  // single bar labelled "Apr" that held the entire all-time total.
-  const now = new Date();
-  const MONTHLY = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const count = completed.filter(
-      (s) =>
-        s.scheduledAt.getFullYear() === d.getFullYear() &&
-        s.scheduledAt.getMonth() === d.getMonth()
-    ).length;
-    return {
-      month: d.toLocaleDateString("en-US", { month: "short" }),
-      value: count * ESTIMATED_RATE_USD,
-    };
-  });
-  const max = Math.max(...MONTHLY.map((m) => m.value)) || 1000;
+  const completed = sessions.filter((s) => s.status === "completed").length;
+  const max = Math.max(...revenue.monthly.map((m) => m.grossMinor), 1);
 
   return (
     <div>
@@ -60,10 +44,10 @@ export default async function BillingDashboardPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Est. MRR", value: `$${mrr.toLocaleString()}`, change: "Based on completions", icon: DollarSign, color: "bg-emerald-100 text-emerald-700" },
-          { label: "Est. ARR", value: `$${arr.toLocaleString()}`, change: "Projected annual", icon: TrendingUp, color: "bg-teal-100 text-teal-700" },
-          { label: "Total Users", value: profiles.length.toString(), change: "Active across platform", icon: Users, color: "bg-blue-100 text-blue-700" },
-          { label: "Sessions", value: totalCompleted.toString(), change: "Completed to date", icon: CreditCard, color: "bg-amber-100 text-amber-700" },
+          { label: "Gross Revenue", value: formatKes(revenue.grossMinor), change: "Successful charges, all time", icon: DollarSign, color: "bg-emerald-100 text-emerald-700" },
+          { label: "Paying Clients", value: revenue.payingClients.toString(), change: `of ${profiles.length} registered`, icon: Users, color: "bg-teal-100 text-teal-700" },
+          { label: "Successful Charges", value: revenue.successCount.toString(), change: `${revenue.failedCount} failed · ${revenue.pendingCount} pending`, icon: CreditCard, color: "bg-blue-100 text-blue-700" },
+          { label: "Sessions Completed", value: completed.toString(), change: "Delivered to date", icon: TrendingUp, color: "bg-amber-100 text-amber-700" },
         ].map((m) => (
           <div key={m.label} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
             <div className={`w-9 h-9 rounded-xl ${m.color} flex items-center justify-center mb-3`}><m.icon className="w-4 h-4" /></div>
@@ -74,15 +58,28 @@ export default async function BillingDashboardPage() {
         ))}
       </div>
 
+      {/* Charges settled in another currency are excluded from every total above
+          rather than folded in — adding shillings to dollars is the bug this
+          page existed to demonstrate. Disclosed so the gap is visible. */}
+      {revenue.foreignCurrencyCount > 0 && (
+        <div className="mb-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          {revenue.foreignCurrencyCount} successful{" "}
+          {revenue.foreignCurrencyCount === 1 ? "charge is" : "charges are"} settled in a
+          currency other than KES and {revenue.foreignCurrencyCount === 1 ? "is" : "are"} not
+          included in these totals.
+        </div>
+      )}
+
       {/* Revenue chart */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-6">
-        <h3 className="text-sm font-bold text-stone-800 mb-6">Platform Volume Estimate</h3>
+        <h3 className="text-sm font-bold text-stone-800 mb-1">Revenue — Last 6 Months</h3>
+        <p className="text-xs text-stone-400 mb-6">Successful charges, by month settled.</p>
         <div className="flex items-end gap-4 h-48">
-          {MONTHLY.map((m) => (
+          {revenue.monthly.map((m) => (
             <div key={m.month} className="flex-1 flex flex-col items-center gap-2">
-              <span className="text-xs text-stone-500">${(m.value / 1000).toFixed(1)}k</span>
+              <span className="text-xs text-stone-500">{formatKesCompact(m.grossMinor)}</span>
               <div className="w-full rounded-t-xl bg-gradient-to-t from-teal-600 to-teal-400 hover:from-teal-700 hover:to-teal-500 transition-colors"
-                style={{ height: `${(m.value / max) * 100}%` }} />
+                style={{ height: `${(m.grossMinor / max) * 100}%` }} />
               <span className="text-xs font-medium text-stone-500">{m.month}</span>
             </div>
           ))}
@@ -90,12 +87,11 @@ export default async function BillingDashboardPage() {
       </div>
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {[
           { label: "Transactions", href: "/admin/billing/transactions" },
-          { label: "Refunds", href: "/admin/billing/refunds" },
-          { label: "Invoices", href: "/admin/billing/invoices" },
           { label: "Plans", href: "/admin/billing/plans" },
+          { label: "Pricing & Promos", href: "/admin/config/pricing" },
         ].map((l) => (
           <Link key={l.label} href={l.href} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-stone-200 shadow-sm hover:border-teal-300 hover:shadow-md transition-all group">
             <span className="text-sm font-semibold text-stone-700">{l.label}</span>

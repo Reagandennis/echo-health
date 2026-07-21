@@ -5,6 +5,14 @@ import { and, asc, desc, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
 import { getLoggedInUser, type SessionUser } from "@/lib/auth/session";
 import { withUser } from "@/lib/db/session";
 import {
+  PLAN_CURRENCY,
+  PLAN_SESSIONS,
+  THERAPIST_PAID_ON_LIST_PRICE,
+  THERAPIST_REVENUE_SHARE,
+  listPriceMinorPerSession,
+  therapistShareMinor,
+} from "@/lib/constants";
+import {
   avatars,
   chatMessages,
   chatSessions,
@@ -16,6 +24,8 @@ import {
   messages,
   moodLogs,
   notifications,
+  payments,
+  payoutLedger,
   profiles,
   riskAlerts,
   therapySessions,
@@ -393,16 +403,29 @@ async function writeNotification(
   return toDoc(row);
 }
 
-/** Largest accepted upload. Bytes live in Postgres, so this is also a DB-size guard. */
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/**
+ * Upload ceilings. Bytes are stored in Postgres `bytea`, so these bound database
+ * growth as well as request size.
+ *
+ * `serverActions.bodySizeLimit` in `next.config.ts` must stay ABOVE both, or the
+ * framework rejects the request before these checks run and the user sees a raw
+ * "Body exceeded 1 MB limit" instead of a useful message.
+ */
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+/** Licence scans are frequently multi-page PDFs, so they get more headroom. */
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_IMAGE_TYPES, "application/pdf"];
 
-function readUpload(formData: FormData, allowedTypes: string[]) {
+function readUpload(formData: FormData, allowedTypes: string[], maxBytes: number) {
   const file = formData.get("file");
   if (!(file instanceof File)) throw new Error("No file provided");
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("File exceeds the 10 MB limit");
+  if (file.size > maxBytes) {
+    throw new Error(
+      `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is ${maxBytes / 1024 / 1024} MB`
+    );
+  }
   // Content type is client-supplied and therefore untrusted; the allowlist keeps
   // an arbitrary payload (HTML, SVG with script) out of storage regardless.
   if (!allowedTypes.includes(file.type)) {
@@ -424,7 +447,7 @@ function readUpload(formData: FormData, allowedTypes: string[]) {
  */
 export async function uploadAvatarAction(formData: FormData) {
   const user = await requireUser();
-  const file = readUpload(formData, ALLOWED_IMAGE_TYPES);
+  const file = readUpload(formData, ALLOWED_IMAGE_TYPES, MAX_AVATAR_BYTES);
   const content = Buffer.from(await file.arrayBuffer());
 
   return withUser(user, async (tx) => {
@@ -452,7 +475,7 @@ export async function uploadAvatarAction(formData: FormData) {
  */
 export async function uploadKycDocumentAction(formData: FormData) {
   const user = await requireUser();
-  const file = readUpload(formData, ALLOWED_DOCUMENT_TYPES);
+  const file = readUpload(formData, ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES);
   const content = Buffer.from(await file.arrayBuffer());
 
   return withUser(user, async (tx) => {
@@ -503,6 +526,94 @@ type SessionInput = {
  * `sessionType` and `notes` are now separate columns. See the report: the one
  * caller that still packs them as `${type}|${note}` needs updating.
  */
+/**
+ * The signed-in user's own payment history, newest first.
+ *
+ * Reads the real `payments` ledger. The billing page previously rendered a
+ * hardcoded array of invoices in USD, for amounts and dates that never existed —
+ * a fabricated financial record shown to real customers, which reads as
+ * unauthorised charges.
+ *
+ * RLS (`payments_select`) already restricts this to the caller's rows; the
+ * explicit `userId` filter is defence in depth, not the primary control.
+ */
+export async function listMyPaymentsAction(): Promise<Doc[]> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const rows = await tx
+      .select({
+        id: payments.id,
+        reference: payments.reference,
+        plan: payments.plan,
+        amountMinor: payments.amountMinor,
+        currency: payments.currency,
+        status: payments.status,
+        channel: payments.channel,
+        paidAt: payments.paidAt,
+        createdAt: payments.createdAt,
+      })
+      .from(payments)
+      .where(eq(payments.userId, user.$id))
+      .orderBy(desc(payments.createdAt))
+      .limit(50);
+
+    return toDocs(rows);
+  });
+}
+
+/**
+ * The caller's session credits: how many they bought, used, and have left.
+ *
+ * Computed with EXACTLY the same rules `createSessionAction` enforces — sum of
+ * `PLAN_SESSIONS` across all successful payments, minus non-cancelled bookings,
+ * for life.
+ *
+ * It exists because the dashboards computed their own answer and got a different
+ * one: they read `PLAN_SESSIONS[current plan]` (ignoring earlier purchases) and
+ * counted usage from the start of the calendar month (implying a monthly reset
+ * that does not exist). Someone with two bundles saw "2 sessions" while holding
+ * 4, and every month the display appeared to refresh credits that had never
+ * expired — while the pricing pages promise credits never expire.
+ *
+ * A display that disagrees with the enforcement is worse than no display: the
+ * user is told they can book when they cannot, or vice versa. One function now
+ * answers both.
+ */
+export async function getSessionCreditsAction(): Promise<{
+  entitled: number;
+  used: number;
+  remaining: number;
+}> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const paid = await tx
+      .select({ plan: payments.plan })
+      .from(payments)
+      .where(and(eq(payments.userId, user.$id), eq(payments.status, "success")));
+
+    const entitled = paid.reduce((sum, p) => sum + (PLAN_SESSIONS[p.plan] ?? 0), 0);
+
+    const [booked] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(therapySessions)
+      .where(
+        and(
+          eq(therapySessions.patientId, user.$id),
+          // Cancelled sessions release their credit — same rule as booking.
+          sql`${therapySessions.status} <> 'cancelled'`
+        )
+      );
+
+    return {
+      entitled,
+      used: booked.count,
+      remaining: Math.max(0, entitled - booked.count),
+    };
+  });
+}
+
 export async function createSessionAction(data: SessionInput): Promise<Doc> {
   const user = await requireUser();
 
@@ -511,16 +622,121 @@ export async function createSessionAction(data: SessionInput): Promise<Doc> {
   if (!isUuid(data.therapistId)) throw new Error("A valid therapistId is required");
 
   return withUser(user, async (tx) => {
+    const patientId = isAdmin(user) ? data.patientId : user.$id;
+
+    /**
+     * ENTITLEMENT CHECK. Booking was previously unlimited.
+     *
+     * `PLAN_SESSIONS` existed only to render "2 of 4 used" on dashboards —
+     * nothing enforced it — so a client who paid for one session could book as
+     * many as they liked. The payments ledger is the source of truth for what
+     * was actually bought; the plan claim on the session cookie is not, because
+     * it can be stale and is not a record of money received.
+     *
+     * Admins are exempt: they book on a client's behalf for operational reasons.
+     */
+    let perSessionAmount: number | null = null;
+    /**
+     * Pricing provenance for the payout ledger, captured HERE because here is
+     * the only place it is knowable.
+     *
+     * Which bundle funds session N is a FIFO answer that depends on how many
+     * non-cancelled sessions exist at this instant. Cancel an earlier session
+     * tomorrow and the queue renumbers, so re-deriving this at payout time
+     * yields a different — wrong — answer. See migration 0008.
+     */
+    let fundingPaymentReference: string | null = null;
+    let fundingPlan: string | null = null;
+    let listAmountMinor: number | null = null;
+
+    if (!isAdmin(user)) {
+      // Ordered oldest-first: credits are consumed FIFO, so a session is priced
+      // by the bundle it actually draws from.
+      const paid = await tx
+        .select({
+          plan: payments.plan,
+          amountMinor: payments.amountMinor,
+          reference: payments.reference,
+        })
+        .from(payments)
+        .where(and(eq(payments.userId, patientId), eq(payments.status, "success")))
+        .orderBy(asc(payments.paidAt));
+
+      const entitled = paid.reduce((sum, p) => sum + (PLAN_SESSIONS[p.plan] ?? 0), 0);
+
+      const [booked] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(therapySessions)
+        .where(
+          and(
+            eq(therapySessions.patientId, patientId),
+            // A cancelled session releases its credit rather than consuming it.
+            sql`${therapySessions.status} <> 'cancelled'`
+          )
+        );
+
+      if (booked.count >= entitled) {
+        throw new Error(
+          entitled === 0
+            ? "You have no sessions available. Please purchase a plan to book."
+            : `You have used all ${entitled} of your booked sessions. Purchase another plan to continue.`
+        );
+      }
+
+      /**
+       * Value of this session, derived from the SPECIFIC bundle it consumes.
+       *
+       * Never from `data.amount` — that arrives from the browser and drives the
+       * therapist's payout, so a client-supplied amount would be a
+       * client-supplied payroll.
+       *
+       * FIFO, not a lifetime average. Averaging every payment over every
+       * entitled session made clinician pay depend on the client's purchase
+       * history and booking order: a client who bought Individual (6,500/1) and
+       * later Plus (10,500/2) produced 5,667 for EVERY session, so the same
+       * therapist doing the same 50 minutes was paid three different rates
+       * depending on when the booking happened. Non-deterministic compensation
+       * is corrosive in a marketplace — a clinician could not predict, or check,
+       * what an hour pays.
+       *
+       * Credits are consumed in purchase order, so session N draws from whichever
+       * bundle still has capacity at position N.
+       */
+      let cumulative = 0;
+      for (const purchase of paid) {
+        cumulative += PLAN_SESSIONS[purchase.plan] ?? 0;
+        if (booked.count < cumulative) {
+          const sessionsInBundle = PLAN_SESSIONS[purchase.plan] ?? 1;
+          perSessionAmount = Math.round(
+            purchase.amountMinor / 100 / Math.max(1, sessionsInBundle)
+          );
+
+          // What the therapist's payout will be measured against. Note this is
+          // the LIST price of the plan, deliberately NOT `purchase.amountMinor`,
+          // which is what the client actually paid after any promo.
+          fundingPaymentReference = purchase.reference;
+          fundingPlan = purchase.plan;
+          listAmountMinor = listPriceMinorPerSession(purchase.plan);
+          break;
+        }
+      }
+    }
+
     const [row] = await tx
       .insert(therapySessions)
       .values({
-        patientId: isAdmin(user) ? data.patientId : user.$id,
+        patientId,
         therapistId: data.therapistId,
         scheduledAt,
         sessionType: data.sessionType ?? "1-on-1",
         notes: data.notes ?? null,
         feedback: data.feedback ?? null,
-        amount: data.amount ?? null,
+        // Admins may set an amount explicitly (comped or manually-invoiced
+        // sessions); everyone else gets the value computed from their payments.
+        amount: isAdmin(user) ? (data.amount ?? null) : perSessionAmount,
+        fundingPaymentReference,
+        fundingPlan,
+        listAmountMinor,
         status: data.status ?? "pending",
       })
       .returning();
@@ -729,7 +945,184 @@ export async function updateTherapySessionAction(
       .where(eq(therapySessions.id, documentId))
       .returning();
 
+    /**
+     * THE ACCRUAL POINT. A session's lifecycle ends here, so this is where the
+     * therapist's earnings become a recorded fact.
+     *
+     * Inside the same transaction as the status change on purpose: "the session
+     * completed" and "the platform owes for it" are one event, and a crash
+     * between them would produce delivered work with no liability recorded.
+     *
+     * Ordered AFTER the UPDATE because `payout_ledger_insert` requires the
+     * session to already read `status = 'completed'` — the policy checks the
+     * committed-in-transaction state, so accruing first fails the check.
+     *
+     * Guarded on a genuine transition so re-saving a completed session does not
+     * try to accrue again; UNIQUE(session_id) is the real defence, this just
+     * avoids a pointless round-trip.
+     */
+    if (row.status === "completed" && sess.status !== "completed") {
+      await accrueSessionEarnings(tx, row);
+    }
+
     return toDoc(row);
+  });
+}
+
+/**
+ * Write the therapist's accrual for a completed session.
+ *
+ * Everything it records is derived from values captured at BOOKING
+ * (`list_amount_minor`, `funding_plan`, `funding_payment_reference`) plus the
+ * policy constants — never from caller input, because this is payroll.
+ *
+ * Silent on conflict: `UNIQUE(session_id)` means a session accrues exactly once,
+ * so a redelivered request, a double-click, or two racing transactions all
+ * converge on one row instead of erroring or paying twice.
+ */
+async function accrueSessionEarnings(
+  tx: Tx,
+  session: typeof therapySessions.$inferSelect
+): Promise<void> {
+  // The FK guarantees this resolves; `therapists_select` is USING (true), so the
+  // completing user can read it whoever they are.
+  const [therapist] = await tx
+    .select({ userId: therapists.userId })
+    .from(therapists)
+    .where(eq(therapists.id, session.therapistId))
+    .limit(1);
+  if (!therapist) return;
+
+  /**
+   * `therapy_sessions.amount` is WHOLE KES; everything in the ledger is minor
+   * units. This ×100 is the only place the two conventions meet.
+   */
+  const chargedMinor = Math.max(0, Math.round((session.amount ?? 0) * 100));
+  const listMinor = session.listAmountMinor;
+
+  /**
+   * WHAT THE 40% IS TAKEN ON — the point of `THERAPIST_PAID_ON_LIST_PRICE`.
+   *
+   * On list price, a clinician earns the same for the same 50 minutes whether or
+   * not marketing was running a promotion that week. On the charged price, a
+   * 50%-off code halves their fee for work they already agreed to do, without
+   * their knowledge or consent. See the constant for what the choice costs.
+   *
+   * Falls back to the charged amount when there is no list price to use — an
+   * older session, or one booked outside the purchase flow — so a missing value
+   * under-pays by the discount rather than paying nothing at all.
+   */
+  let grossMinor: number;
+  let basis: "list" | "charged" | "unfunded";
+
+  if (THERAPIST_PAID_ON_LIST_PRICE && listMinor !== null && listMinor > 0) {
+    grossMinor = listMinor;
+    basis = "list";
+  } else if (chargedMinor > 0) {
+    grossMinor = chargedMinor;
+    basis = "charged";
+  } else {
+    // No purchase behind this session (admin-comped, or booked before payments
+    // existed). Accrued at zero rather than skipped: a completed session with no
+    // attributable revenue is a fact worth having on the ledger, and a missing
+    // row is indistinguishable from one that was never written.
+    grossMinor = 0;
+    basis = "unfunded";
+  }
+
+  /**
+   * `payout_ledger_amount_within_gross` rejects an amount above the gross, and
+   * the `basis: "list"` branch can exceed `charged` legitimately — that IS the
+   * policy — but never its own gross, since the share is a fraction ≤ 1.
+   */
+  const shareBp = Math.round(THERAPIST_REVENUE_SHARE * 10000);
+
+  await tx
+    .insert(payoutLedger)
+    .values({
+      sessionId: session.id,
+      therapistId: session.therapistId,
+      therapistUserId: therapist.userId,
+      patientId: session.patientId,
+      sessionScheduledAt: session.scheduledAt,
+      plan: session.fundingPlan,
+      fundingPaymentReference: session.fundingPaymentReference,
+      grossMinor,
+      chargedMinor,
+      basis,
+      shareBp,
+      amountMinor: therapistShareMinor(grossMinor),
+      currency: PLAN_CURRENCY,
+    })
+    .onConflictDoNothing({ target: payoutLedger.sessionId });
+}
+
+/**
+ * The signed-in therapist's own payout ledger.
+ *
+ * Reads STORED accruals. It does not recompute anything from
+ * `therapy_sessions.amount`, which is what the earnings page used to do — that
+ * made a clinician's reported earnings a function of a mutable column and of
+ * whichever constants happened to be deployed when the page was opened.
+ *
+ * RLS (`payout_ledger_select`) already restricts this to the caller's rows; the
+ * explicit `therapistUserId` filter is defence in depth, not the control.
+ * Amounts are returned in MINOR units — formatting is the caller's job, and
+ * dividing by 100 in three different components is how currencies drift.
+ */
+export async function listMyEarningsAction(): Promise<{
+  currency: string;
+  accruedMinor: number;
+  paidMinor: number;
+  reversedMinor: number;
+  entries: Doc[];
+}> {
+  const user = await requireStaff();
+
+  return withUser(user, async (tx) => {
+    const rows = await tx
+      .select({
+        id: payoutLedger.id,
+        sessionId: payoutLedger.sessionId,
+        sessionScheduledAt: payoutLedger.sessionScheduledAt,
+        plan: payoutLedger.plan,
+        grossMinor: payoutLedger.grossMinor,
+        chargedMinor: payoutLedger.chargedMinor,
+        basis: payoutLedger.basis,
+        shareBp: payoutLedger.shareBp,
+        amountMinor: payoutLedger.amountMinor,
+        currency: payoutLedger.currency,
+        status: payoutLedger.status,
+        payoutBatch: payoutLedger.payoutBatch,
+        paidAt: payoutLedger.paidAt,
+        accruedAt: payoutLedger.accruedAt,
+      })
+      .from(payoutLedger)
+      .where(eq(payoutLedger.therapistUserId, user.$id))
+      .orderBy(desc(payoutLedger.sessionScheduledAt))
+      .limit(500);
+
+    // Summed here rather than in SQL because the rows are already being fetched
+    // for the table below; a second aggregate query would cost a ~230ms
+    // round-trip to restate what is in hand.
+    let accruedMinor = 0;
+    let paidMinor = 0;
+    let reversedMinor = 0;
+    for (const row of rows) {
+      if (row.status === "accrued") accruedMinor += row.amountMinor;
+      else if (row.status === "paid") paidMinor += row.amountMinor;
+      else if (row.status === "reversed") reversedMinor += row.amountMinor;
+    }
+
+    return {
+      // From the rows when present, so the label always matches the money it is
+      // labelling; the constant is only the empty-ledger default.
+      currency: rows[0]?.currency ?? PLAN_CURRENCY,
+      accruedMinor,
+      paidMinor,
+      reversedMinor,
+      entries: toDocs(rows),
+    };
   });
 }
 
@@ -852,6 +1245,85 @@ export async function listTherapistDashboardStatsAction(therapistId: string) {
       today: toDocs(todayRows),
       thisWeek: thisWeek.count,
       pending: pending.count,
+    };
+  });
+}
+
+/**
+ * Everything the therapist dashboard needs, in ONE transaction.
+ *
+ * Replaces a three-call sequence (`getTherapistByUserIdAction`, then
+ * `listTherapistDashboardStatsAction` + `listPendingTherapistSessionsAction`)
+ * that cost roughly 12 network round-trips: each action pays BEGIN, set_config
+ * and COMMIT of its own, each re-ran the therapist access check, and the second
+ * wave could not start until the first resolved the therapist id.
+ *
+ * Two things make this cheaper:
+ *
+ *  1. One transaction and one access check instead of three.
+ *  2. The three separate `count(*)` queries collapse into a single scan using
+ *     `FILTER`. They read the same rows with different predicates, so asking
+ *     three times was three round-trips for one table scan.
+ *
+ * Note that queries inside a transaction CANNOT be parallelised — they share one
+ * pooled connection and postgres.js will not interleave them. Reducing the
+ * NUMBER of queries is therefore the only lever here, not concurrency.
+ *
+ * ~12 round-trips → 7. On a high-latency link that is the difference between a
+ * dashboard that feels broken and one that feels slow; co-locating the app with
+ * the database is what makes it feel instant.
+ */
+export async function getTherapistDashboardAction() {
+  const user = await requireUser();
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+
+  return withUser(user, async (tx) => {
+    const therapist = await getTherapistDocForUser(tx, user);
+    if (!therapist) {
+      return { therapist: null, stats: null, today: [], pending: [] };
+    }
+
+    const mine = eq(therapySessions.therapistId, therapist.id);
+
+    // One scan, three counts.
+    const [counts] = await tx
+      .select({
+        all: sql<number>`count(*)::int`,
+        thisWeek: sql<number>`count(*) FILTER (
+          WHERE ${therapySessions.scheduledAt} >= ${todayStart}
+            AND ${therapySessions.scheduledAt} < ${weekEnd}
+        )::int`,
+        pending: sql<number>`count(*) FILTER (
+          WHERE ${therapySessions.status} = 'pending'
+        )::int`,
+      })
+      .from(therapySessions)
+      .where(mine);
+
+    const todayRows = await tx
+      .select()
+      .from(therapySessions)
+      .where(
+        and(mine, gte(therapySessions.scheduledAt, todayStart), lt(therapySessions.scheduledAt, todayEnd))
+      )
+      .orderBy(asc(therapySessions.scheduledAt));
+
+    const pendingRows = await tx
+      .select()
+      .from(therapySessions)
+      .where(and(mine, eq(therapySessions.status, "pending")))
+      .orderBy(asc(therapySessions.scheduledAt))
+      .limit(10);
+
+    return {
+      therapist: toDoc(therapist),
+      stats: { all: counts.all, thisWeek: counts.thisWeek, pending: counts.pending },
+      today: toDocs(todayRows),
+      pending: toDocs(pendingRows),
     };
   });
 }

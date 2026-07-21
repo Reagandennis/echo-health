@@ -1,24 +1,29 @@
 import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
 import AdminBadge from "../../../_components/AdminBadge";
-import { getProfileByUserId } from "../../../_lib/queries";
-import { CreditCard, Download, RefreshCw } from "lucide-react";
+import AdminEmptyState from "../../../_components/AdminEmptyState";
+import { getProfileByUserId, listPaymentsForUser } from "../../../_lib/queries";
+import { formatKes } from "../../../_lib/money";
+import { PLAN_LABELS, PLAN_SESSIONS } from "@/lib/constants";
+
+const STATUS_STYLES: Record<string, "success" | "danger" | "warning" | "neutral"> = {
+  success: "success",
+  failed: "danger",
+  pending: "warning",
+  abandoned: "neutral",
+};
 
 /**
- * Every figure on this page is hardcoded mock UI. There is no payments
- * integration and no transactions, invoices or subscriptions table in the
- * schema — `therapy_sessions.amount` is the only money column that exists, and
- * nothing populates it. Only the client identity is live data.
+ * This client's charges, from the `payments` ledger.
+ *
+ * The page previously rendered five fixed USD transactions — monthly Growth Plan
+ * subscriptions, a refunded crisis session — under the real client's real name.
+ * A fabricated charge history attached to an identifiable person is the worst
+ * version of this problem: it reads as evidence, and an operator answering
+ * "was I charged twice?" would have answered from it.
  */
-const MOCK_TRANSACTIONS = [
-  { id: "txn_001", date: "2026-04-01", description: "Monthly Subscription — Growth Plan", amount: "$79.00", status: "paid" },
-  { id: "txn_002", date: "2026-03-01", description: "Monthly Subscription — Growth Plan", amount: "$79.00", status: "paid" },
-  { id: "txn_003", date: "2026-02-01", description: "Monthly Subscription — Growth Plan", amount: "$79.00", status: "paid" },
-  { id: "txn_004", date: "2026-01-10", description: "One-time Session — Crisis Support", amount: "$45.00", status: "refunded" },
-  { id: "txn_005", date: "2026-01-01", description: "Monthly Subscription — Basic Plan", amount: "$39.00", status: "paid" },
-];
-
 export default async function ClientBillingPage({
   params,
 }: {
@@ -28,8 +33,21 @@ export default async function ClientBillingPage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
 
-  const client = await getProfileByUserId(id);
+  const [client, charges] = await Promise.all([
+    getProfileByUserId(id),
+    listPaymentsForUser(id),
+  ]);
   if (!client) notFound();
+
+  const successful = charges.filter((c) => c.status === "success");
+  const totalPaidMinor = successful.reduce((sum, c) => sum + c.amountMinor, 0);
+  // Entitlement is bundles bought, not a subscription tier — plans are one-time
+  // session bundles, so "current plan" is simply the most recent purchase.
+  const latest = successful[0];
+  const sessionsPurchased = successful.reduce(
+    (sum, c) => sum + (PLAN_SESSIONS[c.plan] ?? 0),
+    0
+  );
 
   return (
     <div>
@@ -40,20 +58,31 @@ export default async function ClientBillingPage({
           { label: client.name, href: `/admin/users/${id}` },
           { label: "Billing" },
         ]}
-        actions={
-          <button className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors">
-            <Download className="w-4 h-4" /> Export Invoices
-          </button>
-        }
       />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Current Plan",   value: "Growth",   sub: "$79 / month" },
-          { label: "Total Paid",     value: "$355.00",  sub: "All time" },
-          { label: "Last Payment",   value: "Apr 1",    sub: "Successful" },
-          { label: "Next Renewal",   value: "May 1",    sub: "Upcoming" },
+          {
+            label: "Total Paid",
+            value: formatKes(totalPaidMinor),
+            sub: `${successful.length} successful ${successful.length === 1 ? "charge" : "charges"}`,
+          },
+          {
+            label: "Latest Purchase",
+            value: latest ? (PLAN_LABELS[latest.plan] ?? latest.plan) : "—",
+            sub: latest ? formatKes(latest.amountMinor) : "No purchases",
+          },
+          {
+            label: "Last Payment",
+            value: latest?.paidAt ? latest.paidAt.toLocaleDateString() : "—",
+            sub: latest ? "Successful" : "None recorded",
+          },
+          {
+            label: "Sessions Purchased",
+            value: sessionsPurchased.toString(),
+            sub: "Across all bundles",
+          },
         ].map((m) => (
           <div key={m.label} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
             <p className="text-xs text-stone-400 uppercase tracking-wider font-medium mb-1">{m.label}</p>
@@ -63,58 +92,54 @@ export default async function ClientBillingPage({
         ))}
       </div>
 
-      {/* Subscription */}
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 mb-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
-              <CreditCard className="w-6 h-6 text-teal-600" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-stone-900">Growth Plan</p>
-              <p className="text-xs text-stone-500">$79.00 / month · Renews May 1, 2026</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <AdminBadge label="Active" variant="success" dot />
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors">
-              <RefreshCw className="w-3.5 h-3.5" /> Refund
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Transaction history */}
+      {/* Charge history */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-stone-100">
-          <h3 className="text-sm font-bold text-stone-800">Transaction History</h3>
+          <h3 className="text-sm font-bold text-stone-800">Charge History</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[500px]">
-            <thead className="bg-stone-50 border-b border-stone-100">
-              <tr>
-                {["Date", "Description", "Amount", "Status", ""].map((h) => (
-                  <th key={h} className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-50">
-              {MOCK_TRANSACTIONS.map((t) => (
-                <tr key={t.id} className="hover:bg-stone-50/50 transition-colors">
-                  <td className="px-5 py-4 text-xs text-stone-500">{t.date}</td>
-                  <td className="px-5 py-4 text-sm text-stone-800">{t.description}</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-stone-900">{t.amount}</td>
-                  <td className="px-5 py-4">
-                    <AdminBadge label={t.status === "paid" ? "Paid" : "Refunded"} variant={t.status === "paid" ? "success" : "warning"} dot />
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <button className="text-xs text-stone-400 hover:text-teal-600 transition-colors">Receipt →</button>
-                  </td>
+        {charges.length === 0 ? (
+          <AdminEmptyState
+            title="No charges"
+            description="This client has no payment records. Charges appear here once they complete a checkout."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[600px]">
+              <thead className="bg-stone-50 border-b border-stone-100">
+                <tr>
+                  {["Date", "Plan", "Reference", "Amount", "Status", ""].map((h) => (
+                    <th key={h} className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-stone-50">
+                {charges.map((c) => (
+                  <tr key={c.$id} className="hover:bg-stone-50/50 transition-colors">
+                    <td className="px-5 py-4 text-xs text-stone-500">{(c.paidAt ?? c.createdAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-4 text-sm text-stone-800">{PLAN_LABELS[c.plan] ?? c.plan}</td>
+                    <td className="px-5 py-4 text-xs font-mono text-stone-400">{c.reference}</td>
+                    <td className="px-5 py-4 text-sm font-semibold text-stone-900">{formatKes(c.amountMinor)}</td>
+                    <td className="px-5 py-4">
+                      <AdminBadge
+                        label={c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                        variant={STATUS_STYLES[c.status] ?? "neutral"}
+                        dot
+                      />
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <Link
+                        href={`/admin/billing/transactions/${encodeURIComponent(c.reference)}`}
+                        className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                      >
+                        View →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

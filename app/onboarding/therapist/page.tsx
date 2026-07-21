@@ -21,14 +21,6 @@ export default function TherapistOnboardingPage() {
   const user = useUser();
   const router = useRouter();
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="animate-spin text-brand" size={32} />
-      </div>
-    );
-  }
-
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,17 +39,52 @@ export default function TherapistOnboardingPage() {
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [licenseNumber, setLicenseNumber] = useState("");
 
+  // Placed AFTER every hook, not before. React requires hooks to run in the
+  // same order on every render, so returning early above `useState` breaks the
+  // rules of hooks — it happened to work only because the component unmounts
+  // rather than re-rendering with a user.
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="animate-spin text-brand" size={32} />
+      </div>
+    );
+  }
+
   function toggleSpecialty(s: string) {
     setSelectedSpecialties((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
     );
   }
 
+  // Checked here as well as server-side so an oversized file is rejected before
+  // it is uploaded at all — otherwise the request dies in the Next.js Server
+  // Action body limit and surfaces as a raw framework error with no context.
+  const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+  const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
+
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_PHOTO_BYTES) {
+      setError(`That photo is ${(file.size / 1024 / 1024).toFixed(1)} MB — please choose one under 5 MB.`);
+      e.target.value = "";
+      return;
+    }
+    setError(null);
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  function handleLicenseChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (file && file.size > MAX_LICENSE_BYTES) {
+      setError(`That document is ${(file.size / 1024 / 1024).toFixed(1)} MB — please choose one under 10 MB.`);
+      e.target.value = "";
+      return;
+    }
+    setError(null);
+    setLicenseFile(file);
   }
 
   async function handleFinish() {
@@ -250,7 +277,7 @@ export default function TherapistOnboardingPage() {
                 <p className="mt-2 text-sm text-stone-500">
                   {licenseFile ? licenseFile.name : "Click or drag to upload PDF/PNG"}
                 </p>
-                <input id="licenseFile" type="file" accept=".pdf,.png,.jpg" className="hidden" onChange={(e) => setLicenseFile(e.target.files?.[0] ?? null)} />
+                <input id="licenseFile" type="file" accept=".pdf,.png,.jpg" className="hidden" onChange={handleLicenseChange} />
               </label>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-700">

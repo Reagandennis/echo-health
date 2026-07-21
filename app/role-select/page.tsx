@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Heart, Stethoscope, ArrowRight, Loader2 } from "lucide-react";
 import { Suspense } from "react";
 import { useSession } from "@/app/components/UserProvider";
 import SignOutButton from "@/app/components/SignOutButton";
+import { PLAN_PRICES } from "@/lib/constants";
 
 type Role = "client" | "therapist";
 
@@ -55,10 +56,22 @@ const roles: {
 
 function RoleSelectContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading } = useSession();
   const [selected, setSelected] = useState<Role | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * A plan chosen on the landing page, passing through on its way to
+   * /onboarding. This page is a staging post in that journey, not a
+   * destination, so dropping the parameter here would lose the choice just as
+   * surely as never sending it. Validated because it goes into a redirect URL;
+   * "free" is not purchasable.
+   */
+  const requested = searchParams.get("plan");
+  const plan = requested && requested !== "free" && requested in PLAN_PRICES ? requested : null;
+  const planQuery = plan ? `?plan=${plan}` : "";
 
   useEffect(() => {
     // Wait for hydration. `user` is null both while /api/me is in flight and
@@ -76,9 +89,9 @@ function RoleSelectContent() {
     } else if (labels.includes("therapist")) {
       router.replace("/therapist");
     } else if (labels.includes("client")) {
-      router.replace("/onboarding");
+      router.replace(`/onboarding${planQuery}`);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, planQuery]);
 
   async function handleConfirm() {
     if (!selected || !user) return;
@@ -91,7 +104,10 @@ function RoleSelectContent() {
       // their KYC, and only then does /api/admin/therapist-kyc assign the
       // "therapist" label. This prevents self-promotion to a role with
       // access to clinical data.
-      const target = roles.find((r) => r.id === selected)?.redirectTo ?? "/onboarding";
+      const base = roles.find((r) => r.id === selected)?.redirectTo ?? "/onboarding";
+      // Only a client is carrying a plan; a therapist's destination has no use
+      // for one.
+      const target = selected === "client" ? `${base}${planQuery}` : base;
 
       if (selected === "client") {
         const res = await fetch("/api/user/set-role", {

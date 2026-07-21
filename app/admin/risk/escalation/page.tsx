@@ -4,12 +4,35 @@ import Link from "next/link";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import { CheckCircle, AlertTriangle, Phone, FileText } from "lucide-react";
 
+/**
+ * A reference procedure, not tracked state.
+ *
+ * WHAT WAS DELETED AND WHY. Steps 1 and 2 carried `done: true`, so this page
+ * always rendered a green "Complete" badge against "Identify the Crisis" and
+ * "Contact Therapist" — for every admin, on every visit, with no escalation in
+ * progress. Nothing anywhere records escalation progress; the flags were
+ * literals. During a live crisis that display asserts that someone has already
+ * confirmed the risk level and already spoken to the assigned therapist, which
+ * is the single most dangerous thing this page could get wrong: the two steps
+ * most likely to be skipped are the two it marked done.
+ *
+ * The "Mark Complete" buttons under the remaining steps had no handler and
+ * wrote nothing, so the state could not be corrected either.
+ *
+ * Since there is no escalation-tracking table, this is presented as what it
+ * is — a numbered runbook to work through — rather than as a checklist that
+ * appears to remember anything. Restoring per-escalation progress needs somewhere
+ * to store it; until then, honest static beats fake dynamic.
+ *
+ * Step 1 also said "Review AI flags". There is no AI: `lib/clinical/risk.ts`
+ * matches substrings against a fixed word list.
+ */
 const STEPS = [
-  { step: 1, title: "Identify the Crisis", description: "Review AI flags, therapist notes, and recent mood logs to confirm the risk level.", icon: AlertTriangle, done: true },
-  { step: 2, title: "Contact Therapist", description: "Immediately reach out to the assigned therapist for their assessment.", icon: Phone, done: true },
-  { step: 3, title: "Assess Immediate Safety", description: "Determine if the client needs emergency services or immediate intervention.", icon: CheckCircle, done: false },
-  { step: 4, title: "Escalate Internally", description: "Notify the clinical supervisor and document in the incident log.", icon: FileText, done: false },
-  { step: 5, title: "Follow-up Protocol", description: "Schedule a welfare check and assign daily monitoring for 7 days.", icon: CheckCircle, done: false },
+  { step: 1, title: "Identify the Crisis", description: "Review the risk alert, the therapist's notes and recent mood logs to judge the risk level yourself. Alerts come from keyword matching and are frequently false positives — read the source message.", icon: AlertTriangle },
+  { step: 2, title: "Contact Therapist", description: "Immediately reach out to the assigned therapist for their assessment.", icon: Phone },
+  { step: 3, title: "Assess Immediate Safety", description: "Determine if the client needs emergency services or immediate intervention.", icon: CheckCircle },
+  { step: 4, title: "Escalate Internally", description: "Notify the clinical supervisor and document in the incident log.", icon: FileText },
+  { step: 5, title: "Follow-up Protocol", description: "Schedule a welfare check and assign daily monitoring for 7 days.", icon: CheckCircle },
 ];
 
 export default async function EscalationWorkflowPage() {
@@ -20,7 +43,7 @@ export default async function EscalationWorkflowPage() {
     <div>
       <AdminPageHeader
         title="Crisis Escalation Workflow"
-        description="Step-by-step guide for handling high-risk client situations."
+        description="Reference procedure for handling high-risk client situations. Progress is not tracked — record what you did in the incident log."
         breadcrumbs={[{ label: "Risk & Crisis", href: "/admin/risk" }, { label: "Escalation" }]}
         actions={
           <a href="/admin/risk/incidents/new" className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors">
@@ -32,23 +55,15 @@ export default async function EscalationWorkflowPage() {
       <div className="max-w-2xl">
         <div className="relative space-y-0">
           <div className="absolute left-6 top-6 bottom-6 w-px bg-stone-200" />
-          {STEPS.map((step, i) => (
+          {STEPS.map((step) => (
             <div key={step.step} className="relative flex gap-5 pb-6">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 z-10 border-2 ${step.done ? "bg-teal-600 border-teal-600 text-white" : "bg-white border-stone-300 text-stone-400"}`}>
-                {step.done ? <CheckCircle className="w-5 h-5" /> : <step.icon className="w-5 h-5" />}
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 z-10 border-2 bg-white border-stone-300 text-stone-500">
+                <step.icon className="w-5 h-5" />
               </div>
               <div className="flex-1 pt-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-bold text-stone-400 uppercase">Step {step.step}</span>
-                  {step.done && <span className="text-[11px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Complete</span>}
-                </div>
-                <h3 className="text-sm font-bold text-stone-900 mb-1">{step.title}</h3>
+                <span className="text-xs font-bold text-stone-400 uppercase">Step {step.step}</span>
+                <h3 className="text-sm font-bold text-stone-900 mb-1 mt-1">{step.title}</h3>
                 <p className="text-sm text-stone-500">{step.description}</p>
-                {!step.done && (
-                  <button className="mt-3 px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors">
-                    Mark Complete
-                  </button>
-                )}
               </div>
             </div>
           ))}

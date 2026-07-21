@@ -19,7 +19,10 @@ const SUB_LINKS = [
   { label: "Billing",           href: "billing",           icon: CreditCard },
   { label: "Notes",             href: "notes",             icon: FileText },
   { label: "Edit Profile",      href: "edit",              icon: Edit },
-  { label: "Audit Log",         href: "audit-log",         icon: Clock },
+  // "Audit Log" promised a complete activity record including sign-ins, which
+  // are held by Auth0 and are not in this database. The page shows payments and
+  // sessions; the tab now says so. Route path unchanged so links keep working.
+  { label: "Activity",          href: "audit-log",         icon: Clock },
 ];
 
 /**

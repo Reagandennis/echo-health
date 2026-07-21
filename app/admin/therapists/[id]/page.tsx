@@ -5,7 +5,8 @@ import AdminPageHeader from "../../_components/AdminPageHeader";
 import AdminBadge, { kycBadge } from "../../_components/AdminBadge";
 import { Star, Calendar, DollarSign, Award, Activity, FileText, Clock, XCircle } from "lucide-react";
 import TherapistKycActions from "../TherapistKycActions";
-import { getTherapist, listAllSessions } from "../../_lib/queries";
+import { getTherapistKycReview, listAllSessions } from "../../_lib/queries";
+import { kycDocumentLabel } from "@/lib/kyc";
 
 const SUB_LINKS = [
   { label: "Credentials",   href: "credentials",   icon: Award },
@@ -15,7 +16,10 @@ const SUB_LINKS = [
   { label: "Earnings",      href: "earnings",      icon: DollarSign },
   { label: "Feedback",      href: "feedback",      icon: Star },
   { label: "Notes",         href: "notes",         icon: FileText },
-  { label: "Audit Log",     href: "audit-log",     icon: Clock },
+  // Named for what the page actually contains. "Audit Log" implied a general
+  // activity record — including sign-ins, which live in Auth0 and are not in
+  // this database at all. The route keeps its old path so existing links work.
+  { label: "History",       href: "audit-log",     icon: Clock },
 ];
 
 export default async function TherapistDetailPage({
@@ -28,10 +32,22 @@ export default async function TherapistDetailPage({
 
   const { id } = await params;
 
-  // `[id]` here is a `therapists.id` uuid — unlike `/admin/users/[id]`, which is
-  // an Auth0 sub. `getTherapist` screens the format before querying.
-  const therapist = await getTherapist(id);
-  if (!therapist) notFound();
+  /*
+   * `[id]` here is a `therapists.id` uuid — unlike `/admin/users/[id]`, which is
+   * an Auth0 sub. `getTherapistKycReview` screens the format before querying.
+   *
+   * It is used in preference to `getTherapist` so the KYC control in the header
+   * knows which required documents are still outstanding. Without that it would
+   * render an enabled Approve button on a page that shows none of the evidence —
+   * the exact affordance that got two unverified clinicians approved.
+   */
+  const review = await getTherapistKycReview(id);
+  if (!review) notFound();
+
+  const therapist = review.therapist;
+  const missingRequired = review.missingRequired.map((type) =>
+    kycDocumentLabel(type)
+  );
 
   const sessions = (await listAllSessions()).filter((s) => s.therapistId === id);
   const completed = sessions.filter((s) => s.status === "completed").length;
@@ -47,7 +63,12 @@ export default async function TherapistDetailPage({
         ]}
         actions={
           <div className="flex gap-2 items-center">
-            <TherapistKycActions therapistDocId={therapist.$id} currentStatus={therapist.kycStatus} />
+            <TherapistKycActions
+              therapistDocId={therapist.$id}
+              currentStatus={therapist.kycStatus}
+              missingRequired={missingRequired}
+              reviewHref={`/admin/therapists/${id}/credentials`}
+            />
             <button className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-rose-600 rounded-xl hover:bg-rose-700 transition-colors">
               <XCircle className="w-4 h-4" /> Suspend
             </button>

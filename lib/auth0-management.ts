@@ -170,6 +170,30 @@ export async function removeRole(userSub: string, roleName: string): Promise<voi
   });
 }
 
+// ─── Profile ─────────────────────────────────────────────────────────────────
+
+/**
+ * A user's email address, straight from Auth0.
+ *
+ * Needed because Postgres is not a complete directory: `profiles` holds an email
+ * but a therapist may never have had a `profiles` row (they get a `therapists`
+ * row instead), and `therapists` has no email column. Auth0 is the only place
+ * every account is guaranteed to appear, so it is the fallback when we need to
+ * actually reach someone — notably to tell them the outcome of a KYC review.
+ *
+ * Returns `null` rather than throwing when the account has no email on file, so
+ * "we could not reach them" stays distinguishable from "the API call failed".
+ * `?fields=` keeps this off the full-profile payload: an email lookup has no
+ * business pulling back `user_metadata` or identity provider tokens.
+ */
+export async function getUserEmail(userSub: string): Promise<string | null> {
+  const res = await managementFetch(
+    `/users/${encodeURIComponent(userSub)}?fields=email&include_fields=true`
+  );
+  const body = (await res.json()) as { email?: string };
+  return body.email?.trim() || null;
+}
+
 // ─── user_metadata ───────────────────────────────────────────────────────────
 
 /**

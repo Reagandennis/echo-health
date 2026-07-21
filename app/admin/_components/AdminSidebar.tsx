@@ -25,11 +25,30 @@ import {
 } from "lucide-react";
 import SignOutButton from "@/app/components/SignOutButton";
 
+/**
+ * `badgeKey` names a count the LAYOUT supplies from a real query. An item
+ * without one renders no badge at all.
+ *
+ * WHY THERE IS NO LONGER A `badge: number` LITERAL HERE. Three were hardcoded:
+ * "Verification Queue: 3", "Risk & Crisis: 5" and "Support: 12". They rendered
+ * on every admin page load regardless of the database, so the console
+ * permanently claimed five unresolved clinical risk alerts against a table that
+ * contained zero rows and had never been written to. A standing red badge next
+ * to a crisis queue is worse than no badge: it is either ignored as decoration,
+ * or it sends someone looking for five alerts that do not exist.
+ *
+ * `Verification Queue` and `Support` are now unbadged — their counts live behind
+ * pages this component's owner does not maintain, and an unbadged link is honest
+ * where an invented number is not. Wire them the same way as `riskAlerts` when
+ * a real count is available.
+ */
+type BadgeKey = "riskAlerts";
+
 type NavItem = {
   name: string;
   href: string;
   icon: React.ElementType;
-  badge?: number;
+  badgeKey?: BadgeKey;
 };
 
 type NavGroup = {
@@ -49,7 +68,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { name: "Clients", href: "/admin/users", icon: Users },
       { name: "Therapists", href: "/admin/therapists", icon: UserCheck },
-      { name: "Verification Queue", href: "/admin/therapists/verification-queue", icon: ShieldCheck, badge: 3 },
+      { name: "Verification Queue", href: "/admin/therapists/verification-queue", icon: ShieldCheck },
     ],
   },
   {
@@ -63,7 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Clinical",
     items: [
-      { name: "Risk & Crisis", href: "/admin/risk", icon: AlertTriangle, badge: 5 },
+      { name: "Risk & Crisis", href: "/admin/risk", icon: AlertTriangle, badgeKey: "riskAlerts" },
       { name: "Content", href: "/admin/content", icon: BookOpen },
     ],
   },
@@ -71,7 +90,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Platform",
     items: [
       { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-      { name: "Support", href: "/admin/support", icon: Headphones, badge: 12 },
+      { name: "Support", href: "/admin/support", icon: Headphones },
       { name: "Compliance", href: "/admin/compliance", icon: Lock },
       { name: "Config", href: "/admin/config", icon: Settings },
     ],
@@ -81,9 +100,14 @@ const NAV_GROUPS: NavGroup[] = [
 interface AdminSidebarProps {
   userName: string;
   userLabel: string;
+  /**
+   * Real counts, queried by the layout. Optional so the sidebar degrades to no
+   * badges rather than to a wrong one if a caller omits it.
+   */
+  badgeCounts?: Partial<Record<BadgeKey, number>>;
 }
 
-export default function AdminSidebar({ userName, userLabel }: AdminSidebarProps) {
+export default function AdminSidebar({ userName, userLabel, badgeCounts }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -173,6 +197,15 @@ export default function AdminSidebar({ userName, userLabel }: AdminSidebarProps)
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const active = isActive(item.href, item.href === "/admin");
+                  /*
+                   * Zero renders nothing. An empty queue is not news, and a grey
+                   * "0" next to Risk & Crisis would be one more number to scan
+                   * past — the badge should mean "there is work here".
+                   */
+                  const count = item.badgeKey
+                    ? badgeCounts?.[item.badgeKey]
+                    : undefined;
+                  const showBadge = typeof count === "number" && count > 0;
                   return (
                     <Link
                       key={item.href}
@@ -195,14 +228,14 @@ export default function AdminSidebar({ userName, userLabel }: AdminSidebarProps)
                       {!collapsed && (
                         <>
                           <span className="text-sm font-medium flex-1">{item.name}</span>
-                          {item.badge !== undefined && (
+                          {showBadge && (
                             <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                              {item.badge}
+                              {count}
                             </span>
                           )}
                         </>
                       )}
-                      {collapsed && item.badge !== undefined && (
+                      {collapsed && showBadge && (
                         <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-rose-500 rounded-full" />
                       )}
                     </Link>

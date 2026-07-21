@@ -143,7 +143,18 @@ Both use `api_host: "/ingest"` which is reverse-proxied to PostHog US in `next.c
 
 ### Clinical risk
 
-`lib/clinical/risk.ts` is a keyword-based risk scanner (`analyzeRisk(text) -> "low" | "moderate" | "high"`). It's intentionally simple — used in chat (`app/api/chat/`) and admin risk views. If extending, keep `HIGH_RISK_KEYWORDS` and `MODERATE_RISK_KEYWORDS` as the source of truth; the corresponding test is `__tests__/clinical-risk.test.ts`.
+`lib/clinical/risk.ts` is `analyzeRisk(text) -> "low" | "moderate" | "high"`. **It is substring matching against a fixed word list — that is the entire implementation.** It is not a validated instrument, nobody has measured its sensitivity or specificity on this population, and there is no AI anywhere in it. It fires on quoted and historical speech ("my brother said he wanted to kill himself"), fires on ordinary words that happen to be listed (`goodbye` is on the high-risk list), and misses anything phrased obliquely — which is most of how distress is phrased. Render `RISK_SCANNER_DISCLOSURE` wherever a level is shown to a human.
+
+> An earlier version of this file said the scanner was "used in chat (`app/api/chat/`) and admin risk views". **That was false in both halves** and stood for months: it was never called in `app/api/chat/`, and the admin risk pages queried nothing at all — they rendered hardcoded scores and flags under real clients' names. Treat this paragraph as the thing most likely to rot next.
+
+**The pipeline, as of migration 0017:**
+- `sendMessageAction` scans message content server-side and files a `risk_alerts` row on `high` only. `moderate` is deliberately not persisted: a scanner emitting low-confidence alerts trains a reviewer to dismiss all of them.
+- **Staff-authored messages are not scanned.** A therapist writing "she told me she wanted to end it all" is the likeliest source of a high-risk keyword here, and attributing it would file a crisis alert against the clinician's record.
+- The insert runs under `withSystem("risk-scanner")` in a **separate transaction, after the message commits**. This ordering is load-bearing: an RLS-refused insert aborts the whole transaction, so a try/catch around an insert placed inside the message transaction would swallow the JS error and still lose the message at COMMIT.
+- `risk_alerts` policies admit system context for SELECT and INSERT only — not UPDATE or DELETE. Senders are deliberately NOT granted INSERT: `patient_id` is free text with no FK, so that would let any client file a `crisis` alert against any other user's id.
+- `disposition` (`open` / `actioned` / `false_positive` / `duplicate`) exists because `resolved` alone cannot distinguish "we read it, it was a cheerful sign-off" from "this person was in crisis". Without it the table accumulates as a crisis history that is mostly string matches. A non-`open` disposition must be attributed — enforced by CHECK.
+
+Keep `HIGH_RISK_KEYWORDS` / `MODERATE_RISK_KEYWORDS` as the source of truth; the unit test is `__tests__/clinical-risk.test.ts`. The RLS and CHECK guarantees above are **not** covered by jest — it mocks `lib/db/session.ts`, so every policy could be dropped and all 93 tests would still pass. Run `npx tsx scripts/verify-risk-pipeline.ts` after touching these tables or policies (and `scripts/verify-kyc-security.ts` for credentialing). Both are safe against production: every case rolls back.
 
 ### Support chat widget
 

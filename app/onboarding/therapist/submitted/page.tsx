@@ -50,11 +50,18 @@ export default function TherapistApplicationSubmittedPage() {
             </div>
           </div>
 
+          {/*
+            Was "Update my submission", which is no longer true and was never
+            quite honest: documents are frozen once an application is with a
+            reviewer, so following this link shows the read-only "under review"
+            view. Promising an edit the next screen refuses is how a flow loses
+            someone's trust in the first ten seconds.
+          */}
           <Link
             href="/onboarding/therapist"
             className="inline-block mt-7 text-sm font-semibold text-brand underline underline-offset-4"
           >
-            Update my submission
+            Check my application status
           </Link>
         </div>
       </main>

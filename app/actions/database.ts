@@ -1,9 +1,15 @@
 "use server";
 
-import { and, asc, desc, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 
 import { getLoggedInUser, type SessionUser } from "@/lib/auth/session";
-import { withUser } from "@/lib/db/session";
+import { withAnonymous, withSystem, withUser } from "@/lib/db/session";
+import { analyzeRisk } from "@/lib/clinical/risk";
+import {
+  validateAvailabilityDraft,
+  type AvailabilityBlock,
+  type AvailabilityDraft,
+} from "@/lib/availability";
 import {
   PLAN_CURRENCY,
   PLAN_SESSIONS,
@@ -12,6 +18,15 @@ import {
   listPriceMinorPerSession,
   therapistShareMinor,
 } from "@/lib/constants";
+import {
+  KYC_DOCUMENT_SPECS,
+  canSubmitForReview,
+  kycDocumentLabel,
+  missingRequiredTypes,
+  type KycDocReview,
+  type KycDocumentType,
+  type KycStatus,
+} from "@/lib/kyc";
 import {
   avatars,
   chatMessages,
@@ -29,6 +44,7 @@ import {
   profiles,
   riskAlerts,
   therapySessions,
+  therapistAvailability,
   therapists,
   type GoalMilestone,
 } from "@/lib/db/schema";
@@ -227,7 +243,20 @@ async function requireStaff(): Promise<SessionUser> {
   return user;
 }
 
-/** The `therapists` row belonging to `user`, or null. */
+/**
+ * Identity of the `therapists` row belonging to `user`, or null.
+ *
+ * DELIBERATELY NARROW — it projects only the columns needed to answer "which
+ * row is theirs", because its callers are ownership checks. Do not widen it;
+ * `therapists_select` is public for the directory, and the row carries
+ * `license_number` and `kyc_status`.
+ *
+ * COROLLARY, and the reason this comment exists: anything that needs to *read*
+ * a therapist's state must issue its own SELECT naming those columns. Passing
+ * the result of this function to a caller that then reads `.kycStatus` yields
+ * `undefined`, not the stored value — which is exactly how a verified therapist
+ * ended up being told to redo their KYC. See `getTherapistDashboardAction`.
+ */
 async function getTherapistDocForUser(tx: Tx, user: SessionUser) {
   const [row] = await tx
     .select({ id: therapists.id, userId: therapists.userId })
@@ -467,14 +496,105 @@ export async function uploadAvatarAction(formData: FormData) {
 }
 
 /**
+ * A KYC document as the THERAPIST sees it in their own application.
+ *
+ * Named for the caller's perspective, not the table, because `app/admin/_lib/
+ * queries.ts` exports a `KycDocumentSummary` for the SAME rows seen by a
+ * reviewer — that one carries `uploadedBy`, `reviewedBy` and `reviewedAt`, which
+ * are review-side metadata an applicant has no reason to receive. Two names for
+ * two audiences, rather than one shared type that quietly grows the union of
+ * both and leaks the wider half.
+ *
+ * `content` is deliberately absent. It is a `bytea` column holding the whole
+ * file, and a server action's return value is serialised into the RSC payload —
+ * projecting it here would ship every uploaded megabyte to the browser on a
+ * page that only wants to render a filename. The bytes have exactly one
+ * delivery route, `GET /api/kyc/<id>`, which authorizes per request.
+ */
+export interface MyKycDocument {
+  id: string;
+  docType: KycDocumentType;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: Date;
+  reviewStatus: KycDocReview;
+  reviewNote: string | null;
+}
+
+/**
+ * Read and validate the `docType` field of an upload.
+ *
+ * `kyc_documents.doc_type` is NOT NULL with NO database default (migration 0013
+ * adds a default to backfill two legacy rows, then drops it), so an insert that
+ * omits this fails at the database rather than quietly landing as `other`. That
+ * is the intended behaviour, but the resulting error is a Postgres constraint
+ * message; this turns it into something an applicant can act on.
+ *
+ * The value is matched against `KYC_DOCUMENT_SPECS` rather than cast, because it
+ * arrives from a form field and a bad cast would hand an unchecked string to the
+ * enum column.
+ */
+function readDocType(formData: FormData): KycDocumentType {
+  const raw = formData.get("docType");
+  if (typeof raw !== "string" || raw === "") {
+    throw new Error(
+      "Select what this document is before uploading — an untyped document cannot be checked against a requirement"
+    );
+  }
+
+  const spec = KYC_DOCUMENT_SPECS.find((s) => s.type === raw);
+  if (!spec) {
+    throw new Error(
+      `Unknown document type "${raw}". Expected one of: ${KYC_DOCUMENT_SPECS.map((s) => s.type).join(", ")}`
+    );
+  }
+  return spec.type;
+}
+
+/**
+ * The therapist-visible columns of `kyc_documents`, for one therapist row.
+ *
+ * Shared by `listMyKycDocumentsAction` and `getMyKycStatusAction` so the latter
+ * answers from a single transaction. Calling the action from inside the other
+ * action would open a second `withUser` transaction — a second connection
+ * checkout and a second identity round-trip — for data this one already has.
+ */
+async function selectKycDocuments(
+  tx: Tx,
+  therapistId: string
+): Promise<MyKycDocument[]> {
+  return tx
+    .select({
+      id: kycDocuments.id,
+      docType: kycDocuments.docType,
+      filename: kycDocuments.filename,
+      mimeType: kycDocuments.mimeType,
+      sizeBytes: kycDocuments.sizeBytes,
+      uploadedAt: kycDocuments.uploadedAt,
+      reviewStatus: kycDocuments.reviewStatus,
+      reviewNote: kycDocuments.reviewNote,
+    })
+    .from(kycDocuments)
+    .where(eq(kycDocuments.therapistId, therapistId))
+    .orderBy(asc(kycDocuments.uploadedAt));
+}
+
+/**
  * Store an identity document as a `kyc_documents` row.
  *
  * PORTED FROM APPWRITE STORAGE, where these sat at a public bucket URL that
  * anyone holding the link could read. Bytes now live in a `bytea` column behind
  * the `kyc_documents_select` policy, served by `GET /api/kyc/<id>`.
+ *
+ * SIGNATURE CHANGE: the FormData must now carry a `docType` field alongside
+ * `file`. Uploads used to be untyped, which is why "has this clinician provided
+ * a practising certificate" could only be answered by opening files one at a
+ * time — and why the admin screen answered it with hardcoded values instead.
  */
 export async function uploadKycDocumentAction(formData: FormData) {
   const user = await requireUser();
+  const docType = readDocType(formData);
   const file = readUpload(formData, ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES);
   const content = Buffer.from(await file.arrayBuffer());
 
@@ -494,6 +614,7 @@ export async function uploadKycDocumentAction(formData: FormData) {
       .values({
         therapistId: therapistDoc.id,
         uploadedBy: user.$id,
+        docType,
         filename: (file.name || "document").slice(0, 255),
         mimeType: file.type,
         sizeBytes: content.byteLength,
@@ -501,7 +622,265 @@ export async function uploadKycDocumentAction(formData: FormData) {
       })
       .returning({ id: kycDocuments.id });
 
-    return { id: row.id, url: `/api/kyc/${row.id}` };
+    return { id: row.id, url: `/api/kyc/${row.id}`, docType };
+  });
+}
+
+/**
+ * Remove one of the caller's own KYC documents.
+ *
+ * ONLY WHILE THE APPLICATION IS EDITABLE — `incomplete` or `rejected`. Once it
+ * is `pending` a reviewer may be part-way through assessing exactly these files,
+ * and once it is `verified` the documents are the evidence the approval rests
+ * on. Letting an applicant withdraw either would mean the trail no longer shows
+ * what was actually reviewed, which is the specific failure migration 0013
+ * exists to end.
+ *
+ * OWNER ONLY — no admin bypass, unlike most delete actions in this file. An
+ * admin destroying credentialing evidence should not be a side effect of a
+ * therapist-facing action: it leaves no `kyc_review_events` row, so nothing
+ * records that the document ever existed. The status gate above is also
+ * meaningless for an admin acting on someone else's application. If admins need
+ * to remove a document, that belongs in the admin review route, alongside the
+ * event write.
+ *
+ * NOTE — RLS is stricter than this action. `kyc_documents_delete` is
+ * `USING (app_is_admin())`, so a therapist deleting their own document
+ * satisfies every check below and still removes zero rows. Same shape as the
+ * mismatch documented on `deleteClinicalNoteAction`. It is surfaced loudly
+ * rather than reported as success; the policy needs
+ * `app_owns_therapist(therapist_id)` added before this action can work. Do not
+ * "fix" it by weakening the checks here.
+ */
+export async function deleteKycDocumentAction(documentId: string) {
+  const user = await requireUser();
+  if (!isUuid(documentId)) throw new Error("Not found");
+
+  return withUser(user, async (tx) => {
+    const [doc] = await tx
+      .select({ id: kycDocuments.id, therapistId: kycDocuments.therapistId })
+      .from(kycDocuments)
+      .where(eq(kycDocuments.id, documentId))
+      .limit(1);
+    if (!doc) throw new Error("Not found");
+
+    if (!(await ownsTherapistDoc(tx, user, doc.therapistId))) {
+      throw new Error("Forbidden");
+    }
+
+    /*
+     * Its own SELECT, naming the column. `getTherapistDocForUser` projects only
+     * `{ id, userId }` and reading `.kycStatus` off it yields `undefined` —
+     * which here would compare unequal to every blocked status and wave the
+     * delete through on a submitted application. See the comment on that helper.
+     */
+    const [therapist] = await tx
+      .select({ kycStatus: therapists.kycStatus })
+      .from(therapists)
+      .where(eq(therapists.id, doc.therapistId))
+      .limit(1);
+    if (!therapist) throw new Error("Not found");
+
+    /*
+     * Coincides with `canSubmitForReview` today — both mean "the application is
+     * still the applicant's to edit". Stated separately because they answer
+     * different questions, and a future rule that lets a rejected applicant
+     * resubmit without letting them delete the rejected evidence should not
+     * arrive silently by way of a shared predicate.
+     */
+    if (therapist.kycStatus !== "incomplete" && therapist.kycStatus !== "rejected") {
+      throw new Error(
+        therapist.kycStatus === "pending"
+          ? "Your application is under review — documents cannot be removed until a decision is made"
+          : "Your application has been approved — the documents it was approved against cannot be removed"
+      );
+    }
+
+    const deleted = await tx
+      .delete(kycDocuments)
+      .where(eq(kycDocuments.id, documentId))
+      .returning({ id: kycDocuments.id });
+
+    if (deleted.length === 0) {
+      throw new Error(
+        "Could not remove the document — the kyc_documents delete policy admits admins only"
+      );
+    }
+    return { success: true };
+  });
+}
+
+/**
+ * The caller's own KYC documents, newest requirement work last.
+ *
+ * Returns `[]` rather than throwing when the caller has no `therapists` row: a
+ * user who has not started a therapist profile has no documents, which is an
+ * empty list and not an error.
+ *
+ * These rows carry no `$id` alias. Every other list action in this file adds one
+ * for Appwrite-era call sites; this action is new, so it has no callers to keep
+ * working and no reason to inherit the bridge.
+ */
+export async function listMyKycDocumentsAction(): Promise<MyKycDocument[]> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const therapistDoc = await getTherapistDocForUser(tx, user);
+    if (!therapistDoc) return [];
+    return selectKycDocuments(tx, therapistDoc.id);
+  });
+}
+
+/** Everything the therapist's own KYC page needs, in one transaction. */
+export interface MyKycStatus {
+  kycStatus: KycStatus;
+  kycSubmittedAt: Date | null;
+  kycReviewedAt: Date | null;
+  /** The reviewer's overall reason. On a rejection this is the whole explanation. */
+  kycReviewNote: string | null;
+  documents: MyKycDocument[];
+  /** Required types not yet uploaded. Empty means the application can be submitted. */
+  missingRequired: readonly KycDocumentType[];
+}
+
+/**
+ * The caller's KYC state and documents. Null when they have no therapist row.
+ *
+ * Null is "you are not a therapist applicant", which the caller must render
+ * differently from "you are an applicant with nothing uploaded" — the second is
+ * a real application sitting at `incomplete`, the first is not an application at
+ * all. Collapsing them is how a client account ends up being shown a
+ * credentialing form.
+ */
+export async function getMyKycStatusAction(): Promise<MyKycStatus | null> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    // Named columns rather than `getTherapistDocForUser`, which projects only
+    // the identity pair — `kycStatus` is the value this whole action is about.
+    const [therapist] = await tx
+      .select({
+        id: therapists.id,
+        kycStatus: therapists.kycStatus,
+        kycSubmittedAt: therapists.kycSubmittedAt,
+        kycReviewedAt: therapists.kycReviewedAt,
+        kycReviewNote: therapists.kycReviewNote,
+      })
+      .from(therapists)
+      .where(eq(therapists.userId, user.$id))
+      .limit(1);
+
+    if (!therapist) return null;
+
+    const documents = await selectKycDocuments(tx, therapist.id);
+
+    return {
+      kycStatus: therapist.kycStatus,
+      kycSubmittedAt: therapist.kycSubmittedAt,
+      kycReviewedAt: therapist.kycReviewedAt,
+      kycReviewNote: therapist.kycReviewNote,
+      documents,
+      missingRequired: missingRequiredTypes(documents.map((d) => d.docType)),
+    };
+  });
+}
+
+/**
+ * Hand the caller's application to the review queue.
+ *
+ * The completeness check is repeated here even though the form disables its own
+ * submit button while documents are missing. A disabled button is a courtesy to
+ * the applicant, not a control: this action is a POST like any other and the
+ * button is not what keeps an empty application out of the queue.
+ *
+ * Does NOT write a `kyc_review_events` row, deliberately. That table's insert
+ * policy is `app_is_admin()`, so the write would be refused inside a therapist's
+ * transaction and — because a policy refusal on INSERT raises rather than
+ * returning zero rows — would roll back the submission with it. Submission
+ * events are recorded by the admin review route, which runs as an admin.
+ */
+export async function submitKycForReviewAction(): Promise<{
+  kycStatus: KycStatus;
+  kycSubmittedAt: Date | null;
+}> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const [therapist] = await tx
+      .select({ id: therapists.id, kycStatus: therapists.kycStatus })
+      .from(therapists)
+      .where(eq(therapists.userId, user.$id))
+      .limit(1);
+
+    if (!therapist) {
+      throw new Error(
+        "No therapist profile for this user — save the therapist profile before submitting for review"
+      );
+    }
+
+    if (!canSubmitForReview(therapist.kycStatus)) {
+      throw new Error(
+        therapist.kycStatus === "pending"
+          ? "Your application is already under review"
+          : "You are already verified — there is nothing to submit"
+      );
+    }
+
+    const documents = await tx
+      .select({ docType: kycDocuments.docType })
+      .from(kycDocuments)
+      .where(eq(kycDocuments.therapistId, therapist.id));
+
+    // `hasAllRequiredTypes` inlined as its own definition, so the refusal can
+    // name the gap. "Something is missing" sends the applicant back to hunt
+    // through a form they already believe they completed.
+    const missing = missingRequiredTypes(documents.map((d) => d.docType));
+    if (missing.length > 0) {
+      throw new Error(
+        `Still required: ${missing.map(kycDocumentLabel).join(", ")}`
+      );
+    }
+
+    const submittedAt = new Date();
+
+    /*
+     * The status guard is repeated in the WHERE, not just the check above.
+     * Between the SELECT and this UPDATE the transaction is READ COMMITTED, so a
+     * concurrent submit (double-clicked button, two tabs) could commit in
+     * between and this would overwrite a decision an admin had just made.
+     * Naming the permitted source states makes the transition atomic.
+     */
+    const updated = await tx
+      .update(therapists)
+      .set({
+        kycStatus: "pending",
+        kycSubmittedAt: submittedAt,
+        /*
+         * Cleared so a stale rejection reason does not sit next to a fresh
+         * submission, reading as a verdict on documents nobody has looked at.
+         *
+         * `kycReviewedAt` / `kycReviewedBy` are left alone: they record a review
+         * that genuinely happened, and the full history is in
+         * `kyc_review_events` either way.
+         */
+        kycReviewNote: null,
+        updatedAt: submittedAt,
+      })
+      .where(
+        and(
+          eq(therapists.id, therapist.id),
+          inArray(therapists.kycStatus, ["incomplete", "rejected"])
+        )
+      )
+      .returning({ kycStatus: therapists.kycStatus, kycSubmittedAt: therapists.kycSubmittedAt });
+
+    if (updated.length === 0) {
+      throw new Error(
+        "Could not submit — the application status changed while you were submitting. Reload and try again."
+      );
+    }
+
+    return { kycStatus: updated[0].kycStatus, kycSubmittedAt: updated[0].kycSubmittedAt };
   });
 }
 
@@ -1282,7 +1661,33 @@ export async function getTherapistDashboardAction() {
   const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
 
   return withUser(user, async (tx) => {
-    const therapist = await getTherapistDocForUser(tx, user);
+    /*
+     * Selected here rather than via `getTherapistDocForUser`, which projects
+     * only `{ id, userId }` for ownership checks.
+     *
+     * THIS WAS A LIVE BUG. The dashboard reads `therapist.kycStatus`, the narrow
+     * helper never selected that column, so the value was always `undefined` and
+     * the component's `?? "incomplete"` fallback turned "the query did not ask
+     * for it" into "this clinician has not submitted their KYC". An admin would
+     * approve an application, the row would correctly read `verified` in
+     * Postgres, and the therapist would sign in to a banner telling them to
+     * start KYC over — with no way to tell the difference from the UI.
+     *
+     * `kycStatus` is what the banner branches on, so it must come from the same
+     * query that establishes the row exists.
+     */
+    const [therapist] = await tx
+      .select({
+        id: therapists.id,
+        userId: therapists.userId,
+        name: therapists.name,
+        kycStatus: therapists.kycStatus,
+        onboardingComplete: therapists.onboardingComplete,
+      })
+      .from(therapists)
+      .where(eq(therapists.userId, user.$id))
+      .limit(1);
+
     if (!therapist) {
       return { therapist: null, stats: null, today: [], pending: [] };
     }
@@ -1398,9 +1803,19 @@ export async function markNotificationAsReadAction(id: string): Promise<Doc> {
  *
  * FIXED: this used to force `kycStatus: "pending"` on every write, silently
  * demoting a `verified` therapist to re-review whenever they edited their bio.
- * KYC is now advanced to "pending" only from the initial "incomplete" state; an
- * already-verified, already-pending or rejected status is left untouched, and
- * `kycStatus` is never accepted from the caller.
+ *
+ * FIXED AGAIN (migration 0013): saving a profile no longer moves `kycStatus` AT
+ * ALL, and a new row is created at the column default `incomplete` rather than
+ * `pending`. Advancing on profile save meant an applicant reached the review
+ * queue by filling in a bio, with zero documents attached — the queue then held
+ * applications there was nothing to review, which is how "verified" came to mean
+ * "someone clicked approve". It also broke the real submission path:
+ * `submitKycForReviewAction` refuses a status that is already `pending`, so an
+ * applicant who saved their profile first could never submit.
+ *
+ * `submitKycForReviewAction` is now the ONLY route to `pending`, and it checks
+ * the required documents are actually present. `kycStatus` is never accepted
+ * from the caller.
  */
 export async function upsertTherapistProfileAction(
   data: Record<string, unknown>
@@ -1420,21 +1835,16 @@ export async function upsertTherapistProfileAction(
 
   return withUser(user, async (tx) => {
     const [existing] = await tx
-      .select({ id: therapists.id, kycStatus: therapists.kycStatus })
+      .select({ id: therapists.id })
       .from(therapists)
       .where(eq(therapists.userId, user.$id))
       .limit(1);
 
     if (existing) {
-      // Only advance KYC out of "incomplete"; never regress a reviewed status.
-      const kycStatus =
-        existing.kycStatus === "incomplete" ? ("pending" as const) : undefined;
-
       const [row] = await tx
         .update(therapists)
         .set({
           ...fields,
-          ...(kycStatus ? { kycStatus } : {}),
           onboardingComplete: true,
           updatedAt: new Date(),
         })
@@ -1456,7 +1866,8 @@ export async function upsertTherapistProfileAction(
         name: typeof fields.name === "string" ? fields.name : user.name,
         bio: typeof fields.bio === "string" ? fields.bio : "",
         experience: typeof fields.experience === "number" ? fields.experience : 0,
-        kycStatus: "pending",
+        // No `kycStatus` — the column defaults to `incomplete`, and only
+        // `submitKycForReviewAction` may advance it.
         onboardingComplete: true,
       })
       .returning();
@@ -1827,7 +2238,7 @@ export async function sendMessageAction(
     throw new Error("A message content is required");
   }
 
-  return withUser(user, async (tx) => {
+  const doc = await withUser(user, async (tx) => {
     const [row] = await tx
       .insert(messages)
       .values({
@@ -1842,6 +2253,42 @@ export async function sendMessageAction(
 
     return toDoc(row);
   });
+
+  /*
+   * Risk scanning runs AFTER the transaction above has committed, and never
+   * inside it. This ordering is the whole design, so do not "tidy" it by moving
+   * the scan into the `withUser` callback to save a round-trip.
+   *
+   * WHY: the alert lands in `risk_alerts`, whose RLS policy is admin-only. When
+   * a non-admin insert is refused, Postgres does not merely return zero rows —
+   * it raises `new row violates row-level security policy`, which puts the
+   * WHOLE transaction into an aborted state ("current transaction is aborted,
+   * commands ignored until end of transaction block"). A try/catch in
+   * TypeScript would swallow the JS exception and still leave the transaction
+   * unable to commit, so the MESSAGE would be silently lost. A therapy message
+   * failing to deliver because a logging insert errored is far worse than the
+   * alert being missed, and the message must therefore be durable before the
+   * alert is even attempted.
+   *
+   * Only client-authored messages are scanned. A therapist writing *about* a
+   * client ("she told me she wanted to end it all") is the single most likely
+   * source of a high-risk keyword on this platform, and attributing those words
+   * to the therapist would file a crisis alert against the wrong person's
+   * record — a fabricated clinical record, which is exactly what this scan is
+   * supposed to avoid producing. Staff messages are therefore skipped rather
+   * than misattributed.
+   *
+   * `moderate` deliberately does NOT alert. A keyword scanner firing on
+   * "hopeless" and "crisis" would generate a steady stream of low-confidence
+   * alerts, and an admin who dismisses fifty of those will dismiss the
+   * fifty-first without reading it. Fewer alerts that get read beats more
+   * alerts that get ignored.
+   */
+  if (!isAdmin(user) && !isTherapist(user) && analyzeRisk(content) === "high") {
+    await recordHighRiskMessageAlert(user.$id, content);
+  }
+
+  return doc;
 }
 
 export async function getSessionAction(sessionId: string): Promise<Doc> {
@@ -2198,6 +2645,379 @@ export async function sendChatReplyAction(
         email: user.email,
         role: "admin",
         text,
+      })
+      .returning();
+
+    return toDoc(row);
+  });
+}
+
+// ─── Therapist availability (migration 0016) ─────────────────────────────────
+//
+// PUBLISHED HOURS, NOT A BOOKING CONSTRAINT. `createSessionAction` above does
+// not consult any of this: it accepts whatever `scheduledAt` it is given, and a
+// client can still book outside a therapist's published hours. Enforcing the
+// schedule is a real change to the booking flow — what happens to an out-of-hours
+// request, who may override it, what becomes of bookings that already sit outside
+// the new hours — and it deserves its own decision rather than being smuggled in
+// with the storage. Until that decision is made, every surface that renders this
+// data has to describe it as published hours rather than as a lock.
+//
+// These replace a save handler that ran `setSaved(true)` and discarded the form.
+
+/** A therapist's published week, as every reader of it needs it. */
+export interface TherapistAvailability {
+  therapistId: string;
+  /** IANA zone name. Every minute value below is local to THIS zone. */
+  timezone: string;
+  sessionDurationMinutes: number;
+  bufferMinutes: number;
+  /**
+   * Stored order (Sunday first, matching `day_of_week` 0–6). Callers that render
+   * a Monday-first week run these through `sortForDisplay` from
+   * `lib/availability` rather than re-deriving the order.
+   */
+  blocks: AvailabilityBlock[];
+}
+
+export type SaveAvailabilityResult =
+  | { ok: true; availability: TherapistAvailability }
+  | { ok: false; message: string };
+
+/**
+ * Read one therapist's settings and blocks on an already-open transaction.
+ *
+ * Projects `therapists` explicitly rather than `select()`: this feeds a
+ * world-readable action, and the row it reads from carries `license_number` and
+ * `kyc_status`.
+ */
+async function readAvailability(
+  tx: Tx,
+  therapistId: string
+): Promise<TherapistAvailability | null> {
+  const [therapist] = await tx
+    .select({
+      id: therapists.id,
+      timezone: therapists.timezone,
+      sessionDurationMinutes: therapists.sessionDurationMinutes,
+      bufferMinutes: therapists.bufferMinutes,
+    })
+    .from(therapists)
+    .where(eq(therapists.id, therapistId))
+    .limit(1);
+
+  if (!therapist) return null;
+
+  const blocks = await tx
+    .select({
+      dayOfWeek: therapistAvailability.dayOfWeek,
+      startMinute: therapistAvailability.startMinute,
+      endMinute: therapistAvailability.endMinute,
+    })
+    .from(therapistAvailability)
+    .where(eq(therapistAvailability.therapistId, therapistId))
+    .orderBy(asc(therapistAvailability.dayOfWeek));
+
+  return {
+    therapistId: therapist.id,
+    timezone: therapist.timezone,
+    sessionDurationMinutes: therapist.sessionDurationMinutes,
+    bufferMinutes: therapist.bufferMinutes,
+    blocks,
+  };
+}
+
+/**
+ * The caller's own published hours, or null when they have no `therapists` row.
+ *
+ * Null is not an error state: a user who reached the therapist section before
+ * saving a profile genuinely has nowhere to hang a schedule, and the editor tells
+ * them to complete the profile first rather than showing an empty week that
+ * cannot be saved.
+ */
+export async function getMyAvailabilityAction(): Promise<TherapistAvailability | null> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const [therapist] = await tx
+      .select({ id: therapists.id })
+      .from(therapists)
+      .where(eq(therapists.userId, user.$id))
+      .limit(1);
+
+    if (!therapist) return null;
+    return readAvailability(tx, therapist.id);
+  });
+}
+
+/**
+ * Replace the caller's whole week.
+ *
+ * WHY DELETE-THEN-INSERT RATHER THAN A DIFF. The editor submits a complete week,
+ * and "no longer works Fridays" has to be expressible. A per-day upsert would
+ * leave a row behind for any day the client stopped sending — publishing hours
+ * the therapist had just removed, which is the failure mode this whole feature
+ * exists to stop. `withUser` runs the callback in a single transaction, so the
+ * delete and the inserts commit together or not at all; a constraint violation on
+ * the insert rolls the delete back and the therapist keeps their previous week
+ * rather than losing it to a half-applied save.
+ *
+ * VALIDATION FAILURES ARE RETURNED, NOT THROWN. They are expected errors in the
+ * Next.js sense — a thrown one is replaced with a generic message in a production
+ * build, so the specific complaint ("Tuesday: the end time must be after the
+ * start time") would never reach the person who can fix it. The CHECK constraints
+ * and the UNIQUE index are the backstop behind this, not the user's error message.
+ */
+export async function saveMyAvailabilityAction(
+  input: AvailabilityDraft
+): Promise<SaveAvailabilityResult> {
+  const user = await requireUser();
+
+  /*
+   * The payload arrives over the network, so its declared type is a convenience
+   * for the call site and not a guarantee here. Rebuilding it field by field
+   * means anything else the client sent — an `id`, a `therapistId` — is dropped
+   * before it can reach an INSERT. `validateAvailabilityDraft` then does the
+   * runtime type checking on what is left.
+   */
+  const draft: AvailabilityDraft = {
+    timezone: typeof input?.timezone === "string" ? input.timezone.trim() : "",
+    sessionDurationMinutes: input?.sessionDurationMinutes,
+    bufferMinutes: input?.bufferMinutes,
+    blocks: Array.isArray(input?.blocks) ? input.blocks : [],
+  };
+
+  const problem = validateAvailabilityDraft(draft);
+  if (problem) return { ok: false, message: problem };
+
+  return withUser(user, async (tx) => {
+    const [therapist] = await tx
+      .select({ id: therapists.id })
+      .from(therapists)
+      .where(eq(therapists.userId, user.$id))
+      .limit(1);
+
+    if (!therapist) {
+      return {
+        ok: false,
+        message:
+          "This account has no therapist profile yet, so there is nothing to attach a schedule to. Complete your therapist profile first.",
+      };
+    }
+
+    // The three settings live on `therapists` rather than on the availability
+    // rows: they describe how the therapist works, not when, and they must
+    // survive a week with no blocks in it at all.
+    await tx
+      .update(therapists)
+      .set({
+        timezone: draft.timezone,
+        sessionDurationMinutes: draft.sessionDurationMinutes,
+        bufferMinutes: draft.bufferMinutes,
+        updatedAt: new Date(),
+      })
+      .where(eq(therapists.id, therapist.id));
+
+    await tx
+      .delete(therapistAvailability)
+      .where(eq(therapistAvailability.therapistId, therapist.id));
+
+    if (draft.blocks.length > 0) {
+      await tx.insert(therapistAvailability).values(
+        draft.blocks.map((block) => ({
+          therapistId: therapist.id,
+          dayOfWeek: block.dayOfWeek,
+          startMinute: block.startMinute,
+          endMinute: block.endMinute,
+        }))
+      );
+    }
+
+    const availability = await readAvailability(tx, therapist.id);
+    if (!availability) {
+      // Unreachable: the row was selected inside this transaction. Throwing
+      // rather than asserting non-null, because if it ever does happen the save
+      // must not report success.
+      throw new Error("Availability was saved but could not be read back");
+    }
+
+    return { ok: true, availability };
+  });
+}
+
+/**
+ * Any therapist's published hours, by `therapists.id`.
+ *
+ * ANONYMOUS ON PURPOSE. `therapist_availability_select` is `USING (true)`, for
+ * the same reason `therapists_select` is: visitors browse the directory before
+ * signing in, and "when does this clinician work" is part of choosing one.
+ * Published working hours are the business equivalent of a shop sign. Running
+ * this under `withAnonymous` keeps that honest — the read genuinely needs no
+ * identity, so it does not ask for one, and the action can serve the public
+ * directory as well as the admin view.
+ *
+ * The projection in `readAvailability` is what keeps that safe: it names four
+ * columns, and `therapists` also holds `license_number` and `kyc_status`.
+ */
+export async function getTherapistAvailabilityAction(
+  therapistId: string
+): Promise<TherapistAvailability | null> {
+  if (!isUuid(therapistId)) return null;
+
+  return withAnonymous((tx) => readAvailability(tx, therapistId));
+}
+
+// ─── Clinical risk alerts ────────────────────────────────────────────────────
+
+/**
+ * Window in which one unresolved crisis alert per patient suppresses the next.
+ *
+ * Without it, a distressed client sending six messages in a row files six
+ * identical crisis alerts, and the admin queue becomes a message log rather than
+ * a work queue. The window is deliberately short: it collapses one *episode*
+ * into one alert, but a client still in crisis tomorrow produces a fresh alert,
+ * and resolving an alert re-arms the scan immediately. Suppression is capped
+ * this way because an escalation an admin never sees is the failure mode that
+ * matters most here.
+ */
+const RISK_ALERT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Message excerpt stored on the alert, in characters. */
+const RISK_ALERT_EXCERPT_CHARS = 280;
+
+/**
+ * File a crisis alert for a client whose message matched a high-risk keyword.
+ *
+ * NEVER THROWS. Every failure path is swallowed after logging, because the
+ * caller has already committed the therapy message and must return it to the
+ * sender regardless of what happens here.
+ *
+ * ⚠️ THIS CURRENTLY FAILS ON EVERY CALL, BY DESIGN OF THE EXISTING POLICY.
+ * `risk_alerts_all` (migration 0001) is `FOR ALL USING (app_is_admin()) WITH
+ * CHECK (app_is_admin())`, and neither a client's session nor the system context
+ * used below satisfies it — verified directly against the database, which
+ * answers `new row violates row-level security policy for table "risk_alerts"`.
+ * The scan, the dedupe and the insert are all correct; they need a policy that
+ * admits `app_is_system()`, e.g.
+ *
+ *     CREATE POLICY risk_alerts_system ON risk_alerts FOR ALL
+ *       USING (app_is_system()) WITH CHECK (app_is_system());
+ *
+ * (or `OR app_is_system()` folded into the existing policy). Once that lands
+ * this function starts working with no code change.
+ *
+ * WHY `withSystem` RATHER THAN WIDENING THE POLICY TO SENDERS. The obvious
+ * alternative — letting any authenticated sender insert their own alert — is a
+ * security hole: `patient_id` is free text with no foreign key, so a client
+ * granted INSERT could file arbitrary "crisis" alerts against ANY other user's
+ * id and poison a stranger's clinical record, on a table only admins can read
+ * and therefore only admins would ever act on. Under system context the caller
+ * carries no identity at all (`app_user_id()` is null, so every ownership
+ * predicate still fails closed) and `patientId` is chosen here on the server
+ * from the authenticated session, never from request data.
+ */
+async function recordHighRiskMessageAlert(
+  patientId: string,
+  content: string
+): Promise<void> {
+  try {
+    await withSystem("risk-scanner", async (tx) => {
+      const since = new Date(Date.now() - RISK_ALERT_DEDUPE_WINDOW_MS);
+
+      const [existing] = await tx
+        .select({ id: riskAlerts.id })
+        .from(riskAlerts)
+        .where(
+          and(
+            eq(riskAlerts.patientId, patientId),
+            eq(riskAlerts.type, "crisis"),
+            eq(riskAlerts.resolved, false),
+            gte(riskAlerts.createdAt, since)
+          )
+        )
+        .limit(1);
+
+      if (existing) return;
+
+      /*
+       * The excerpt is stored so an admin can judge the flag without opening
+       * the thread — most matches are false positives ("goodbye", a quoted
+       * lyric, a past-tense account), and a bare "keyword matched" alert forces
+       * the reader to go and read private messages just to dismiss it. Showing
+       * the matched text is the smaller disclosure of the two.
+       *
+       * The provenance caveat is repeated in the row itself, not only in the
+       * page chrome, so it survives being read anywhere the description is
+       * shown. `description` is varchar(1000); the excerpt is bounded and the
+       * whole string is truncated so a long message can never overflow the
+       * column and turn a risk alert into a failed insert.
+       */
+      const excerpt = content.slice(0, RISK_ALERT_EXCERPT_CHARS).trim();
+      const suffix = content.length > RISK_ALERT_EXCERPT_CHARS ? "…" : "";
+      const description = `Automated keyword scan matched a high-risk term in a message from this client. Keyword matching only — not a clinical assessment, and it fires on quoted or past-tense speech. Review the conversation before acting. Message excerpt: "${excerpt}${suffix}"`;
+
+      await tx.insert(riskAlerts).values({
+        patientId,
+        type: "crisis",
+        severity: "high",
+        description: description.slice(0, 1000),
+      });
+    });
+  } catch (err) {
+    /*
+     * Swallowed on purpose — see the contract above. Logged loudly because a
+     * risk alert that cannot be filed is a real operational defect, and the
+     * message names the fix so it is diagnosable from the log line alone
+     * rather than requiring someone to rediscover the policy interaction.
+     */
+    console.error(
+      "[risk-scanner] Failed to record a high-risk alert; the message itself was " +
+        "sent successfully. If this is an RLS violation, `risk_alerts` has no " +
+        "policy admitting `app_is_system()` — see recordHighRiskMessageAlert.",
+      err
+    );
+  }
+}
+
+/**
+ * Manually file a risk alert. Backs the admin incident form.
+ *
+ * Admins hold INSERT here under `risk_alerts_all` (verified against the
+ * database), so unlike the automated path above this works today.
+ */
+export async function createRiskAlertAction(data: {
+  patientId: string;
+  type: string;
+  severity: string;
+  description: string;
+}): Promise<Doc> {
+  const user = await requireAdmin();
+
+  const patientId = data.patientId?.trim();
+  const description = data.description?.trim();
+  if (!patientId) throw new Error("A patient is required");
+  if (!description) throw new Error("A description is required");
+
+  // Enum columns: an unrecognised value would reach Postgres as a cast error.
+  const type = (["crisis", "mood", "engagement", "flag"] as const).includes(
+    data.type as "crisis"
+  )
+    ? (data.type as "crisis" | "mood" | "engagement" | "flag")
+    : "flag";
+  const severity = (["low", "medium", "high", "critical"] as const).includes(
+    data.severity as "low"
+  )
+    ? (data.severity as "low" | "medium" | "high" | "critical")
+    : "medium";
+
+  return withUser(user, async (tx) => {
+    const [row] = await tx
+      .insert(riskAlerts)
+      .values({
+        patientId,
+        type,
+        severity,
+        description: description.slice(0, 1000),
       })
       .returning();
 

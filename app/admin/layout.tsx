@@ -4,6 +4,7 @@ import { UserProvider } from "@/app/components/UserProvider";
 import AdminSidebar from "./_components/AdminSidebar";
 import { Menu } from "lucide-react";
 import NotificationBell from "@/app/components/NotificationBell";
+import { countUnresolvedRiskAlerts } from "./_lib/queries";
 
 export default async function AdminLayout({
   children,
@@ -16,6 +17,22 @@ export default async function AdminLayout({
     redirect("/dashboard");
   }
 
+  /*
+   * The sidebar's risk badge was a hardcoded `5`. It is now a real count, which
+   * has to be queried here because the sidebar is a Client Component.
+   *
+   * Failing soft on purpose: a badge is navigation chrome, and a transient
+   * database error should not take down every admin page with it. On failure the
+   * count is omitted and no badge renders — which is the honest outcome, since
+   * an unknown count is exactly what we have.
+   */
+  let riskAlerts: number | undefined;
+  try {
+    riskAlerts = await countUnresolvedRiskAlerts();
+  } catch (err) {
+    console.error("[admin] Could not count unresolved risk alerts", err);
+  }
+
   return (
     <UserProvider user={user}>
       <div className="flex h-screen bg-stone-50 overflow-hidden">
@@ -23,6 +40,7 @@ export default async function AdminLayout({
         <AdminSidebar
           userName={user.name}
           userLabel={user.labels?.[0] ?? "admin"}
+          badgeCounts={{ riskAlerts }}
         />
 
         {/* Main content area */}

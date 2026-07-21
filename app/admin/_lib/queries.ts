@@ -1,13 +1,24 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { withCurrentUser } from "@/lib/db/session";
 import { PLAN_CURRENCY, THERAPIST_REVENUE_SHARE } from "@/lib/constants";
 import {
+  missingRequiredTypes,
+  type KycDocReview,
+  type KycDocumentType,
+  type KycStatus,
+} from "@/lib/kyc";
+import {
   clinicalNotes,
+  kycDocuments,
+  kycReviewEvents,
+  messages,
+  moodLogs,
   payments,
   profiles,
   promoRedemptions,
   promos,
+  riskAlerts,
   sessionFeedback,
   therapySessions,
   therapists,
@@ -382,6 +393,157 @@ export async function listPaymentsForUser(
   });
 }
 
+/** One entry in the platform-wide credentialing trail. */
+export interface PlatformAuditRow {
+  id: string;
+  actorId: string;
+  /** Resolved from `profiles`; null when the actor has no profile row. */
+  actorName: string | null;
+  action: string;
+  note: string | null;
+  /** Who the decision was about. */
+  subjectTherapistId: string;
+  subjectName: string;
+  documentId: string | null;
+  documentType: KycDocumentType | null;
+  createdAt: Date;
+}
+
+/**
+ * Every credentialing decision on the platform, newest first.
+ *
+ * This is the ONLY genuinely immutable, append-only trail in the database:
+ * `echo_app` holds SELECT and INSERT on `kyc_review_events` and nothing else,
+ * UPDATE and DELETE are revoked at the grant level, and no policy exists for
+ * them. Verified by `scripts/verify-kyc-security.ts`.
+ *
+ * It replaces ten hardcoded rows on the compliance page that described a user
+ * suspension, a refund, a payout approval and a data export — none of which had
+ * happened, and two of which describe features that do not exist. The page
+ * called itself an "immutable log of all significant platform actions" while
+ * containing no actions at all.
+ *
+ * SCOPE, which the page must state rather than imply: credentialing only.
+ * Sign-ins are Auth0's. Payments are in `payments`. Admin configuration changes
+ * are not recorded anywhere — if that matters for compliance, it needs building,
+ * and a page that fabricated them was worse than one that admits the gap.
+ */
+export async function listPlatformAuditTrail(limit = 200): Promise<PlatformAuditRow[]> {
+  return withCurrentUser(async (tx) => {
+    return tx
+      .select({
+        id: kycReviewEvents.id,
+        actorId: kycReviewEvents.actorId,
+        actorName: profiles.name,
+        action: kycReviewEvents.action,
+        note: kycReviewEvents.note,
+        subjectTherapistId: kycReviewEvents.therapistId,
+        subjectName: therapists.name,
+        documentId: kycReviewEvents.documentId,
+        documentType: kycDocuments.docType,
+        createdAt: kycReviewEvents.createdAt,
+      })
+      .from(kycReviewEvents)
+      .innerJoin(therapists, eq(therapists.id, kycReviewEvents.therapistId))
+      .leftJoin(profiles, eq(profiles.userId, kycReviewEvents.actorId))
+      .leftJoin(kycDocuments, eq(kycDocuments.id, kycReviewEvents.documentId))
+      .orderBy(desc(kycReviewEvents.createdAt))
+      .limit(limit);
+  });
+}
+
+/** One real, recorded event on a client's account. */
+export interface ClientActivityEntry {
+  id: string;
+  kind: "payment" | "session";
+  /** What happened, in words, built from stored values only. */
+  description: string;
+  /** Payment status or session status — the stored value, not a guess. */
+  status: string;
+  at: Date;
+}
+
+/**
+ * A client's account activity, assembled from the two tables that actually
+ * record it: `payments` and `therapy_sessions`.
+ *
+ * WHY THIS SHAPE. The admin audit-log page previously rendered seven invented
+ * rows per client — logins with fabricated IP addresses, a "monthly
+ * subscription renewed" (there are no subscriptions; plans are one-time
+ * bundles), and an "AI risk flag raised (mood drop)" attributed to a named
+ * client who had never been flagged. On a mental-health platform a fabricated
+ * clinical risk event in someone's record is not a placeholder; it is something
+ * an administrator could act on.
+ *
+ * So this returns only what is stored. It is a narrower feature than the mock
+ * implied, and that is the correction: sign-in history genuinely does not exist
+ * in this database — Auth0 holds it — and no amount of UI can change that.
+ *
+ * Both reads share one transaction so the merged timeline cannot straddle a
+ * write, and so the page pays the RLS setup round-trip once rather than twice.
+ */
+export async function getClientActivity(
+  userId: string,
+  limit = 50
+): Promise<ClientActivityEntry[]> {
+  return withCurrentUser(async (tx) => {
+    const paymentRows = await tx
+      .select({
+        id: payments.id,
+        reference: payments.reference,
+        plan: payments.plan,
+        amountMinor: payments.amountMinor,
+        currency: payments.currency,
+        status: payments.status,
+        createdAt: payments.createdAt,
+      })
+      .from(payments)
+      .where(eq(payments.userId, userId))
+      .orderBy(desc(payments.createdAt))
+      .limit(limit);
+
+    const sessionRows = await tx
+      .select({
+        id: therapySessions.id,
+        scheduledAt: therapySessions.scheduledAt,
+        status: therapySessions.status,
+        sessionType: therapySessions.sessionType,
+        therapistName: therapists.name,
+      })
+      .from(therapySessions)
+      .leftJoin(therapists, eq(therapists.id, therapySessions.therapistId))
+      .where(eq(therapySessions.patientId, userId))
+      .orderBy(desc(therapySessions.scheduledAt))
+      .limit(limit);
+
+    const entries: ClientActivityEntry[] = [
+      ...paymentRows.map((p) => ({
+        id: `payment-${p.id}`,
+        kind: "payment" as const,
+        // Minor units divided here rather than in the page, so the one place
+        // that knows these are cents is the one place that converts them.
+        description: `${p.plan} plan — ${p.currency} ${(p.amountMinor / 100).toLocaleString()} (ref ${p.reference})`,
+        status: p.status,
+        at: p.createdAt,
+      })),
+      ...sessionRows.map((s) => ({
+        id: `session-${s.id}`,
+        kind: "session" as const,
+        description: s.therapistName
+          ? `${s.sessionType ?? "Session"} with ${s.therapistName}`
+          : `${s.sessionType ?? "Session"} (therapist record removed)`,
+        status: s.status,
+        at: s.scheduledAt,
+      })),
+    ];
+
+    // Merged after the fact rather than in SQL: a UNION across two tables with
+    // different columns would need casts on both sides for no gain at these
+    // row counts, and this keeps each side's projection readable.
+    return entries.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
+  });
+}
+
 export interface RevenueSummary {
   /** Minor units (KES cents). Successful charges only. */
   grossMinor: number;
@@ -671,6 +833,244 @@ export async function listTherapistLeaderboard(
   });
 }
 
+// ─── Therapist KYC review ────────────────────────────────────────────────────
+
+/**
+ * A KYC document WITHOUT its bytes.
+ *
+ * `kyc_documents.content` is `bytea`. Selecting it into a list query would
+ * serialise every uploaded file into the RSC payload of the page — several MB of
+ * identity documents shipped to the browser to render a filename. The bytes are
+ * served only by `/api/kyc/[id]`, one document at a time, as an attachment.
+ * Every query in this section selects columns explicitly for that reason; do not
+ * replace them with `select()`.
+ */
+export interface KycDocumentSummary {
+  id: string;
+  $id: string;
+  docType: KycDocumentType;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+  reviewStatus: KycDocReview;
+  reviewNote: string | null;
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+}
+
+/** One entry from the append-only `kyc_review_events` trail. */
+export interface KycReviewEventRow {
+  id: string;
+  actorId: string;
+  /**
+   * The actor's profile name when one exists. Null for `system` and for admins
+   * who have no `profiles` row — the raw Auth0 sub is rendered in that case
+   * rather than a placeholder, because "who approved this clinician" must not be
+   * answered with a guess.
+   */
+  actorName: string | null;
+  action: string;
+  note: string | null;
+  documentId: string | null;
+  /** Filename of the document the event concerns, when it concerns one. */
+  documentFilename: string | null;
+  documentType: KycDocumentType | null;
+  createdAt: Date;
+}
+
+export interface TherapistKycReview {
+  therapist: Doc<TherapistRow>;
+  documents: KycDocumentSummary[];
+  events: KycReviewEventRow[];
+  /**
+   * Required document types with no ACCEPTED document on file.
+   *
+   * Non-empty means the server will refuse an approval. Computed from
+   * `review_status = 'accepted'`, not from "a file exists": an uploaded but
+   * unreviewed document is exactly the state this whole workflow exists to stop
+   * being mistaken for a completed check.
+   */
+  missingRequired: readonly KycDocumentType[];
+}
+
+/**
+ * Everything the credentials screen needs, in ONE transaction.
+ *
+ * Three separate `withCurrentUser` calls would mean three round-trips of RLS
+ * setup (~230ms each against this Azure instance, per the note in
+ * `lib/db/session.ts`) before any data moves. The three reads are all
+ * admin-scoped and consistent with each other only if they share a snapshot
+ * anyway — a document accepted between two of them would render a page whose
+ * gap list disagreed with its own document list.
+ */
+export async function getTherapistKycReview(
+  therapistId: string
+): Promise<TherapistKycReview | null> {
+  if (!isUuid(therapistId)) return null;
+
+  return withCurrentUser(async (tx) => {
+    const [therapist] = await tx
+      .select()
+      .from(therapists)
+      .where(eq(therapists.id, therapistId))
+      .limit(1);
+
+    if (!therapist) return null;
+
+    const documents = await tx
+      .select({
+        id: kycDocuments.id,
+        docType: kycDocuments.docType,
+        filename: kycDocuments.filename,
+        mimeType: kycDocuments.mimeType,
+        sizeBytes: kycDocuments.sizeBytes,
+        uploadedAt: kycDocuments.uploadedAt,
+        uploadedBy: kycDocuments.uploadedBy,
+        reviewStatus: kycDocuments.reviewStatus,
+        reviewNote: kycDocuments.reviewNote,
+        reviewedAt: kycDocuments.reviewedAt,
+        reviewedBy: kycDocuments.reviewedBy,
+      })
+      .from(kycDocuments)
+      .where(eq(kycDocuments.therapistId, therapistId))
+      .orderBy(desc(kycDocuments.uploadedAt));
+
+    /*
+     * The trail is read oldest-LAST (newest first) because the question it
+     * answers most often is "what was decided most recently, and by whom".
+     * `profiles` resolves the actor's name; the join is a LEFT join so an event
+     * by 'system' or by an admin without a profile still renders.
+     */
+    const events = await tx
+      .select({
+        id: kycReviewEvents.id,
+        actorId: kycReviewEvents.actorId,
+        actorName: profiles.name,
+        action: kycReviewEvents.action,
+        note: kycReviewEvents.note,
+        documentId: kycReviewEvents.documentId,
+        documentFilename: kycDocuments.filename,
+        documentType: kycDocuments.docType,
+        createdAt: kycReviewEvents.createdAt,
+      })
+      .from(kycReviewEvents)
+      .leftJoin(profiles, eq(profiles.userId, kycReviewEvents.actorId))
+      .leftJoin(kycDocuments, eq(kycDocuments.id, kycReviewEvents.documentId))
+      .where(eq(kycReviewEvents.therapistId, therapistId))
+      .orderBy(desc(kycReviewEvents.createdAt))
+      .limit(200);
+
+    const acceptedTypes = documents
+      .filter((d) => d.reviewStatus === "accepted")
+      .map((d) => d.docType);
+
+    return {
+      therapist: toDoc(therapist),
+      documents: documents.map((d) => ({ ...d, $id: d.id })),
+      events,
+      missingRequired: missingRequiredTypes(acceptedTypes),
+    };
+  });
+}
+
+export interface VerificationQueueRow {
+  id: string;
+  $id: string;
+  name: string;
+  experience: number;
+  specialties: string[] | null;
+  licenseNumber: string | null;
+  kycStatus: KycStatus;
+  /** Null when the applicant has never submitted. The queue sorts on this. */
+  kycSubmittedAt: Date | null;
+  kycReviewedAt: Date | null;
+  kycReviewNote: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  documentCount: number;
+  /** Documents nobody has opened a decision on yet. */
+  pendingDocumentCount: number;
+  acceptedDocumentCount: number;
+  rejectedDocumentCount: number;
+  /** Required types with no accepted document — the gap the server enforces. */
+  missingRequired: readonly KycDocumentType[];
+}
+
+/**
+ * The verification queue, longest-waiting first.
+ *
+ * Ordered by `kyc_submitted_at ASC NULLS LAST`, so the applicant who has waited
+ * longest is at the top and applicants who have not submitted anything sink to
+ * the bottom — they are not waiting on the reviewer, the reviewer is waiting on
+ * them. The previous version ordered by nothing at all and displayed
+ * `updated_at` as "Submitted", which is a different fact wearing that label:
+ * any profile edit moved it.
+ *
+ * Counts come from correlated subqueries rather than a grouped join so that a
+ * therapist with zero documents still returns a row with zeroes, and so no
+ * GROUP BY has to enumerate every selected column.
+ */
+export async function listVerificationQueue(
+  limit = 100
+): Promise<VerificationQueueRow[]> {
+  return withCurrentUser(async (tx) => {
+    /*
+     * The `::kyc_doc_review` cast is belt-and-braces. postgres.js infers OID 0
+     * (unspecified) for a JS string, so Postgres would resolve the parameter to
+     * the enum from context anyway — which is why `eq(payments.status, …)`
+     * elsewhere in this file works without one. Stated explicitly here because
+     * the subquery is raw SQL, where nothing else records what type the
+     * comparison is against.
+     */
+    const docCount = (status?: KycDocReview) => sql<number>`(
+      SELECT count(*)::int FROM kyc_documents d
+      WHERE d.therapist_id = ${therapists.id}
+      ${status ? sql`AND d.review_status = ${status}::kyc_doc_review` : sql.empty()}
+    )`;
+
+    const rows = await tx
+      .select({
+        id: therapists.id,
+        name: therapists.name,
+        experience: therapists.experience,
+        specialties: therapists.specialties,
+        licenseNumber: therapists.licenseNumber,
+        kycStatus: therapists.kycStatus,
+        kycSubmittedAt: therapists.kycSubmittedAt,
+        kycReviewedAt: therapists.kycReviewedAt,
+        kycReviewNote: therapists.kycReviewNote,
+        createdAt: therapists.createdAt,
+        updatedAt: therapists.updatedAt,
+        documentCount: docCount(),
+        pendingDocumentCount: docCount("pending"),
+        acceptedDocumentCount: docCount("accepted"),
+        rejectedDocumentCount: docCount("rejected"),
+        /*
+         * Cast to text[] rather than leaving it as the `kyc_document_type[]`
+         * enum array: postgres.js parses arrays by element type OID, and a
+         * custom enum's OID is not in its type table.
+         */
+        acceptedTypes: sql<string[]>`(
+          SELECT coalesce(array_agg(DISTINCT d.doc_type::text), ARRAY[]::text[])
+          FROM kyc_documents d
+          WHERE d.therapist_id = ${therapists.id} AND d.review_status = 'accepted'
+        )`,
+      })
+      .from(therapists)
+      .where(inArray(therapists.kycStatus, ["pending", "incomplete"]))
+      .orderBy(sql`${therapists.kycSubmittedAt} ASC NULLS LAST`, asc(therapists.createdAt))
+      .limit(limit);
+
+    return rows.map(({ acceptedTypes, ...r }) => ({
+      ...r,
+      $id: r.id,
+      missingRequired: missingRequiredTypes(acceptedTypes ?? []),
+    }));
+  });
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -680,4 +1080,395 @@ const UUID_PATTERN =
  */
 export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+// ─── Direct messages (protected clinical communication) ──────────────────────
+
+/**
+ * Reads over the `messages` table for the two admin transcript pages.
+ *
+ * `messages_select` (migration 0001) is
+ * `sender_id = app_user_id() OR receiver_id = app_user_id() OR app_is_admin()`,
+ * so an admin genuinely is admitted to every row — this is a deliberate schema
+ * decision, not an accident these queries are exploiting. It is also the whole
+ * of the control: there is no second gate, no consent flag, and (see below) no
+ * record of the read. The pages built on this are written accordingly.
+ *
+ * NOT LOGGED. Nothing in this database records that an administrator opened a
+ * conversation. `kyc_review_events` is append-only but covers credentialing
+ * decisions only; there is no access-log table of any kind. Both pages say so on
+ * screen. Do not add wording that implies otherwise without first adding the
+ * table that would make it true.
+ */
+
+/** The transaction handle `withCurrentUser` hands to its callback. */
+type Tx = Parameters<Parameters<typeof withCurrentUser>[0]>[0];
+
+/**
+ * Loaded data, or an explicit failure.
+ *
+ * WHY THIS EXISTS when every other query in this file simply throws and lets
+ * Next render `app/error.tsx`: `messages` is currently empty. On an empty table
+ * "the query returned no rows" and "the query never ran" paint the same blank
+ * panel, and the reader cannot tell which one they are looking at. For a
+ * clinical record those are opposite claims — "these two people have never
+ * exchanged a message" is a finding someone may act on, "we could not read their
+ * messages" is an outage that must never be mistaken for one. The union makes it
+ * impossible for a caller to render them the same way.
+ *
+ * The underlying error is logged server-side and deliberately NOT carried in
+ * this type, so no page can drift into printing driver errors at an operator.
+ */
+export type LoadResult<T> = { ok: true; data: T } | { ok: false };
+
+/** One end of a message, resolved as far as the database actually allows. */
+export interface MessageParticipant {
+  /** The stored Auth0 sub. Always present — it is what the row holds. */
+  id: string;
+  /**
+   * Display name, or null when the sub matches neither `profiles` nor
+   * `therapists`. Null means UNKNOWN, and the pages render the raw sub rather
+   * than a friendly placeholder: mis-attributing a line of a therapy transcript
+   * to the wrong person is a far worse failure than showing an ugly identifier.
+   */
+  name: string | null;
+  role: "client" | "therapist" | null;
+}
+
+export interface AdminMessageRow {
+  id: string;
+  /** Null for a direct message that belongs to no session. */
+  sessionId: string | null;
+  content: string;
+  createdAt: Date;
+  sender: MessageParticipant;
+  receiver: MessageParticipant;
+}
+
+export interface MessageThread {
+  messages: AdminMessageRow[];
+  /** True when more messages exist than `limit` returned. Pages must disclose it. */
+  truncated: boolean;
+  /** The cap applied, so the page can name the number it is disclosing. */
+  limit: number;
+}
+
+/** Cap for one client's whole direct-message history. */
+export const CLIENT_MESSAGE_LIMIT = 200;
+
+/**
+ * Cap for a single session's transcript. Higher than the per-client cap because
+ * it is scoped to one appointment; a 50-minute session that exceeds it would be
+ * remarkable, and if one ever does the page says so rather than truncating
+ * silently.
+ */
+export const SESSION_MESSAGE_LIMIT = 500;
+
+/**
+ * Resolve Auth0 subs to display names.
+ *
+ * A sub may appear in `therapists`, in `profiles`, in both (a clinician who also
+ * holds a client account), or in neither. `therapists` is applied second and so
+ * wins a tie: on a therapy transcript, the clinically meaningful label for that
+ * person is the one saying they are a clinician.
+ *
+ * Unresolved subs are ABSENT from the map rather than defaulted — callers turn
+ * that into `{ name: null }`, which the pages render as the raw sub.
+ *
+ * Two statements, not one join, because the two tables are independent lookups
+ * over the same key set; and sequential rather than `Promise.all` because these
+ * share a single transaction's connection.
+ */
+async function resolveParticipants(
+  tx: Tx,
+  subs: string[]
+): Promise<Map<string, MessageParticipant>> {
+  const resolved = new Map<string, MessageParticipant>();
+  const unique = [...new Set(subs)].filter(Boolean);
+  if (unique.length === 0) return resolved;
+
+  const clientRows = await tx
+    .select({ userId: profiles.userId, name: profiles.name })
+    .from(profiles)
+    .where(inArray(profiles.userId, unique));
+
+  for (const row of clientRows) {
+    resolved.set(row.userId, { id: row.userId, name: row.name, role: "client" });
+  }
+
+  const therapistRows = await tx
+    .select({ userId: therapists.userId, name: therapists.name })
+    .from(therapists)
+    .where(inArray(therapists.userId, unique));
+
+  for (const row of therapistRows) {
+    resolved.set(row.userId, { id: row.userId, name: row.name, role: "therapist" });
+  }
+
+  return resolved;
+}
+
+/** Map lookup with the "unknown participant" fallback applied in one place. */
+function participant(
+  resolved: Map<string, MessageParticipant>,
+  sub: string
+): MessageParticipant {
+  return resolved.get(sub) ?? { id: sub, name: null, role: null };
+}
+
+export interface ClientMessageThread extends MessageThread {
+  /**
+   * The client the page is about, resolved in the same transaction as the
+   * messages. Carried here so the page needs no second identity query and has a
+   * single failure mode — and so a subject with no `profiles` row still renders
+   * (as their raw sub) instead of 404ing.
+   */
+  subject: MessageParticipant;
+}
+
+/**
+ * One client's entire direct-message history, newest first.
+ *
+ * Matches on `sender_id` OR `receiver_id`, so the thread is complete in both
+ * directions regardless of who wrote which line.
+ *
+ * `limit + 1` rows are fetched and the extra is discarded: that reports
+ * truncation EXACTLY, where `rows.length === limit` cannot tell "there are more"
+ * from "there are precisely this many", and a `count(*)` would cost a round trip
+ * to learn the same thing.
+ *
+ * The `id` tiebreak on the sort is not cosmetic. Two messages sharing a
+ * `created_at` would otherwise come back in whatever order the plan produced,
+ * so the same transcript could render in two different orders on two reloads.
+ */
+export async function listClientMessages(
+  userId: string,
+  limit = CLIENT_MESSAGE_LIMIT
+): Promise<LoadResult<ClientMessageThread>> {
+  try {
+    const data = await withCurrentUser(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(messages)
+        .where(
+          or(eq(messages.senderId, userId), eq(messages.receiverId, userId))
+        )
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(limit + 1);
+
+      const truncated = rows.length > limit;
+      const page = truncated ? rows.slice(0, limit) : rows;
+
+      const resolved = await resolveParticipants(tx, [
+        userId,
+        ...page.flatMap((r) => [r.senderId, r.receiverId]),
+      ]);
+
+      return {
+        subject: participant(resolved, userId),
+        messages: page.map((r) => ({
+          id: r.id,
+          sessionId: r.sessionId,
+          content: r.content,
+          createdAt: r.createdAt,
+          sender: participant(resolved, r.senderId),
+          receiver: participant(resolved, r.receiverId),
+        })),
+        truncated,
+        limit,
+      };
+    });
+
+    return { ok: true, data };
+  } catch (err) {
+    console.error("[admin] listClientMessages failed", err);
+    return { ok: false };
+  }
+}
+
+/** The appointment a transcript belongs to. */
+export interface SessionConversationSubject {
+  id: string;
+  scheduledAt: Date;
+  status: string;
+  sessionType: string;
+  /** The booked patient, keyed by Auth0 sub. */
+  patient: MessageParticipant;
+  /**
+   * The booked clinician. `therapy_sessions.therapist_id` is a `therapists.id`
+   * uuid, NOT an Auth0 sub — a different id space from `messages.sender_id`.
+   * Both are carried so the page never has to guess which one it is holding.
+   */
+  therapist: { therapistId: string; userId: string | null; name: string | null };
+}
+
+export interface SessionConversation {
+  /** Null when no `therapy_sessions` row has this id. A distinct state from an
+   *  existing session with an empty transcript, and the page renders it as one. */
+  session: SessionConversationSubject | null;
+  thread: MessageThread;
+}
+
+/**
+ * One session's transcript, oldest first, with the appointment it belongs to.
+ *
+ * Session lookup, transcript and name resolution share ONE transaction: three
+ * `withCurrentUser` calls would pay the RLS setup round-trip three times (~230ms
+ * each against this instance, per `lib/db/session.ts`) and could observe the
+ * session and its messages at two different snapshots.
+ *
+ * Ordered ASC because this is a transcript and it is read from the top. The cap
+ * therefore drops the END of an over-long conversation, which is why the page
+ * must show the truncation notice at the bottom of the list rather than the top.
+ */
+export async function getSessionConversation(
+  sessionId: string,
+  limit = SESSION_MESSAGE_LIMIT
+): Promise<LoadResult<SessionConversation>> {
+  const empty: MessageThread = { messages: [], truncated: false, limit };
+
+  // Postgres raises `invalid input syntax for type uuid` on a malformed id.
+  // A bad id is "no such session", not a failed load — say so without querying.
+  if (!isUuid(sessionId)) return { ok: true, data: { session: null, thread: empty } };
+
+  try {
+    const data = await withCurrentUser(async (tx) => {
+      const [sess] = await tx
+        .select({
+          id: therapySessions.id,
+          patientId: therapySessions.patientId,
+          scheduledAt: therapySessions.scheduledAt,
+          status: therapySessions.status,
+          sessionType: therapySessions.sessionType,
+          therapistId: therapySessions.therapistId,
+          therapistUserId: therapists.userId,
+          therapistName: therapists.name,
+        })
+        .from(therapySessions)
+        .leftJoin(therapists, eq(therapists.id, therapySessions.therapistId))
+        .where(eq(therapySessions.id, sessionId))
+        .limit(1);
+
+      // No session means no transcript to look for: `messages.session_id` is a
+      // FK with ON DELETE CASCADE, so orphaned rows cannot exist.
+      if (!sess) return { session: null, thread: empty };
+
+      const rows = await tx
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, sessionId))
+        .orderBy(asc(messages.createdAt), asc(messages.id))
+        .limit(limit + 1);
+
+      const truncated = rows.length > limit;
+      const page = truncated ? rows.slice(0, limit) : rows;
+
+      const resolved = await resolveParticipants(tx, [
+        sess.patientId,
+        ...page.flatMap((r) => [r.senderId, r.receiverId]),
+      ]);
+
+      return {
+        session: {
+          id: sess.id,
+          scheduledAt: sess.scheduledAt,
+          status: sess.status,
+          sessionType: sess.sessionType,
+          patient: participant(resolved, sess.patientId),
+          therapist: {
+            therapistId: sess.therapistId,
+            userId: sess.therapistUserId,
+            name: sess.therapistName,
+          },
+        },
+        thread: {
+          messages: page.map((r) => ({
+            id: r.id,
+            sessionId: r.sessionId,
+            content: r.content,
+            createdAt: r.createdAt,
+            sender: participant(resolved, r.senderId),
+            receiver: participant(resolved, r.receiverId),
+          })),
+          truncated,
+          limit,
+        },
+      };
+    });
+
+    return { ok: true, data };
+  } catch (err) {
+    console.error("[admin] getSessionConversation failed", err);
+    return { ok: false };
+  }
+}
+
+// ─── Clinical risk ───────────────────────────────────────────────────────────
+
+export type RiskAlertRow = typeof riskAlerts.$inferSelect;
+export type MoodLogRow = typeof moodLogs.$inferSelect;
+
+/**
+ * Every risk alert filed against one patient.
+ *
+ * `patientId` is an Auth0 `sub`, matching `profiles.userId` — NOT a profile row
+ * id. An earlier version of the alert list compared it against `$id` and so
+ * resolved every alert to "Unknown Patient"; the same mistake here would
+ * silently return an empty history for a client who has alerts.
+ */
+export async function listRiskAlertsForPatient(
+  userId: string,
+  limit = 50
+): Promise<Doc<RiskAlertRow>[]> {
+  return withCurrentUser(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(riskAlerts)
+      .where(eq(riskAlerts.patientId, userId))
+      .orderBy(desc(riskAlerts.createdAt))
+      .limit(limit);
+
+    return toDocs(rows);
+  });
+}
+
+/**
+ * A patient's recent mood logs.
+ *
+ * `mood_logs_select` admits the owner, admins, and a therapist who treats the
+ * patient, so an admin caller sees the full history. These are self-reported
+ * scores the client entered themselves — the one genuine longitudinal signal
+ * this platform holds about how someone is doing.
+ */
+export async function listMoodLogsForUser(
+  userId: string,
+  limit = 30
+): Promise<Doc<MoodLogRow>[]> {
+  return withCurrentUser(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(moodLogs)
+      .where(eq(moodLogs.userId, userId))
+      .orderBy(desc(moodLogs.createdAt))
+      .limit(limit);
+
+    return toDocs(rows);
+  });
+}
+
+/**
+ * Count of unresolved risk alerts, for the sidebar badge.
+ *
+ * Returns a number the caller can trust to be real. The badge it feeds
+ * previously rendered a hardcoded `5` on every admin page — see AdminSidebar.
+ */
+export async function countUnresolvedRiskAlerts(): Promise<number> {
+  return withCurrentUser(async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(riskAlerts)
+      .where(eq(riskAlerts.resolved, false));
+
+    return row?.n ?? 0;
+  });
 }

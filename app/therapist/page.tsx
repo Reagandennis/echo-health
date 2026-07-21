@@ -13,6 +13,72 @@ import {
   Calendar
 } from "lucide-react";
 import Link from "next/link";
+import { KYC_STATUS_COPY, type KycStatus } from "@/lib/kyc";
+
+/**
+ * Presentation for each KYC state, keyed off the `tone` that `KYC_STATUS_COPY`
+ * already declares. The WORDS come from `lib/kyc.ts` so this banner and the
+ * onboarding flow cannot drift apart — they previously carried four hand-written
+ * copies of the same four messages, and disagreed on what "rejected" meant.
+ *
+ * `cta` is absent for `pending` and `verified` on purpose: neither state has an
+ * action the therapist can usefully take here.
+ */
+const KYC_BANNER: Record<
+  KycStatus,
+  {
+    wrap: string;
+    title: string;
+    body: string;
+    iconWrap: string;
+    icon: string;
+    Icon: typeof ShieldCheck;
+    cta?: { href: string; label: string; className: string };
+  }
+> = {
+  incomplete: {
+    wrap: "bg-amber-50 border-amber-200",
+    title: "text-amber-900",
+    body: "text-amber-700",
+    iconWrap: "bg-amber-100",
+    icon: "text-amber-600",
+    Icon: ShieldAlert,
+    cta: {
+      href: "/onboarding/therapist",
+      label: "Continue setup",
+      className: "text-amber-900 bg-amber-100 hover:bg-amber-200",
+    },
+  },
+  pending: {
+    wrap: "bg-amber-50 border-amber-200",
+    title: "text-amber-900",
+    body: "text-amber-700",
+    iconWrap: "bg-amber-100",
+    icon: "text-amber-600",
+    Icon: Clock,
+  },
+  verified: {
+    wrap: "bg-emerald-50 border-emerald-200",
+    title: "text-emerald-900",
+    body: "text-emerald-700",
+    iconWrap: "bg-emerald-100",
+    icon: "text-emerald-600",
+    Icon: ShieldCheck,
+  },
+  rejected: {
+    wrap: "bg-red-50 border-red-200",
+    title: "text-red-900",
+    body: "text-red-700",
+    iconWrap: "bg-red-100",
+    icon: "text-red-600",
+    Icon: XCircle,
+    cta: {
+      href: "/onboarding/therapist",
+      label: "Review and resubmit",
+      className: "text-red-800 bg-red-100 hover:bg-red-200",
+    },
+  },
+};
 
 interface Session {
   $id: string;
@@ -35,7 +101,20 @@ function fmtDate(iso: string) {
 export default function TherapistHomePage() {
   const user = useUser();
   const [therapistName, setTherapistName] = useState("");
-  const [kycStatus, setKycStatus] = useState<"incomplete" | "pending" | "verified" | "rejected">("incomplete");
+  /**
+   * `null` means "not established yet" — still loading, or the load failed.
+   *
+   * It is NOT a fourth status and nothing renders for it, which is the point.
+   * This used to default to "incomplete" and be assigned with
+   * `?? "incomplete"`, so any path that failed to produce a value — a query
+   * that did not select the column, a thrown action swallowed by the catch
+   * below — presented as a definite "you have not submitted your KYC", with a
+   * button inviting a fully verified clinician to start the process again.
+   *
+   * There is no safe default here. Guessing "incomplete" accuses the therapist;
+   * guessing "verified" would show unearned access. So it does not guess.
+   */
+  const [kycStatus, setKycStatus] = useState<KycStatus | null>(null);
   const [todaySessions, setTodaySessions] = useState<Session[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Session[]>([]);
   const [stats, setStats] = useState({ total: 0, thisWeek: 0, pending: 0 });
@@ -67,11 +146,26 @@ export default function TherapistHomePage() {
           return;
         }
 
-        setKycStatus(therapist.kycStatus ?? "incomplete");
+        // No `?? "incomplete"`. If the server did not return a status, the
+        // honest state is "unknown" — see the note on `kycStatus` above.
+        const status = therapist.kycStatus;
+        if (status === "incomplete" || status === "pending" || status === "verified" || status === "rejected") {
+          setKycStatus(status);
+        } else {
+          // Reaching here means the action's projection and this component have
+          // drifted apart again. Loud in the console, silent in the UI.
+          console.error("therapist dashboard: kycStatus missing from getTherapistDashboardAction", { status });
+        }
+
         setTodaySessions(today);
         setPendingRequests(pending as unknown as Session[]);
         if (s) setStats({ total: s.all, thisWeek: s.thisWeek, pending: s.pending });
-      } catch { /* empty collections */ }
+      } catch (err) {
+        // Leaves kycStatus null, so a failed load shows no KYC banner at all
+        // rather than defaulting to the one that tells a verified therapist to
+        // start over.
+        console.error("therapist dashboard load failed:", err);
+      }
       setLoading(false);
     })();
   }, [user]);
@@ -122,65 +216,37 @@ export default function TherapistHomePage() {
         <p className="text-stone-500 mt-1">{fmtDate(new Date().toISOString())} — here&apos;s your day at a glance.</p>
       </div>
 
-      {/* KYC / Verification status card */}
-      {kycStatus === "incomplete" && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
-            <XCircle size={20} className="text-red-500" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-red-800">KYC verification incomplete</p>
-            <p className="text-sm text-red-600 mt-0.5">You need to complete your profile and submit your license before you can accept clients.</p>
-            <Link href="/onboarding/therapist" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
-              Continue setup <ArrowRight size={14} />
-            </Link>
-          </div>
-        </div>
-      )}
+      {/*
+        KYC / verification status card.
 
-      {kycStatus === "pending" && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <ShieldAlert size={20} className="text-amber-600" />
-          </div>
-          <div className="flex-1 flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-amber-800">KYC submitted — pending admin approval</p>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">Pending</span>
-              </div>
-              <p className="text-sm text-amber-700 mt-0.5">Your license is under review. This usually takes 1–2 business days.</p>
+        Renders NOTHING while `kycStatus` is null. That is not an oversight — see
+        the note on the state declaration. A null status means "we do not know",
+        and the previous `?? "incomplete"` turned every failed load into an
+        accusation that a verified clinician had skipped their KYC.
+      */}
+      {kycStatus !== null && (() => {
+        const copy = KYC_STATUS_COPY[kycStatus];
+        const b = KYC_BANNER[kycStatus];
+        return (
+          <div className={`border rounded-2xl p-5 flex items-start gap-4 ${b.wrap}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${b.iconWrap}`}>
+              <b.Icon size={20} className={b.icon} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`font-semibold ${b.title}`}>{copy.title}</p>
+              <p className={`text-sm mt-0.5 leading-relaxed ${b.body}`}>{copy.body}</p>
+              {b.cta && (
+                <Link
+                  href={b.cta.href}
+                  className={`inline-flex items-center gap-1.5 mt-3 text-sm font-semibold px-4 py-2 rounded-xl transition-colors ${b.cta.className}`}
+                >
+                  {b.cta.label} <ArrowRight size={14} />
+                </Link>
+              )}
             </div>
           </div>
-        </div>
-      )}
-
-      {kycStatus === "verified" && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
-            <ShieldCheck size={20} className="text-green-600" />
-          </div>
-          <div className="flex items-center gap-2">
-            <p className="font-semibold text-green-800">Identity verified</p>
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-green-200 text-green-800 px-2 py-0.5 rounded-full">✓ Verified</span>
-          </div>
-        </div>
-      )}
-
-      {kycStatus === "rejected" && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
-            <XCircle size={20} className="text-red-500" />
-          </div>
-          <div>
-            <p className="font-semibold text-red-800">Verification rejected</p>
-            <p className="text-sm text-red-600 mt-0.5">Your submission was not approved. Please re-submit with valid documents.</p>
-            <Link href="/onboarding/therapist" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-4 py-2 rounded-xl transition-colors">
-              Re-submit <ArrowRight size={14} />
-            </Link>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

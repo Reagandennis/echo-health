@@ -1,91 +1,173 @@
 import { getLoggedInUser } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import AdminPageHeader from "../../../_components/AdminPageHeader";
-import { getProfileByUserId } from "../../../_lib/queries";
-import { Clock, Monitor, LogIn, LogOut, Edit, ShieldAlert, CreditCard } from "lucide-react";
+import { getProfileByUserId, getClientActivity, type ClientActivityEntry } from "../../../_lib/queries";
+import AdminBadge from "../../../_components/AdminBadge";
+import { Clock, CreditCard, CalendarCheck } from "lucide-react";
 
 /**
- * The audit entries below are hardcoded mock UI. There is no audit table in the
- * Postgres schema and no application code writes one; login/logout events live
- * only in Auth0's own log stream. Only the client identity is live data.
+ * Account activity for one client, read from `payments` and `therapy_sessions`.
+ *
+ * WHAT THIS PAGE USED TO BE. Seven hardcoded rows rendered under a real
+ * client's real name, with invented IP addresses. Three of them were not merely
+ * fake but describe things this platform does not do or did not happen:
+ *
+ *   • "Monthly subscription renewed" — there are no subscriptions. Plans are
+ *     one-time bundles; nothing auto-renews.
+ *   • "Failed login attempt (wrong pwd)" — the application never sees a
+ *     password. Auth0 Universal Login means credentials are entered on Auth0's
+ *     domain, so a failed attempt cannot be observed here even in principle.
+ *   • "AI risk flag raised (mood drop)" — a fabricated CLINICAL event, on a
+ *     named patient, in a mental-health record. `analyzeRisk` exists but has
+ *     never written a row anywhere, and an administrator reading this had every
+ *     reason to believe it and act on it.
+ *
+ * The IP column is gone rather than emptied: the platform does not record
+ * request IPs, and a column of dashes implies data that is merely missing.
+ *
+ * WHAT IS NOT HERE, stated on the page as well as in this comment: sign-in
+ * history. It lives in Auth0's log stream and is not in this database. A page
+ * titled "audit log" that quietly covers less than its name suggests fails the
+ * same way the fabricated rows did — it answers a question wrongly to someone
+ * who has no reason to doubt it.
  */
 
-const ICON_MAP: Record<string, React.ElementType> = {
-  login: LogIn, logout: LogOut, profile_update: Edit,
-  risk_flag: ShieldAlert, payment: CreditCard, session: Monitor,
-};
+const KIND_PRESENTATION = {
+  payment: { Icon: CreditCard, iconWrap: "bg-emerald-50", icon: "text-emerald-600", label: "Payment" },
+  session: { Icon: CalendarCheck, iconWrap: "bg-blue-50", icon: "text-blue-600", label: "Session" },
+} as const;
 
-const MOCK_AUDIT = [
-  { id: "1", event: "login",          description: "Logged in from Chrome on macOS",    ip: "197.200.x.x", time: "2026-04-26T08:30:00Z" },
-  { id: "2", event: "session",        description: "Session booked with Dr. Patel",     ip: "197.200.x.x", time: "2026-04-26T08:35:00Z" },
-  { id: "3", event: "profile_update", description: "Updated email address",             ip: "197.200.x.x", time: "2026-04-24T14:10:00Z" },
-  { id: "4", event: "payment",        description: "Monthly subscription renewed",      ip: "197.200.x.x", time: "2026-04-01T00:02:00Z" },
-  { id: "5", event: "risk_flag",      description: "AI risk flag raised (mood drop)",   ip: "—",            time: "2026-03-28T11:00:00Z" },
-  { id: "6", event: "login",          description: "Failed login attempt (wrong pwd)",  ip: "41.57.x.x",   time: "2026-03-20T07:15:00Z" },
-  { id: "7", event: "logout",         description: "Logged out",                        ip: "197.200.x.x", time: "2026-03-19T18:45:00Z" },
-];
+/**
+ * Status colouring. `pending` is amber rather than neutral deliberately — every
+ * payment in this database is currently pending with no webhook ever received,
+ * and that is a condition someone should notice rather than skim past.
+ */
+function statusVariant(status: string): "success" | "warning" | "danger" | "neutral" {
+  switch (status) {
+    case "success":
+    case "completed":
+    case "confirmed":
+      return "success";
+    case "pending":
+      return "warning";
+    case "failed":
+    case "cancelled":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function formatWhen(value: Date) {
+  return value.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ActivityRow({ entry }: { entry: ClientActivityEntry }) {
+  const { Icon, iconWrap, icon, label } = KIND_PRESENTATION[entry.kind];
+
+  return (
+    <tr className="hover:bg-stone-50/50 transition-colors">
+      <td className="px-5 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${iconWrap}`}>
+            <Icon className={`w-3.5 h-3.5 ${icon}`} />
+          </div>
+          <span className="text-xs font-semibold text-stone-700">{label}</span>
+        </div>
+      </td>
+      <td className="px-5 py-4 text-sm text-stone-700">{entry.description}</td>
+      <td className="px-5 py-4">
+        <AdminBadge label={entry.status} variant={statusVariant(entry.status)} dot />
+      </td>
+      <td className="px-5 py-4 text-xs text-stone-500 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {formatWhen(entry.at)}
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export default async function AuditLogPage({
   params,
 }: {
+  // Request-time API: a Promise in Next 16, not the plain object it was in 14.
   params: Promise<{ id: string }>;
 }) {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
+
   const { id } = await params;
 
-  const client = await getProfileByUserId(id);
+  const [client, activity] = await Promise.all([
+    getProfileByUserId(id),
+    getClientActivity(id),
+  ]);
   if (!client) notFound();
 
   return (
     <div>
       <AdminPageHeader
-        title="Audit Log"
-        description="Complete activity history for this account."
+        title="Account activity"
+        description="Payments and sessions recorded for this client, newest first."
         breadcrumbs={[
-          { label: "Clients", href: "/admin/users" },
+          { label: "Users", href: "/admin/users" },
           { label: client.name, href: `/admin/users/${id}` },
-          { label: "Audit Log" },
+          { label: "Activity" },
         ]}
       />
 
+      <div className="mb-5 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+        <p className="text-xs text-stone-600">
+          Built from the <span className="font-mono text-[11px]">payments</span> and{" "}
+          <span className="font-mono text-[11px]">therapy_sessions</span> tables.{" "}
+          <strong className="font-semibold text-stone-700">Sign-in activity is not shown</strong> —
+          authentication is handled by Auth0 and those events are held in its log stream, not in
+          this database.
+        </p>
+      </div>
+
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[600px]">
-            <thead className="bg-stone-50 border-b border-stone-100">
-              <tr>
-                {["Event", "Description", "IP Address", "Timestamp"].map((h) => (
-                  <th key={h} className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{h}</th>
+        {activity.length === 0 ? (
+          <div className="px-5 py-12 text-center">
+            <Clock className="w-8 h-8 text-stone-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-stone-600">No recorded activity</p>
+            <p className="text-xs text-stone-400 mt-1 max-w-sm mx-auto">
+              This client has no payments or sessions on record. Entries appear here as they
+              happen.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[640px]">
+              <thead className="bg-stone-50 border-b border-stone-100">
+                <tr>
+                  {/* No IP column — see the note at the top of this file. */}
+                  {["Type", "Detail", "Status", "When"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-50">
+                {activity.map((entry) => (
+                  <ActivityRow key={entry.id} entry={entry} />
                 ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-50">
-              {MOCK_AUDIT.map((entry) => {
-                const Icon = ICON_MAP[entry.event] ?? Clock;
-                return (
-                  <tr key={entry.id} className="hover:bg-stone-50/50 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-stone-100 flex items-center justify-center">
-                          <Icon className="w-3.5 h-3.5 text-stone-500" />
-                        </div>
-                        <span className="text-xs font-semibold text-stone-700 capitalize">{entry.event.replace("_", " ")}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-sm text-stone-700">{entry.description}</td>
-                    <td className="px-5 py-4 text-xs font-mono text-stone-500">{entry.ip}</td>
-                    <td className="px-5 py-4 text-xs text-stone-500">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(entry.time).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

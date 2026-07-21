@@ -5,6 +5,7 @@ import {
   text,
   varchar,
   integer,
+  smallint,
   real,
   boolean,
   timestamp,
@@ -54,6 +55,33 @@ export const kycStatusEnum = pgEnum("kyc_status", [
   "rejected",
 ]);
 
+/**
+ * What an applicant says an uploaded document is (migration 0013).
+ *
+ * Kept short on purpose: a long list invites uploading something adjacent to
+ * what was asked for. `other` is never required and never satisfies a
+ * requirement — see `lib/kyc.ts` for which types are mandatory.
+ */
+export const kycDocumentTypeEnum = pgEnum("kyc_document_type", [
+  "government_id",
+  "professional_license",
+  "practising_certificate",
+  "qualification",
+  "insurance",
+  "other",
+]);
+
+/**
+ * Per-document decision, distinct from the therapist's overall `kycStatus`.
+ * Lets a reviewer accept four documents and reject one with a reason, rather
+ * than making the whole application all-or-nothing.
+ */
+export const kycDocReviewEnum = pgEnum("kyc_doc_review", [
+  "pending",
+  "accepted",
+  "rejected",
+]);
+
 export const sessionStatusEnum = pgEnum("session_status", [
   "pending",
   "confirmed",
@@ -89,6 +117,19 @@ export const riskAlertTypeEnum = pgEnum("risk_alert_type", [
   "flag",
 ]);
 
+/**
+ * What a reviewer concluded about a risk alert (migration 0017).
+ *
+ * `open` is the default so an unreviewed alert can never be mistaken for a
+ * judged one.
+ */
+export const riskAlertDispositionEnum = pgEnum("risk_alert_disposition", [
+  "open",
+  "actioned",
+  "false_positive",
+  "duplicate",
+]);
+
 // ─── Therapists ──────────────────────────────────────────────────────────────
 
 /**
@@ -112,6 +153,29 @@ export const therapists = pgTable(
     /** Legacy opaque URL. New uploads use `kyc_documents` instead. */
     licenseUrl: text("license_url"),
     onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+    /**
+     * IANA zone name (migration 0016). Every `therapist_availability` row for
+     * this therapist is expressed in it — "Monday 09:00" means nothing without
+     * knowing whose 09:00, and the clinicians are in Nairobi while clients are
+     * worldwide. A name rather than a UTC offset, because offsets move with DST.
+     */
+    timezone: text("timezone").notNull().default("Africa/Nairobi"),
+    sessionDurationMinutes: integer("session_duration_minutes").notNull().default(50),
+    bufferMinutes: integer("buffer_minutes").notNull().default(10),
+    /**
+     * When the applicant last submitted for review (migration 0013).
+     * Distinct from `createdAt`: a rejected applicant resubmits, and the review
+     * queue sorts on this so the longest-waiting application surfaces first.
+     */
+    kycSubmittedAt: timestamp("kyc_submitted_at", { withTimezone: true }),
+    kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
+    /** Auth0 sub of the reviewing admin. */
+    kycReviewedBy: text("kyc_reviewed_by"),
+    /**
+     * Overall decision reason, SHOWN TO THE THERAPIST. On a rejection this is
+     * the only explanation they receive, so it has to stand on its own.
+     */
+    kycReviewNote: varchar("kyc_review_note", { length: 1000 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -426,12 +490,39 @@ export const riskAlerts = pgTable(
     type: riskAlertTypeEnum("type").notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     severity: severityEnum("severity").notNull().default("medium"),
+    /**
+     * Kept alongside `disposition` (migration 0017) rather than dropped — it
+     * carries an index and existing reads use it. A CHECK constraint makes the
+     * two incapable of disagreeing: `resolved = (disposition <> 'open')`, so
+     * neither can be written alone and leave the row saying two different
+     * things about the same alert.
+     */
     resolved: boolean("resolved").notNull().default(false),
+    /**
+     * What a reviewer concluded (migration 0017).
+     *
+     * `false_positive` is the load-bearing value. The detector is substring
+     * matching over a fixed word list and `goodbye` is on it, so a cheerful
+     * sign-off files a permanent crisis alert. Without a way to record
+     * dismissal AS dismissal, every false positive is indistinguishable from a
+     * real event that was handled — and the table accumulates as a crisis
+     * history on a real person's record that is mostly a list of string matches.
+     *
+     * `duplicate` is separate because "fired twice on one episode" and "was
+     * simply wrong" are different facts about the detector, and whoever tunes
+     * the word list needs to tell them apart.
+     */
+    disposition: riskAlertDispositionEnum("disposition").notNull().default("open"),
+    /** Required once disposition leaves 'open' — enforced by a CHECK. */
+    dispositionBy: text("disposition_by"),
+    dispositionAt: timestamp("disposition_at", { withTimezone: true }),
+    dispositionNote: varchar("disposition_note", { length: 1000 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("risk_alerts_resolved_idx").on(t.resolved, t.createdAt),
     index("risk_alerts_patient_id_idx").on(t.patientId),
+    index("risk_alerts_disposition_idx").on(t.disposition, t.createdAt),
   ]
 );
 
@@ -706,6 +797,92 @@ export const kycDocuments = pgTable(
     uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
     reviewedBy: text("reviewed_by"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /**
+     * Required — deliberately has NO database default (migration 0013 adds one
+     * to backfill the two legacy rows, then drops it). An untyped document
+     * cannot be checked against a requirement, so an insert that omits this
+     * must fail rather than quietly becoming `other`.
+     */
+    docType: kycDocumentTypeEnum("doc_type").notNull(),
+    reviewStatus: kycDocReviewEnum("review_status").notNull().default("pending"),
+    /** Reviewer's reason, shown to the therapist. Write it for them to read. */
+    reviewNote: varchar("review_note", { length: 1000 }),
   },
-  (t) => [index("kyc_documents_therapist_id_idx").on(t.therapistId)]
+  (t) => [
+    index("kyc_documents_therapist_id_idx").on(t.therapistId),
+    index("kyc_documents_review_status_idx").on(t.reviewStatus),
+  ]
+);
+
+/**
+ * Append-only trail of KYC decisions (migration 0013).
+ *
+ * The columns on `therapists` hold CURRENT state and are overwritten on each
+ * decision. The question asked after an incident is not "what is this
+ * therapist's status" but "who approved them, when, and had anyone raised a
+ * concern first" — which only a log answers. `echo_app` holds SELECT and INSERT
+ * and nothing else; UPDATE and DELETE are revoked, and there is no policy for
+ * them.
+ */
+/**
+ * Published weekly working hours (migration 0016).
+ *
+ * ADVISORY, NOT ENFORCED. `createSessionAction` does not consult this — a client
+ * can still book outside these hours. It exists so the schedule a therapist sets
+ * is stored and shown, rather than discarded by a save handler that only
+ * rendered "Saved ✓". Enforcing it at booking time is a separate change.
+ *
+ * Times are minutes from LOCAL midnight in `therapists.timezone`, not `time`
+ * values: an integer cannot be accidentally compared against a `timestamptz`
+ * elsewhere and silently pick up the server's zone.
+ *
+ * `dayOfWeek` is 0 = Sunday, matching both `Date.getDay()` and Postgres
+ * `EXTRACT(DOW ...)`. The two common conventions differ by one, and an
+ * off-by-one here is invisible until somebody misses an appointment.
+ */
+export const therapistAvailability = pgTable(
+  "therapist_availability",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    therapistId: uuid("therapist_id")
+      .notNull()
+      .references(() => therapists.id, { onDelete: "cascade" }),
+    dayOfWeek: smallint("day_of_week").notNull(),
+    startMinute: smallint("start_minute").notNull(),
+    endMinute: smallint("end_minute").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("therapist_availability_therapist_idx").on(t.therapistId, t.dayOfWeek),
+    // Matches the DB constraint: one block per day. Split shifts are not
+    // expressible yet — see the migration for why that was chosen.
+    uniqueIndex("availability_one_block_per_day").on(t.therapistId, t.dayOfWeek),
+  ]
+);
+
+export const kycReviewEvents = pgTable(
+  "kyc_review_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    therapistId: uuid("therapist_id")
+      .notNull()
+      .references(() => therapists.id, { onDelete: "cascade" }),
+    /** Auth0 sub of whoever acted, or 'system' for automated transitions. */
+    actorId: text("actor_id").notNull(),
+    /**
+     * Free text, not an enum, because this is a log: one that rejects writes
+     * because someone introduced a new action name has failed at its only job.
+     * In use: submitted, approved, rejected, changes_requested, revoked,
+     * document_accepted, document_rejected.
+     */
+    action: text("action").notNull(),
+    note: varchar("note", { length: 1000 }),
+    /** Set when the event concerns one document; null for overall decisions. */
+    documentId: uuid("document_id").references(() => kycDocuments.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("kyc_review_events_therapist_idx").on(t.therapistId, t.createdAt)]
 );

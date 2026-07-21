@@ -92,6 +92,41 @@
       "when": 1784611476823,
       "tag": "0012_revoke_delete_on_ledgers",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784700000000,
+      "tag": "0013_kyc_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784700600000,
+      "tag": "0014_kyc_document_owner_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784701200000,
+      "tag": "0015_therapists_kyc_column_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784702400000,
+      "tag": "0016_therapist_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784703000000,
+      "tag": "0017_risk_alert_disposition",
+      "breakpoints": true
     }
   ]
 }

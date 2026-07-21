@@ -1,11 +1,38 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { User, BookOpen, Upload, CheckCircle, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
-import { useUser } from "@/app/components/UserProvider";
-import { uploadAvatarAction, uploadKycDocumentAction, upsertTherapistProfileAction } from "@/app/actions/database";
+import Link from "next/link";
+import {
+  User,
+  BookOpen,
+  ShieldCheck,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  Loader2,
+  AlertTriangle,
+  Clock,
+  Send,
+  RotateCw,
+} from "lucide-react";
+import { useSession } from "@/app/components/UserProvider";
+import {
+  uploadAvatarAction,
+  upsertTherapistProfileAction,
+  listMyKycDocumentsAction,
+  getMyKycStatusAction,
+  submitKycForReviewAction,
+} from "@/app/actions/database";
+import {
+  KYC_STATUS_COPY,
+  canSubmitForReview,
+  kycDocumentLabel,
+  missingRequiredTypes,
+  type KycStatus,
+} from "@/lib/kyc";
+import KycDocumentUploader, { type KycDocumentView } from "./KycDocumentUploader";
 import posthog from "posthog-js";
 
 const SPECIALTIES = [
@@ -15,16 +42,107 @@ const SPECIALTIES = [
   "LGBTQ+ Affirming", "Career & Life Transitions", "Relationship Issues",
 ];
 
-const STEPS = ["Profile", "Specialties", "License", "Complete"];
+const STEPS = ["Profile", "Specialties", "Documents"];
+
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+const TONE_STYLES: Record<
+  "neutral" | "warning" | "success" | "danger",
+  { wrap: string; title: string; body: string; iconWrap: string; icon: string }
+> = {
+  neutral: {
+    wrap: "bg-stone-50 border-stone-200",
+    title: "text-stone-900",
+    body: "text-stone-600",
+    iconWrap: "bg-stone-200",
+    icon: "text-stone-600",
+  },
+  warning: {
+    wrap: "bg-amber-50 border-amber-200",
+    title: "text-amber-900",
+    body: "text-amber-700",
+    iconWrap: "bg-amber-100",
+    icon: "text-amber-600",
+  },
+  success: {
+    wrap: "bg-emerald-50 border-emerald-200",
+    title: "text-emerald-900",
+    body: "text-emerald-700",
+    iconWrap: "bg-emerald-100",
+    icon: "text-emerald-600",
+  },
+  danger: {
+    wrap: "bg-red-50 border-red-200",
+    title: "text-red-900",
+    body: "text-red-700",
+    iconWrap: "bg-red-100",
+    icon: "text-red-600",
+  },
+};
+
+const TONE_ICON = {
+  neutral: ShieldCheck,
+  warning: Clock,
+  success: ShieldCheck,
+  danger: AlertTriangle,
+} as const;
+
+/**
+ * The therapist-facing status header. Wording comes from `KYC_STATUS_COPY` so
+ * that the onboarding flow, the dashboard banner and any future surface all say
+ * the same thing about the same state — the previous copy was written three
+ * times and disagreed with itself.
+ */
+function KycStatusPanel({
+  status,
+  children,
+}: {
+  status: KycStatus;
+  children?: React.ReactNode;
+}) {
+  const copy = KYC_STATUS_COPY[status];
+  const s = TONE_STYLES[copy.tone];
+  const Icon = TONE_ICON[copy.tone];
+
+  return (
+    <div className={`rounded-2xl border p-5 flex items-start gap-4 ${s.wrap}`}>
+      <div
+        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.iconWrap}`}
+      >
+        <Icon size={20} className={s.icon} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`font-semibold ${s.title}`}>{copy.title}</p>
+        <p className={`text-sm mt-0.5 leading-relaxed ${s.body}`}>{copy.body}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function TherapistOnboardingPage() {
-  const user = useUser();
+  const { user, loading: userLoading } = useSession();
   const router = useRouter();
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * `undefined` = not established yet, `null` = the caller has no therapist row
+   * and is a first-time applicant.
+   *
+   * Same discipline as the dashboard banner: there is no safe default. Guessing
+   * "incomplete" would hand an editable form to someone whose application is
+   * mid-review; guessing anything else would hide the form from someone who
+   * needs it. So it does not guess — see `loadFailed`.
+   */
+  const [status, setStatus] = useState<KycStatus | null | undefined>(undefined);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [documents, setDocuments] = useState<KycDocumentView[]>([]);
+  const [reviewNote, setReviewNote] = useState<string | null>(null);
 
   // Step 0 — Profile
   const [bio, setBio] = useState("");
@@ -35,21 +153,52 @@ export default function TherapistOnboardingPage() {
   // Step 1 — Specialties
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
 
-  // Step 2 — License
-  const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  // Step 2 — Documents
   const [licenseNumber, setLicenseNumber] = useState("");
 
-  // Placed AFTER every hook, not before. React requires hooks to run in the
-  // same order on every render, so returning early above `useState` breaks the
-  // rules of hooks — it happened to work only because the component unmounts
-  // rather than re-rendering with a user.
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="animate-spin text-brand" size={32} />
-      </div>
-    );
-  }
+  const refreshDocuments = useCallback(async () => {
+    setDocuments(await listMyKycDocumentsAction());
+  }, []);
+
+  // Every setState here sits AFTER the first await, deliberately. A synchronous
+  // setState in a function invoked from an effect body triggers a cascading
+  // render, which `react-hooks/set-state-in-effect` rejects.
+  const load = useCallback(async () => {
+    try {
+      const snapshot = await getMyKycStatusAction();
+      setLoadFailed(false);
+      if (!snapshot) {
+        // No therapist row yet — a genuine first-time applicant walks the whole
+        // wizard, because `kyc_documents.therapist_id` is NOT NULL and its RLS
+        // insert policy is `app_owns_therapist(...)`. The profile MUST exist
+        // before any document upload can succeed.
+        setStatus(null);
+        setDocuments([]);
+        setReviewNote(null);
+        return;
+      }
+      setStatus(snapshot.kycStatus);
+      setDocuments(snapshot.documents);
+      setReviewNote(snapshot.kycReviewNote);
+      // A returning applicant already has a profile. Drop them straight on the
+      // documents step: the profile fields cannot be prefilled from this
+      // snapshot, so walking them back through an empty bio box would overwrite
+      // the bio they already wrote with nothing.
+      setStep(2);
+    } catch (err) {
+      console.error("failed to load KYC status", err);
+      setLoadFailed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    // Async IIFE rather than a bare `load()` — matches the therapist dashboard's
+    // idiom and keeps the effect body free of a synchronous state update.
+    (async () => {
+      await load();
+    })();
+  }, [user, load]);
 
   function toggleSpecialty(s: string) {
     setSelectedSpecialties((prev) =>
@@ -60,14 +209,13 @@ export default function TherapistOnboardingPage() {
   // Checked here as well as server-side so an oversized file is rejected before
   // it is uploaded at all — otherwise the request dies in the Next.js Server
   // Action body limit and surfaces as a raw framework error with no context.
-  const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-  const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
-
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_PHOTO_BYTES) {
-      setError(`That photo is ${(file.size / 1024 / 1024).toFixed(1)} MB — please choose one under 5 MB.`);
+      setError(
+        `That photo is ${(file.size / 1024 / 1024).toFixed(1)} MB — please choose one under 5 MB.`
+      );
       e.target.value = "";
       return;
     }
@@ -76,40 +224,19 @@ export default function TherapistOnboardingPage() {
     setPhotoPreview(URL.createObjectURL(file));
   }
 
-  function handleLicenseChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    if (file && file.size > MAX_LICENSE_BYTES) {
-      setError(`That document is ${(file.size / 1024 / 1024).toFixed(1)} MB — please choose one under 10 MB.`);
-      e.target.value = "";
-      return;
-    }
-    setError(null);
-    setLicenseFile(file);
-  }
-
-  async function handleFinish() {
+  /**
+   * Saves the profile and moves to the documents step.
+   *
+   * This is NOT the submission. It exists to create the therapist row that the
+   * document uploads hang off; the application is sent only by
+   * `submitKycForReviewAction` on the next step.
+   */
+  async function handleSaveProfile() {
     setSaving(true);
     setError(null);
     try {
       if (!user) throw new Error("Not authenticated");
 
-      // ORDER MATTERS: the therapist row must exist before the licence upload.
-      // `kyc_documents.therapist_id` is NOT NULL and its RLS insert policy is
-      // `app_owns_therapist(...)`, so a first-time therapist with no row yet had
-      // every onboarding upload rejected under the previous ordering.
-      await upsertTherapistProfileAction({
-        userId: user.$id,
-        name: user.name,
-        bio,
-        specialties: selectedSpecialties,
-        experience: Number.parseInt(experience, 10),
-        licenseNumber,
-      });
-
-      // Profile photo → `avatars` (publicly readable; it renders in the
-      // therapist directory). Licence → `kyc_documents` (owner and admin only).
-      // These were previously the same call into the same table, which forced
-      // one RLS policy to cover both sensitivity levels.
       let avatarUrl: string | undefined;
       if (photoFile) {
         const formData = new FormData();
@@ -118,183 +245,494 @@ export default function TherapistOnboardingPage() {
         avatarUrl = uploaded.url;
       }
 
-      let licenseUrl: string | undefined;
-      if (licenseFile) {
-        const formData = new FormData();
-        formData.append("file", licenseFile);
-        const uploaded = await uploadKycDocumentAction(formData);
-        licenseUrl = uploaded.url;
-      }
-
-      // Second pass attaches the uploaded document URLs.
-      if (avatarUrl || licenseUrl) {
-        await upsertTherapistProfileAction({
-          userId: user.$id,
-          name: user.name,
-          bio,
-          specialties: selectedSpecialties,
-          experience: Number.parseInt(experience, 10),
-          licenseNumber,
-          avatarUrl,
-          licenseUrl,
-        });
-      }
-
-      posthog.capture("therapist_onboarding_completed", {
+      // `userId` is deliberately not passed — the action derives it from the
+      // session, and accepting it would let a caller overwrite another
+      // therapist's profile.
+      await upsertTherapistProfileAction({
+        name: user.name,
+        bio,
         specialties: selectedSpecialties,
-        experience_years: Number.parseInt(experience, 10),
-        has_photo: !!photoFile,
-        has_license_doc: !!licenseFile,
+        experience: Number.parseInt(experience, 10),
+        licenseNumber,
+        ...(avatarUrl ? { avatarUrl } : {}),
       });
 
-      // NOT `/therapist` — the applicant still has no `therapist` role at this
-      // point, so that route's layout would bounce them straight to /dashboard
-      // and the submission would look like it failed. The role is granted only
-      // when an admin approves the KYC submission (/api/admin/therapist-kyc),
-      // after which they must sign in again to pick up the new claim.
-      router.push("/onboarding/therapist/submitted");
+      await refreshDocuments();
+      setStep(2);
     } catch (err: unknown) {
       posthog.captureException(err);
       setError(err instanceof Error ? err.message : "Failed to save profile.");
+    } finally {
       setSaving(false);
     }
   }
 
+  async function handleSubmitForReview() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitKycForReviewAction();
+
+      posthog.capture("therapist_kyc_submitted", {
+        document_count: documents.length,
+        document_types: documents.map((d) => d.docType),
+        specialties: selectedSpecialties,
+      });
+
+      // Navigation happens ONLY after the action resolves. The previous flow
+      // pushed to /submitted unconditionally, so an application that was never
+      // stored still showed the applicant a success page.
+      router.push("/onboarding/therapist/submitted");
+    } catch (err: unknown) {
+      posthog.captureException(err);
+      setError(
+        err instanceof Error ? err.message : "Could not submit your application."
+      );
+      setSubmitting(false);
+      // The refusal may be because the status moved underneath us (a reviewer
+      // picking it up mid-edit). Re-read rather than leaving a stale form.
+      void load();
+    }
+  }
+
+  /**
+   * A rejected document does not count towards its requirement. Resubmitting the
+   * same file the reviewer already turned down wastes a review cycle, so the
+   * gate names that type as still outstanding until it is replaced.
+   *
+   * This is deliberately stricter than the server's own check. Erring strict is
+   * safe — the worst case is an applicant is asked for something the server
+   * would have accepted; erring loose would let the button promise a submission
+   * the server then refuses.
+   */
+  const providedTypes = documents
+    .filter((d) => d.reviewStatus !== "rejected")
+    .map((d) => d.docType);
+  const missing = missingRequiredTypes(providedTypes);
+  const canSubmit = missing.length === 0;
+
+  const editable =
+    status === null || (status !== undefined && canSubmitForReview(status));
+
+  /* ---------------------------------------------------------------- gates */
+
+  if (userLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="animate-spin text-brand" size={32} />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-stone-200 p-8 text-center">
+          <h1 className="text-lg font-bold text-stone-900">Sign in to continue</h1>
+          <p className="text-sm text-stone-500 mt-2">
+            Your therapist application is tied to your account.
+          </p>
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center gap-2 mt-5 bg-brand text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand/90 transition-colors"
+          >
+            Sign in <ArrowRight size={15} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-stone-200 p-8 text-center">
+          <AlertTriangle size={28} className="text-amber-500 mx-auto" />
+          <h1 className="text-lg font-bold text-stone-900 mt-3">
+            We couldn&apos;t load your application
+          </h1>
+          {/*
+            No form is rendered here on purpose. Showing an editable form after a
+            failed status read would let someone under review swap their
+            documents, and would tell a verified clinician to start over.
+          */}
+          <p className="text-sm text-stone-500 mt-2">
+            Nothing has changed. Try again in a moment.
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-2 mt-5 bg-brand text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand/90 transition-colors"
+          >
+            <RotateCw size={15} /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === undefined) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="animate-spin text-brand" size={32} />
+      </div>
+    );
+  }
+
+  /* ------------------------------------------------- read-only end states */
+
+  // `pending` and `verified` are not editable. A reviewer part-way through a
+  // set of documents must not have them change underneath, and an approved
+  // clinician must not be able to re-open their own application and keep
+  // access while sitting unreviewed in the queue (see `canSubmitForReview`).
+  if (status === "pending" || status === "verified") {
+    return (
+      <div className="min-h-screen bg-stone-50 px-4 py-12">
+        <div className="w-full max-w-lg mx-auto space-y-5">
+          <KycStatusPanel status={status}>
+            {status === "verified" && (
+              <Link
+                href="/therapist"
+                className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-4 py-2 rounded-xl transition-colors"
+              >
+                Go to my dashboard <ArrowRight size={14} />
+              </Link>
+            )}
+          </KycStatusPanel>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+            <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider">
+              Documents on file
+            </h2>
+            <p className="text-xs text-stone-500 mt-1 mb-4">
+              {status === "pending"
+                ? "These are locked while your application is being reviewed."
+                : "These were reviewed and approved."}
+            </p>
+            <KycDocumentUploader
+              documents={documents}
+              editable={false}
+              onChanged={refreshDocuments}
+              onError={setError}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ----------------------------------------------------------- the wizard */
+
+  const showProfileSteps = status === null;
+
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-stone-50 flex flex-col items-center px-4 py-12">
       {/* Progress */}
       <div className="w-full max-w-lg mb-8">
         <div className="flex items-center justify-between mb-2">
           {STEPS.map((label, i) => (
             <div key={label} className="flex items-center">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-colors
-                ${i < step ? "bg-brand text-white" : i === step ? "bg-brand text-white ring-4 ring-brand/20" : "bg-stone-200 text-stone-400"}`}>
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-colors
+                ${
+                  i < step
+                    ? "bg-brand text-white"
+                    : i === step
+                      ? "bg-brand text-white ring-4 ring-brand/20"
+                      : "bg-stone-200 text-stone-400"
+                }`}
+              >
                 {i < step ? <CheckCircle size={14} /> : i + 1}
               </div>
               {i < STEPS.length - 1 && (
-                <div className={`h-0.5 w-16 sm:w-24 mx-1 rounded-full transition-colors ${i < step ? "bg-brand" : "bg-stone-200"}`} />
+                <div
+                  className={`h-0.5 w-16 sm:w-24 mx-1 rounded-full transition-colors ${i < step ? "bg-brand" : "bg-stone-200"}`}
+                />
               )}
             </div>
           ))}
         </div>
         <div className="flex justify-between text-xs text-stone-400 px-0">
-          {STEPS.map((label) => <span key={label}>{label}</span>)}
+          {STEPS.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
         </div>
       </div>
 
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-stone-200 p-8">
-        {/* Step 0 — Profile */}
-        {step === 0 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2"><User size={20} className="text-brand" /> Profile Setup</h2>
-              <p className="text-sm text-stone-500 mt-1">Tell clients a bit about yourself.</p>
-            </div>
-            {/* Photo */}
-            <div className="flex items-center gap-4">
-              <div className="relative w-20 h-20 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
-                {photoPreview
-                  ? <Image src={photoPreview} alt="Preview" fill className="object-cover" />
-                  : <User size={28} className="text-stone-400" />}
+      <div className="w-full max-w-lg space-y-5">
+        {/*
+          A rejected applicant sees the reviewer's decision FIRST, above the
+          form. Requirement 3: they need to know why before they start changing
+          things, not after.
+        */}
+        {status === "rejected" && step === 2 && (
+          <KycStatusPanel status="rejected">
+            {reviewNote && (
+              <div className="mt-3 rounded-xl bg-white/70 border border-red-200 px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-red-800">
+                  Reviewer&apos;s note
+                </p>
+                <p className="text-sm text-red-800 mt-1 leading-relaxed whitespace-pre-line">
+                  {reviewNote}
+                </p>
               </div>
-              <div>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className="text-sm font-medium text-brand underline underline-offset-2">
-                  Upload photo
-                </button>
-                <p className="text-xs text-stone-400 mt-0.5">JPG or PNG, max 5 MB</p>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-              </div>
-            </div>
-            {/* Bio */}
-            <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-stone-700 mb-1.5">Bio <span className="text-stone-400 font-normal">(required)</span></label>
-              <textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} rows={4}
-                placeholder="Tell clients about your approach, experience, and what you specialise in…"
-                className="w-full rounded-xl border border-stone-200 px-4 py-3 text-sm text-stone-800 resize-none outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-            </div>
-            {/* Experience */}
-            <div>
-              <label htmlFor="experience" className="block text-sm font-medium text-stone-700 mb-1.5">Years of experience</label>
-              <input id="experience" type="number" min="0" max="50" value={experience} onChange={(e) => setExperience(e.target.value)}
-                className="w-32 rounded-xl border border-stone-200 px-4 py-3 text-sm text-stone-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-            </div>
-            <button disabled={!bio.trim()} onClick={() => setStep(1)}
-              className="w-full flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-brand/90 transition-colors">
-              Continue <ArrowRight size={15} />
-            </button>
-          </div>
+            )}
+            <p className="text-xs text-red-700 mt-3">
+              Documents already marked <strong>Accepted</strong> are kept — you only
+              need to replace the ones flagged below.
+            </p>
+          </KycStatusPanel>
         )}
 
-        {/* Step 1 — Specialties */}
-        {step === 1 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2"><BookOpen size={20} className="text-brand" /> Specializations</h2>
-              <p className="text-sm text-stone-500 mt-1">Select all that apply (at least one).</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {SPECIALTIES.map((s) => {
-                const on = selectedSpecialties.includes(s);
-                return (
-                  <button key={s} type="button" onClick={() => toggleSpecialty(s)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      ${on ? "bg-brand text-white border-brand" : "bg-white text-stone-600 border-stone-200 hover:border-brand/40"}`}>
-                    {s}
+        <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-8">
+          {/* Step 0 — Profile */}
+          {step === 0 && showProfileSteps && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                  <User size={20} className="text-brand" /> Profile Setup
+                </h2>
+                <p className="text-sm text-stone-500 mt-1">
+                  Tell clients a bit about yourself.
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
+                  {photoPreview ? (
+                    <Image src={photoPreview} alt="Preview" fill className="object-cover" />
+                  ) : (
+                    <User size={28} className="text-stone-400" />
+                  )}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="text-sm font-medium text-brand underline underline-offset-2"
+                  >
+                    Upload photo
                   </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setStep(0)} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors">
-                <ArrowLeft size={14} /> Back
-              </button>
-              <button disabled={selectedSpecialties.length === 0} onClick={() => setStep(2)}
-                className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-brand/90 transition-colors">
+                  <p className="text-xs text-stone-400 mt-0.5">JPG or PNG, max 5 MB</p>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                </div>
+              </div>
+              <div>
+                <label
+                  htmlFor="bio"
+                  className="block text-sm font-medium text-stone-700 mb-1.5"
+                >
+                  Bio <span className="text-stone-400 font-normal">(required)</span>
+                </label>
+                <textarea
+                  id="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={4}
+                  placeholder="Tell clients about your approach, experience, and what you specialise in…"
+                  className="w-full rounded-xl border border-stone-200 px-4 py-3 text-sm text-stone-800 resize-none outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="experience"
+                  className="block text-sm font-medium text-stone-700 mb-1.5"
+                >
+                  Years of experience
+                </label>
+                <input
+                  id="experience"
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={experience}
+                  onChange={(e) => setExperience(e.target.value)}
+                  className="w-32 rounded-xl border border-stone-200 px-4 py-3 text-sm text-stone-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                />
+              </div>
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  {error}
+                </p>
+              )}
+              <button
+                disabled={!bio.trim()}
+                onClick={() => setStep(1)}
+                className="w-full flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-brand/90 transition-colors"
+              >
                 Continue <ArrowRight size={15} />
               </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Step 2 — License */}
-        {step === 2 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2"><Upload size={20} className="text-brand" /> License & Verification</h2>
-              <p className="text-sm text-stone-500 mt-1">Upload your professional license for verification.</p>
-            </div>
-            <div>
-              <label htmlFor="licenseNumber" className="block text-sm font-medium text-stone-700 mb-1.5">License number</label>
-              <input id="licenseNumber" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)}
-                placeholder="e.g. LPC-12345"
-                className="w-full rounded-xl border border-stone-200 px-4 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-            </div>
-            <div>
-              <label htmlFor="licenseFile" className="block text-sm font-medium text-stone-700 mb-1.5">License document</label>
-              <label htmlFor="licenseFile" className="flex flex-col items-center justify-center border-2 border-dashed border-stone-200 rounded-xl py-10 cursor-pointer hover:border-brand/40 transition-colors">
-                <Upload size={24} className={licenseFile ? "text-brand" : "text-stone-300"} />
-                <p className="mt-2 text-sm text-stone-500">
-                  {licenseFile ? licenseFile.name : "Click or drag to upload PDF/PNG"}
+          {/* Step 1 — Specialties */}
+          {step === 1 && showProfileSteps && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                  <BookOpen size={20} className="text-brand" /> Specializations
+                </h2>
+                <p className="text-sm text-stone-500 mt-1">
+                  Select all that apply (at least one).
                 </p>
-                <input id="licenseFile" type="file" accept=".pdf,.png,.jpg" className="hidden" onChange={handleLicenseChange} />
-              </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {SPECIALTIES.map((s) => {
+                  const on = selectedSpecialties.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleSpecialty(s)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
+                        ${on ? "bg-brand text-white border-brand" : "bg-white text-stone-600 border-stone-200 hover:border-brand/40"}`}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+              <div>
+                <label
+                  htmlFor="licenseNumber"
+                  className="block text-sm font-medium text-stone-700 mb-1.5"
+                >
+                  Licence number
+                </label>
+                <input
+                  id="licenseNumber"
+                  value={licenseNumber}
+                  onChange={(e) => setLicenseNumber(e.target.value)}
+                  placeholder="e.g. LPC-12345"
+                  className="w-full rounded-xl border border-stone-200 px-4 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                />
+                <p className="text-xs text-stone-400 mt-1.5">
+                  We check this against your regulator&apos;s public register.
+                </p>
+              </div>
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  {error}
+                </p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(0)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors"
+                >
+                  <ArrowLeft size={14} /> Back
+                </button>
+                <button
+                  disabled={selectedSpecialties.length === 0 || saving}
+                  onClick={handleSaveProfile}
+                  className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-brand/90 transition-colors"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Saving…
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight size={15} />
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-700">
-              ⏳ Verification typically takes 1–2 business days. You can use the platform while we review.
+          )}
+
+          {/* Step 2 — Documents */}
+          {step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                  <ShieldCheck size={20} className="text-brand" /> Credentials
+                </h2>
+                <p className="text-sm text-stone-500 mt-1">
+                  We verify every clinician before granting access to client data.
+                  Upload each document below.
+                </p>
+              </div>
+
+              <KycDocumentUploader
+                documents={documents}
+                editable={editable}
+                onChanged={refreshDocuments}
+                onError={setError}
+              />
+
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  {error}
+                </p>
+              )}
+
+              {/*
+                Requirement 2: the gate says what is still outstanding by NAME.
+                "Complete the required fields" is the message that makes people
+                hunt; naming the documents is the message that makes them finish.
+              */}
+              {!canSubmit && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Still needed before you can submit
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {missing.map((t) => (
+                      <li key={t} className="text-sm text-amber-700 flex items-center gap-2">
+                        <span className="w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+                        {kycDocumentLabel(t)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="bg-cream border border-brand/10 rounded-xl px-4 py-3 text-xs text-brand/80">
+                Reviews typically complete within 1–2 business days. You&apos;ll be
+                emailed as soon as there is a decision.
+              </div>
+
+              <div className="flex gap-3">
+                {showProfileSteps && (
+                  <button
+                    onClick={() => setStep(1)}
+                    disabled={submitting}
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-40"
+                  >
+                    <ArrowLeft size={14} /> Back
+                  </button>
+                )}
+                <button
+                  onClick={handleSubmitForReview}
+                  disabled={!canSubmit || submitting}
+                  title={
+                    canSubmit
+                      ? undefined
+                      : `Still needed: ${missing.map(kycDocumentLabel).join(", ")}`
+                  }
+                  className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-brand/90 transition-colors"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <Send size={15} />
+                      {status === "rejected" ? "Resubmit application" : "Submit for review"}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-            {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>}
-            <div className="flex gap-3">
-              <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors">
-                <ArrowLeft size={14} /> Back
-              </button>
-              <button onClick={handleFinish} disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-brand/90 transition-colors">
-                {saving ? <><Loader2 size={15} className="animate-spin" /> Saving…</> : <>Finish Setup <ArrowRight size={15} /></>}
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

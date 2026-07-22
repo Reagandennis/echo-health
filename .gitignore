@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template (no secrets) IS committed:
+!.env.example
 
 # scratch / one-off testing scripts (never commit secrets!)
 test_appwrite*.js

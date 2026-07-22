@@ -65,15 +65,21 @@ const nextConfig: NextConfig = {
     /**
      * `connect-src` no longer needs a backend host allowlisted.
      *
-     * Appwrite used to be contacted directly from the browser, so its https and
-     * wss origins were interpolated here. Since the migration, every backend
-     * call is same-origin: the database is reached through Server Actions,
-     * PostHog through the `/ingest` rewrite below, Cloudflare Calls through
-     * `/api/video/*`, and realtime through the `/api/events` SSE stream.
+     * Most backend calls are same-origin: the database is reached through Server
+     * Actions, PostHog through the `/ingest` rewrite below, and realtime through
+     * the `/api/events` SSE stream.
      *
-     * The one exception is WebRTC media itself, which negotiates STUN/TURN
-     * outside the fetch layer and so is not governed by `connect-src`.
+     * The exception is the Echo video backend (video.echopsychology.com): the
+     * browser opens its signaling WebSocket and fetches ICE creds DIRECTLY, so
+     * its https + wss origins must be allowlisted in `connect-src`. (The earlier
+     * Cloudflare Calls stack was proxied through `/api/video/*` and needed no
+     * allowlist; the new service is contacted cross-origin.)
+     *
+     * WebRTC media itself negotiates STUN/TURN outside the fetch layer and so is
+     * not governed by `connect-src`.
      */
+    const videoOrigin = "https://video.echopsychology.com";
+    const videoWsOrigin = "wss://video.echopsychology.com";
     const cspDirectives = [
       "default-src 'self'",
       // 'unsafe-inline' is currently required by Next.js for hydration. Tighten
@@ -83,7 +89,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self'",
+      `connect-src 'self' ${videoOrigin} ${videoWsOrigin}`,
       "media-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",

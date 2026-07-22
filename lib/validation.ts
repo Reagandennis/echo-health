@@ -118,30 +118,10 @@ export const promoSchema = z.object({
   userId: userIdSchema,
 });
 
-// /api/video/session — narrow path allowlist, no arbitrary methods
-const sessionIdPattern = "[a-zA-Z0-9_-]{1,128}";
-const VIDEO_ENDPOINT_PATTERNS: ReadonlyArray<RegExp> = [
-  /^\/sessions\/new$/,
-  new RegExp(`^/sessions/${sessionIdPattern}/tracks/new$`),
-  new RegExp(`^/sessions/${sessionIdPattern}/tracks/request$`),
-  new RegExp(`^/sessions/${sessionIdPattern}/tracks/close$`),
-  new RegExp(`^/sessions/${sessionIdPattern}/renegotiate$`),
-];
-
-const VIDEO_METHODS = ["GET", "POST", "PUT"] as const;
-
-export const videoSessionSchema = z.object({
-  endpoint: z
-    .string()
-    .min(1)
-    .max(256)
-    .refine(
-      (v) => VIDEO_ENDPOINT_PATTERNS.some((re) => re.test(v)),
-      "Endpoint not allowed"
-    ),
-  method: z.enum(VIDEO_METHODS).optional(),
-  data: z.unknown().optional(),
-});
+// The video-session proxy schema (endpoint/method/data allowlist for the
+// Cloudflare Calls proxy) was removed with the migration to the Echo video
+// backend: session minting now goes through the `createVideoSessionAction`
+// server action (authorized by therapy-session participation), not a REST proxy.
 
 // Helpers that turn a parse failure into a 400-friendly message
 export function parseOrError<T>(schema: z.ZodType<T>, value: unknown):

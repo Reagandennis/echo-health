@@ -5,6 +5,8 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzl
 import { getLoggedInUser, type SessionUser } from "@/lib/auth/session";
 import { withAnonymous, withSystem, withUser } from "@/lib/db/session";
 import { analyzeRisk } from "@/lib/clinical/risk";
+import { rateLimit } from "@/lib/rate-limit";
+import { mintVideoSession, type IceServer } from "@/lib/video";
 import {
   validateAvailabilityDraft,
   type AvailabilityBlock,
@@ -163,19 +165,6 @@ function toMilestones(value: unknown): GoalMilestone[] {
     }
   }
   return [];
-}
-
-/**
- * Same treatment for the WebRTC track payloads, now `jsonb`. `useVideoSession`
- * still `JSON.stringify`s before calling `updateSessionTracksAction`.
- */
-function toJson(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
 }
 
 /**
@@ -1125,74 +1114,42 @@ export async function createSessionAction(data: SessionInput): Promise<Doc> {
 }
 
 /**
- * Update the WebRTC track-signaling column on a session row.
- * Authorizes the caller (patient, or therapist-by-userId) then writes.
+ * Mint a 1:1 video-call session for a therapy session, authorized to its
+ * participants.
  *
- * `trackData` still arrives as a JSON string from `useVideoSession`; it is
- * parsed here so the `jsonb` column holds structured JSON rather than a quoted
- * string. See the report for the matching change owed on the read side.
- */
-export async function updateSessionTracksAction(
-  sessionId: string,
-  role: "client" | "therapist",
-  trackData: string
-): Promise<Doc> {
-  const user = await requireUser();
-  if (!isUuid(sessionId)) throw new Error("Not found");
-
-  return withUser(user, async (tx) => {
-    const [sess] = await tx
-      .select({
-        patientId: therapySessions.patientId,
-        therapistId: therapySessions.therapistId,
-      })
-      .from(therapySessions)
-      .where(eq(therapySessions.id, sessionId))
-      .limit(1);
-    if (!sess) throw new Error("Not found");
-
-    if (role === "client") {
-      if (sess.patientId !== user.$id) throw new Error("Forbidden");
-    } else if (!(await ownsTherapistDoc(tx, user, sess.therapistId))) {
-      throw new Error("Forbidden");
-    }
-
-    const patch =
-      role === "therapist"
-        ? { therapistTracks: toJson(trackData) }
-        : { patientTracks: toJson(trackData) };
-
-    const [row] = await tx
-      .update(therapySessions)
-      .set(patch)
-      .where(eq(therapySessions.id, sessionId))
-      .returning();
-
-    return toDoc(row);
-  });
-}
-
-/**
- * Companion read for `updateSessionTracksAction`. The browser has no database
- * session, so it reads the published-track columns through this action after
- * verifying the caller is the patient/therapist on the session.
+ * REPLACES the Cloudflare Calls proxy and the DB-based track signaling this
+ * file used to carry (`updateSessionTracksAction` / `getSessionTracksAction`).
+ * The Echo video backend signals over its own WebSocket, so no track metadata
+ * is persisted here any more — the `therapy_sessions.patient_tracks` /
+ * `therapist_tracks` columns are now vestigial and can be dropped in a later
+ * migration.
  *
- * Returns the parsed `jsonb` values, NOT the JSON strings Appwrite stored.
+ * `room` is the therapy session id, so the therapist and the client join the
+ * SAME room (each gets their own short-lived token). Authorization mirrors the
+ * retired track actions exactly: a client must be the session's patient; a
+ * therapist must own the session's therapist row (RLS also constrains the
+ * SELECT to those two, so a stranger's id returns no row → "Not found"). The
+ * `sk_live_` API key never leaves the server — see `lib/video.ts`; the browser
+ * receives only a short-lived signaling URL and ICE servers.
  */
-export async function getSessionTracksAction(
+export async function createVideoSessionAction(
   sessionId: string,
   role: "client" | "therapist"
-) {
+): Promise<{ wsUrl: string; iceServers: IceServer[] }> {
   const user = await requireUser();
   if (!isUuid(sessionId)) throw new Error("Not found");
 
-  return withUser(user, async (tx) => {
+  // Defense-in-depth against a participant spamming session creation; the real
+  // guard is the ownership check below.
+  if (!rateLimit(`video:${user.$id}`, { limit: 60, windowMs: 60_000 }).ok) {
+    throw new Error("Too many requests — wait a moment and try again");
+  }
+
+  await withUser(user, async (tx) => {
     const [sess] = await tx
       .select({
         patientId: therapySessions.patientId,
         therapistId: therapySessions.therapistId,
-        patientTracks: therapySessions.patientTracks,
-        therapistTracks: therapySessions.therapistTracks,
       })
       .from(therapySessions)
       .where(eq(therapySessions.id, sessionId))
@@ -1204,12 +1161,10 @@ export async function getSessionTracksAction(
     } else if (!(await ownsTherapistDoc(tx, user, sess.therapistId))) {
       throw new Error("Forbidden");
     }
-
-    return {
-      patientTracks: sess.patientTracks ?? null,
-      therapistTracks: sess.therapistTracks ?? null,
-    };
   });
+
+  const session = await mintVideoSession(sessionId);
+  return { wsUrl: session.wsUrl, iceServers: session.iceServers };
 }
 
 /**

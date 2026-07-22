@@ -135,9 +135,33 @@ Env: `ECHO_VIDEO_API_URL`, `ECHO_VIDEO_API_KEY` (both server-only; no `NEXT_PUBL
 
 ### Analytics (PostHog)
 
-PostHog is initialised in **two** places by design:
-1. `instrumentation-client.ts` — Next.js client-instrumentation hook, sets `capture_exceptions: true`.
-2. `app/components/PostHogProvider.tsx` — wraps the React tree and provides `usePostHog()`; also runs `posthog.identify()` from the server-fetched user on mount.
+PostHog has **one** init and one provider — keep it that way:
+1. `instrumentation-client.ts` — the Next.js client-instrumentation hook, and the **only** `posthog.init()` in the app. Sets `capture_exceptions` (prod only) and opts out of capturing on localhost.
+2. `app/components/PostHogProvider.tsx` — wraps the React tree and provides `usePostHog()`; also runs `posthog.identify()` from the server-fetched user on mount. It does **not** init.
+
+> This file previously said PostHog was initialised in two places "by design". It was initialised in two places, but not by design and not effectively: the provider's init was guarded by `!posthog.__loaded`, and the instrumentation hook runs first, so the guard was always false and the provider's whole options object was dead code. The casualty was its dev opt-out — meaning nothing stopped a local `npm run dev` from reporting into the production project as real traffic. **If you add a second `init()`, whichever one loses is silent.**
+
+#### The taxonomy is `lib/analytics/events.ts`. Do not hand-write event names.
+
+`ANALYTICS_EVENTS` is the source of truth for every event name, and `captureServer()` (`lib/analytics/server.ts`) is the only server-side capture path — it can never throw, so a PostHog outage cannot turn a booking, a role assignment or a payment webhook into a 500.
+
+Events tagged `@unwired` are **declared but not emitted**. Never build a saved insight on one. That is exactly how the previous instrumentation failed: the wizard's dashboards measured `user_signed_up`, `user_role_selected` and `therapist_onboarding_completed` while the code emitted none of them, so three of five charts rendered a flat zero — which reads as "nobody signed up" rather than "this chart is broken".
+
+**Universal Login means the client cannot see a successful login.** `sign_up_started` / `sign_in_started` fire before the browser leaves for Auth0 and measure intent only. `user_authenticated`, captured server-side in `app/post-login/page.tsx`, is the only event that closes that funnel. Compute the redirect destination *before* redirecting — `redirect()` works by throwing, so a capture placed after one never runs.
+
+**Capture after the transaction commits, never inside `withUser`.** `captureServer` makes a network call and waits up to 3s for the flush; inside a transaction that holds a pooled Postgres connection for the duration, and the Azure tier allows roughly 24 in total. Same ordering rule as the risk scanner.
+
+#### ⚠️ Analytics privacy rules — this is a mental-health platform
+
+The *content* of what a person writes or feels never leaves for a third-party analytics vendor. Not the text, not a score, not a category.
+
+- **Identification is pseudonymous.** Auth0 `sub` plus a coarse `role`; no email, no name. Every person profile used to carry both, which made the analytics project a list of identifiable people using a mental-health service. Those properties were purged.
+- **Session replay is off behind the login wall.** `disable_session_recording: true` at init; `PostHogProvider` starts recording only after confirming there is *no* session, and stops it on sign-in. Replay was previously recording authenticated `/therapist` screens on 30-day retention — posthog-js masks form inputs but *not* rendered DOM text, so recordings captured client names, note bodies and message threads.
+- **URLs are scrubbed** by `lib/analytics/sanitize.ts` via `sanitize_properties`, which runs on every event including autocapture. Record ids in dynamic routes reach `$current_url` verbatim — `/admin/therapists/<uuid>/credentials` was captured 10 times before this existed. Autocaptured element text is dropped wholesale.
+- **Risk-scanner outcomes are never captured.** A `risk_alert` against a stable person id would put "this individual was flagged as in crisis" in an analytics store. It stays in Postgres behind RLS.
+- `therapist_id` **is** allowed (a provider is a business entity, and directory conversion is unmeasurable without it). Patient identifiers are not.
+
+The test for a new property: would this be acceptable in a breach notification? If not, aggregate it or drop it. Sanitiser behaviour is covered by `__tests__/analytics-sanitize.test.ts`.
 
 Both use `api_host: "/ingest"` which is reverse-proxied to PostHog US in `next.config.ts` (`/ingest/static/*`, `/ingest/array/*`, `/ingest/*`). **Don't change the host to `us.i.posthog.com` directly** — the proxy is there to dodge ad-blockers. Server-side events use the factory in `lib/posthog-server.ts` (`flushAt: 1`, `flushInterval: 0` — events flush per-call because route handlers are short-lived). See `posthog-setup-report.md` for the full list of tracked events.
 

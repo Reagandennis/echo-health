@@ -46,13 +46,6 @@ export default function ClientSessionPage() {
         // Check if therapist is already live (tracks already written)
         const isLive = !!(sess as unknown as Record<string, unknown>).therapistTracks;
         setTherapistLive(isLive);
-        if (isLive) {
-          posthog.capture("video_session_joined", {
-            session_id: sess.$id,
-            scheduled_at: sess.scheduledAt,
-          });
-        }
-
       } catch (err) {
         console.error("Client session page error:", err);
         router.replace("/dashboard/sessions");
@@ -73,10 +66,6 @@ export default function ClientSessionPage() {
         try {
           const sess = (await getSessionAction(sessionId)) as TherapySession;
           if (!(sess as unknown as Record<string, unknown>).therapistTracks) return;
-          posthog.capture("video_session_joined", {
-            session_id: sess.$id,
-            scheduled_at: sess.scheduledAt,
-          });
           setTherapistLive(true);
         } catch (err) {
           console.error("Client session page realtime error:", err);

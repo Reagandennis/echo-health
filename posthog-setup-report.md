@@ -1,45 +1,78 @@
-<wizard-report>
-# PostHog post-wizard report
+# Analytics (PostHog) — current design
 
-The wizard has completed a deep integration of PostHog analytics into Echo Health. Here is a summary of what was set up:
+Supersedes the original post-wizard report, which was written in the Appwrite
+era and had rotted in every section: it cited event names the app no longer
+emitted, files that had moved, and an `identify()` keyed on the Appwrite user id.
+Rules and rationale live in `AGENTS.md` § Analytics; this file is the inventory.
 
-**Client-side initialization** — `instrumentation-client.ts` was created at the project root to initialize PostHog via the `posthog-js` SDK with error tracking (`capture_exceptions: true`) and a reverse proxy to reduce ad-blocker interference.
+## Shape
 
-**Reverse proxy** — `next.config.ts` was updated with `/ingest/*` rewrites routing through `us.i.posthog.com` and `us-assets.i.posthog.com`.
-
-**Server-side client** — `lib/posthog-server.ts` was created as a lightweight factory for `posthog-node`, used in API routes to capture server-side events.
-
-**Environment variables** — `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` were written to `.env.local`.
-
-**User identification** — `posthog.identify()` is called on successful sign-up and sign-in using the Appwrite user ID as the distinct ID, with `email` and `name` as person properties.
-
-| Event | Description | File |
+| Piece | File | Job |
 |---|---|---|
-| `user_signed_up` | User successfully created an account via email/password | `app/(auth)/signup/page.tsx` |
-| `user_signed_in` | User successfully signed in via email/password | `app/(auth)/signin/page.tsx` |
-| `user_role_selected` | User completed role selection during onboarding (client or therapist) | `app/api/user/set-role/route.ts` |
-| `therapist_onboarding_completed` | Therapist submitted their full onboarding profile | `app/therapist/onboarding/page.tsx` |
-| `video_session_joined` | Client entered a video session room | `app/dashboard/sessions/[sessionId]/page.tsx` |
-| `chat_message_sent` | A user sent a support chat message | `app/components/ChatWidget.tsx` |
-| `promo_code_redeemed` | User successfully redeemed a promo code | `app/api/promo/route.ts` |
-| `goal_created` | Client created a new therapy goal | `app/dashboard/goals/page.tsx` |
-| `goal_completed` | Client completed all milestones in a goal | `app/dashboard/goals/page.tsx` |
-| `therapist_kyc_reviewed` | Admin approved or rejected a therapist KYC verification | `app/api/admin/therapist-kyc/route.ts` |
-| `plan_upgrade_clicked` | Client clicked the upgrade plan CTA on the billing page | `app/dashboard/billing/page.tsx` |
+| Taxonomy | `lib/analytics/events.ts` | Every event name + the privacy rule |
+| Scrubbing | `lib/analytics/sanitize.ts` | URL / element-text sanitisation, `sanitize_properties` |
+| Server capture | `lib/analytics/server.ts` | `captureServer()` — never throws |
+| Client init | `instrumentation-client.ts` | The **only** `posthog.init()` |
+| Provider | `app/components/PostHogProvider.tsx` | Pseudonymous identify + replay gating |
+| Node factory | `lib/posthog-server.ts` | `posthog-node` client (`flushAt: 1`) |
 
-## Next steps
+## Events actually emitted
 
-We've built a dashboard and five insights to keep an eye on user behavior:
+| Event | Where | Side |
+|---|---|---|
+| `sign_up_started` / `sign_in_started` | `app/(auth)/signup`, `signin` | client (intent) |
+| `user_authenticated` | `app/post-login/page.tsx` | **server (truth)** |
+| `user_role_selected` | `app/api/user/set-role/route.ts` | server |
+| `session_booked` | `createSessionAction` | server, post-commit |
+| `session_cancelled` | `updateTherapySessionAction` | server, post-commit |
+| `video_room_opened` / `video_connected` / `video_failed` | `hooks/useVideoSession.ts` | client |
+| `message_sent` | `sendMessageAction` | server, metadata only |
+| `goal_created` / `goal_completed` | `app/dashboard/goals` | client |
+| `therapist_kyc_submitted` | `app/onboarding/therapist` | client |
+| `therapist_kyc_reviewed` / `therapist_kyc_document_reviewed` | `app/api/admin/therapist-kyc` | server |
+| `plan_upgrade_clicked` | `app/dashboard/billing` | client |
+| `payment_initialized` | `app/api/payments/initialize` | server |
+| `payment_succeeded` / `payment_failed` | `app/api/payments/webhook` | server |
+| `promo_code_redeemed` | `app/api/promo` | server |
+| `chat_message_sent` | `app/components/ChatWidget.tsx` | client |
 
-- [Analytics basics dashboard](/dashboard/1587400)
-- [New Signups & Sign-ins Over Time](/insights/yaZDbXgX) — daily trend of registrations and logins
-- [Signup to Video Session Funnel](/insights/UdMAn9Rf) — conversion from signup → role selected → video session joined
-- [Goal Activity (Created & Completed)](/insights/9A3Qcdcy) — client engagement with therapy goals
-- [Therapist Onboarding Completion](/insights/uQCLDbZs) — funnel from role selection to completed therapist profile
-- [Plan Upgrade Clicks & Promo Code Redemptions](/insights/PqwN5WP5) — monetization signals
+Events marked `@unwired` in `lib/analytics/events.ts` are declared but NOT
+emitted — `mood_logged`, `journal_entry_created`, `clinical_note_created`,
+`therapist_onboarding_started`, `therapist_availability_saved`,
+`therapist_directory_viewed`, `therapist_profile_viewed`. Each carries a note on
+where its capture belongs. **Do not put an `@unwired` event on a dashboard.**
 
-### Agent skill
+All payment events go through `capturePaymentEvent`, which is now a thin alias
+over `captureServer` so the never-throw guarantee has one implementation rather
+than two that can drift.
 
-We've left an agent skill folder in your project at `.claude/skills/integration-nextjs-app-router/`. You can use this context for further agent development when using Claude Code. This will help ensure the model provides the most up-to-date approaches for integrating PostHog.
+## Removed
 
-</wizard-report>
+- `video_session_joined` — fired off `therapistTracks`, a column left vestigial
+  when the Echo video backend replaced DB track signaling, so it could never
+  fire. It also carried `session_id`, a clinical record identifier. The
+  `video_*` events above replace it and measure whether the call *connected*,
+  which is what actually matters.
+
+## Insights
+
+Dashboard `1587400`. Three were rebuilt because they measured events that do not
+exist; one is new.
+
+| Insight | Status |
+|---|---|
+| `yaZDbXgX` Auth: intent vs completed logins | rebuilt |
+| `UdMAn9Rf` Client activation funnel | rebuilt |
+| `uQCLDbZs` Therapist supply funnel (KYC) | rebuilt |
+| `jXWkbzS6` Session reliability (video) | new |
+| `9A3Qcdcy` Goal activity, `PqwN5WP5` Upgrades & promos | unchanged — their events are wired but have never fired |
+
+Server-side events only started on 2026-07-22, so the funnels backfill nothing;
+they measure forward from that date.
+
+## Privacy posture
+
+Pseudonymous identification, replay disabled behind the login wall, URLs and
+autocapture text scrubbed, no clinical content or risk outcomes captured. The
+existing 20 person profiles had `email` and `name` purged via `$unset` on
+2026-07-22. Full reasoning in `AGENTS.md`.

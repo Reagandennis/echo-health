@@ -6,6 +6,7 @@ import { getLoggedInUser } from "@/lib/auth/session";
 import { withCurrentUser } from "@/lib/db/session";
 import { promoRedemptions, promos } from "@/lib/db/schema";
 import { getPostHogClient } from "@/lib/posthog-server";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 import { parseOrError, promoSchema } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
@@ -163,7 +164,7 @@ export async function POST(req: NextRequest) {
     posthog.capture({
       // Auth0 sub, already checked to be the caller's own. No email, no name.
       distinctId: userId,
-      event: "promo_code_redeemed",
+      event: ANALYTICS_EVENTS.PROMO_CODE_REDEEMED,
       properties: {
         code: normalised,
         discount_percent: result.discount,

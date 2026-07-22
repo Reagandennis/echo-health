@@ -1,0 +1,27 @@
+# Cloudflare Tunnel routing for echopsychology.com (the Echo Health Next.js app).
+#
+# cloudflared holds outbound-only connections to Cloudflare's edge, so nothing
+# inbound is opened on the VM. The edge terminates TLS and forwards plain HTTP
+# to the Next.js server on 127.0.0.1:3000.
+#
+# The app trusts `APP_BASE_URL=https://echopsychology.com` for Auth0 callback
+# construction, so the origin never needs to know it is behind a tunnel.
+tunnel: 4e72e79c-5705-467c-83f4-2370131888db
+credentials-file: /home/azureuser/.cloudflared/4e72e79c-5705-467c-83f4-2370131888db.json
+
+originRequest:
+  connectTimeout: 30s
+  # Keep the SSE realtime stream (/api/events) from being torn down: it is a
+  # long-lived response that sends no bytes between database notifications.
+  # cloudflared's default 90s idle timeout would kill it mid-session.
+  noTLSVerify: false
+
+ingress:
+  # Apex. Host header is passed through unmodified so Next.js server actions —
+  # which verify the Origin header against the request Host — keep working.
+  - hostname: echopsychology.com
+    service: http://localhost:3000
+  - hostname: www.echopsychology.com
+    service: http://localhost:3000
+  # Required catch-all: anything not matched above gets a 404.
+  - service: http_status:404

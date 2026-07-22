@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import posthog from "posthog-js";
 import { createVideoSessionAction } from "@/app/actions/database";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 
 interface UseVideoSessionProps {
   sessionId: string;
@@ -108,6 +110,11 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
     joiningRef.current = true;
     setError(null);
 
+    // Anchor for time-to-connect. Taken before getUserMedia, because the device
+    // permission prompt is part of what makes joining a call slow.
+    const joinStartedAt = Date.now();
+    posthog.capture(ANALYTICS_EVENTS.VIDEO_ROOM_OPENED, { role });
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
@@ -160,8 +167,29 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
       };
 
       pc.onconnectionstatechange = () => {
+        /*
+         * Call quality is the platform's core product metric: a therapy session
+         * that fails to connect is a cancelled appointment, and until now
+         * nothing measured it. `video_session_joined` fired when the user opened
+         * the room, which counts intent to call, not a working call — the two
+         * diverge in exactly the cases worth knowing about.
+         *
+         * `role` and `sessionId` are deliberately absent from the payload. The
+         * therapy session id is a clinical record identifier; time-to-connect
+         * and the ICE outcome are what diagnose a bad call.
+         */
+        if (pc.connectionState === "connected") {
+          posthog.capture(ANALYTICS_EVENTS.VIDEO_CONNECTED, {
+            seconds_to_connect: Math.round((Date.now() - joinStartedAt) / 1000),
+          });
+        }
         if (pc.connectionState === "failed") {
           setError("The call connection dropped. Try rejoining.");
+          posthog.capture(ANALYTICS_EVENTS.VIDEO_FAILED, {
+            reason: "peer_connection_failed",
+            ice_connection_state: pc.iceConnectionState,
+            seconds_since_join: Math.round((Date.now() - joinStartedAt) / 1000),
+          });
         }
       };
 

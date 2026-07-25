@@ -136,7 +136,7 @@ const testimonials = [
  * It previously advertised "/ week" on every plan and "2 sessions per week" on
  * Plus, which described a weekly subscription that does not exist: these are
  * one-time bundles of 1 or 2 sessions. Someone reading it could reasonably have
- * believed KES 6,500 bought them a session every week.
+ * believed KES 2,000 bought them a session every week.
  *
  * `id` matches the keys in `PLAN_PRICES` because it travels: every CTA below
  * carries it to /signup, and it survives all the way to /checkout. Without it

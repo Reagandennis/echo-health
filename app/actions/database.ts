@@ -1060,8 +1060,8 @@ export async function createSessionAction(data: SessionInput): Promise<Doc> {
        *
        * FIFO, not a lifetime average. Averaging every payment over every
        * entitled session made clinician pay depend on the client's purchase
-       * history and booking order: a client who bought Individual (6,500/1) and
-       * later Plus (10,500/2) produced 5,667 for EVERY session, so the same
+       * history and booking order: a client who bought Individual (2,000/1) and
+       * later Plus (3,500/2) produced 1,833 for EVERY session, so the same
        * therapist doing the same 50 minutes was paid three different rates
        * depending on when the booking happened. Non-deterministic compensation
        * is corrosive in a marketplace — a clinician could not predict, or check,

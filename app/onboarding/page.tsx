@@ -228,10 +228,10 @@ function OnboardingContent() {
                     The plan card previously showed only a price and a feature
                     list, so a visitor could not tell that "Plus" includes TWO
                     sessions without inferring it from a bullet. The per-session
-                    figure is shown alongside because comparing 6,500-for-1
-                    against 10,500-for-2 otherwise requires mental arithmetic at
+                    figure is shown alongside because comparing 2,000-for-1
+                    against 3,500-for-2 otherwise requires mental arithmetic at
                     the exact moment we are asking for a decision — and for
-                    Couples the per-person figure too, since 18,000 looks like
+                    Couples the per-person figure too, since 5,000 looks like
                     the dearest plan until you notice it covers two people and
                     works out cheapest of all. */}
                 <div className={`mt-3 mb-4 rounded-xl px-3 py-2 ${plan.highlighted ? "bg-white/15" : "bg-brand/5"}`}>

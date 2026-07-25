@@ -46,16 +46,16 @@ export const PLAN_LABELS: Record<string, string> = {
  * cannot be applied twice — doing so would charge 100× the intended amount.
  *
  * Approximate USD equivalents at the time of writing, for reference only:
- *   individual  KES  6,500  ≈ $50
- *   plus        KES 10,500  ≈ $80
- *   couples     KES 18,000  ≈ $140
+ *   individual  KES 2,000  ≈ $15
+ *   plus        KES 3,500  ≈ $27
+ *   couples     KES 5,000  ≈ $38
  */
 export const PLAN_CURRENCY = "KES" as const;
 
 export const PLAN_PRICES: Record<string, number> = {
-  individual: 6500,
-  plus: 10500,
-  couples: 18000,
+  individual: 2000,
+  plus: 3500,
+  couples: 5000,
   free: 0,
 };
 
@@ -87,13 +87,13 @@ export const THERAPIST_REVENUE_SHARE = 0.4;
  * `false` → the clinician's pay moves with whatever promotion marketing is running.
  *
  * WHAT THIS COSTS, stated plainly, so the choice is made with the number in
- * front of you rather than discovered later. Individual plan, KES 6,500,
+ * front of you rather than discovered later. Individual plan, KES 2,000,
  * 50%-off promo, ~2.9% payment-processing fee:
  *
  *                        client pays   therapist   platform   contribution
- *   no promo                   6,500       2,600      3,900      60% (~57% net)
- *   50% off, paid on LIST      3,250       2,600        650      20% (~17% net)
- *   50% off, paid on DISCOUNT  3,250       1,300      1,950      60% (~57% net)
+ *   no promo                   2,000         800      1,200      60% (~57% net)
+ *   50% off, paid on LIST      1,000         800        200      20% (~17% net)
+ *   50% off, paid on DISCOUNT  1,000         400        600      60% (~57% net)
  *
  * So `true` costs roughly 40 points of contribution margin on every discounted
  * session — on a deep enough discount the platform can even clear less than the
@@ -118,8 +118,8 @@ export const THERAPIST_PAID_ON_LIST_PRICE = true;
  *
  * Minor units because this feeds `payout_ledger.gross_minor`, and money is
  * integers everywhere past the pricing layer — see the note on
- * `payments.amount_minor`. Bundles divide: Plus is KES 10,500 for two sessions,
- * so one session lists at 525,000 minor, not 1,050,000.
+ * `payments.amount_minor`. Bundles divide: Plus is KES 3,500 for two sessions,
+ * so one session lists at 175,000 minor, not 350,000.
  *
  * Returns null for an unknown plan rather than 0. A missing plan means the
  * caller cannot establish what the session was worth, and silently accruing

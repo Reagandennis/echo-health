@@ -6,6 +6,7 @@ import { payments, promoRedemptions } from "@/lib/db/schema";
 import { verifyWebhookSignature, verifyTransaction, fromMinorUnits } from "@/lib/paystack";
 import { updateUserMetadata, isManagementConfigured } from "@/lib/auth0-management";
 import { capturePaymentEvent, SYSTEM_DISTINCT_ID } from "@/app/api/payments/analytics";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 
 /**
  * The promo code attached to this transaction, for analytics only.
@@ -279,7 +280,7 @@ export async function POST(req: NextRequest) {
 
       await capturePaymentEvent({
         distinctId: outcome.userId,
-        event: "payment_succeeded",
+        event: ANALYTICS_EVENTS.PAYMENT_SUCCEEDED,
         properties: {
           reference,
           plan: outcome.plan,
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
        */
       await capturePaymentEvent({
         distinctId: outcome.userId ?? SYSTEM_DISTINCT_ID,
-        event: "payment_failed",
+        event: ANALYTICS_EVENTS.PAYMENT_FAILED,
         properties: {
           reference,
           plan: outcome.plan,

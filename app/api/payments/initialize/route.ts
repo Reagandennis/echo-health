@@ -20,6 +20,7 @@ import {
   toMinorUnits,
 } from "@/lib/paystack";
 import { capturePaymentEvent } from "@/app/api/payments/analytics";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 
 /**
  * Start a Paystack transaction and return the hosted-checkout URL.
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
      */
     await capturePaymentEvent({
       distinctId: user.$id,
-      event: "payment_initialized",
+      event: ANALYTICS_EVENTS.PAYMENT_INITIALIZED,
       properties: {
         reference,
         plan,

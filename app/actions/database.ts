@@ -5,6 +5,8 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzl
 import { getLoggedInUser, type SessionUser } from "@/lib/auth/session";
 import { withAnonymous, withSystem, withUser } from "@/lib/db/session";
 import { analyzeRisk } from "@/lib/clinical/risk";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
+import { captureServer } from "@/lib/analytics/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { mintVideoSession, type IceServer } from "@/lib/video";
 import {
@@ -989,7 +991,7 @@ export async function createSessionAction(data: SessionInput): Promise<Doc> {
   if (!scheduledAt) throw new Error("A valid scheduledAt is required");
   if (!isUuid(data.therapistId)) throw new Error("A valid therapistId is required");
 
-  return withUser(user, async (tx) => {
+  const booked = await withUser(user, async (tx) => {
     const patientId = isAdmin(user) ? data.patientId : user.$id;
 
     /**
@@ -1111,6 +1113,45 @@ export async function createSessionAction(data: SessionInput): Promise<Doc> {
 
     return toDoc(row);
   });
+
+  /*
+   * Booking is the conversion event that matters most on the client side, and
+   * it is captured here — AFTER the transaction has committed, never inside it.
+   *
+   * `captureServer` makes a network call and waits up to 3s for the flush.
+   * Inside `withUser` that would hold a pooled Postgres connection open for the
+   * duration; the Azure tier allows roughly 24 app connections in total, so a
+   * slow PostHog would translate directly into booking failures for everyone
+   * else. This mirrors the risk scanner's ordering rule in AGENTS.md: analytics
+   * runs after the write it describes is durable.
+   *
+   * `therapist_id` is included deliberately — a therapist is a business entity
+   * on this platform, and directory→booking conversion cannot be measured
+   * without it. The patient id is NOT included: the distinct id already carries
+   * who booked, and repeating a patient identifier in a property is exactly the
+   * shape of leak `lib/analytics/sanitize.ts` exists to prevent. Lead time is
+   * bucketed rather than raw so it cannot act as a fingerprint that
+   * re-identifies one specific appointment.
+   */
+  const leadTimeHours = Math.max(
+    0,
+    Math.round((scheduledAt.getTime() - Date.now()) / 3_600_000)
+  );
+  await captureServer({
+    distinctId: user.$id,
+    event: ANALYTICS_EVENTS.SESSION_BOOKED,
+    properties: {
+      therapist_id: data.therapistId,
+      session_type: data.sessionType ?? "1-on-1",
+      booked_by_admin: isAdmin(user),
+      funding_plan: booked.fundingPlan ?? null,
+      list_amount_minor: booked.listAmountMinor ?? null,
+      lead_time_bucket:
+        leadTimeHours < 24 ? "<24h" : leadTimeHours < 168 ? "1-7d" : ">7d",
+    },
+  });
+
+  return booked;
 }
 
 /**
@@ -1257,7 +1298,17 @@ export async function updateTherapySessionAction(
 ): Promise<Doc> {
   const user = await requireUser();
 
-  return withUser(user, async (tx) => {
+  /*
+   * Captured inside the transaction, emitted after it commits. The status
+   * TRANSITION is only knowable here — once the update lands, the previous
+   * status is gone — but `captureServer` must not run inside `withUser`, where
+   * its network flush would pin a pooled connection. Same split as
+   * `createSessionAction`.
+   */
+  let cancellation: { previousStatus: string; therapistId: string; leadTimeBucket: string } | null =
+    null;
+
+  const updated = await withUser(user, async (tx) => {
     const { sess } = await requireSessionAccess(tx, documentId);
 
     const patch = pick(data, [
@@ -1299,8 +1350,54 @@ export async function updateTherapySessionAction(
       await accrueSessionEarnings(tx, row);
     }
 
+    /*
+     * Guarded on a genuine transition, mirroring the accrual guard above: a
+     * re-save of an already-cancelled session is not a second cancellation, and
+     * counting it as one would inflate the churn signal this event exists to
+     * measure.
+     */
+    if (row.status === "cancelled" && sess.status !== "cancelled") {
+      const hoursToScheduled = row.scheduledAt
+        ? Math.round((row.scheduledAt.getTime() - Date.now()) / 3_600_000)
+        : null;
+      cancellation = {
+        previousStatus: sess.status ?? "unknown",
+        therapistId: row.therapistId,
+        // How late a cancellation lands is the operationally interesting part:
+        // a same-day drop costs the therapist a slot they cannot refill.
+        leadTimeBucket:
+          hoursToScheduled === null
+            ? "unknown"
+            : hoursToScheduled < 0
+              ? "after_scheduled_time"
+              : hoursToScheduled < 24
+                ? "<24h"
+                : hoursToScheduled < 168
+                  ? "1-7d"
+                  : ">7d",
+      };
+    }
+
     return toDoc(row);
   });
+
+  if (cancellation) {
+    const { previousStatus, therapistId, leadTimeBucket } = cancellation;
+    await captureServer({
+      distinctId: user.$id,
+      event: ANALYTICS_EVENTS.SESSION_CANCELLED,
+      properties: {
+        therapist_id: therapistId,
+        previous_status: previousStatus,
+        lead_time_bucket: leadTimeBucket,
+        // Who abandoned the appointment is the whole question — a client
+        // cancelling and a therapist cancelling are different problems.
+        cancelled_by: isAdmin(user) ? "admin" : isTherapist(user) ? "therapist" : "client",
+      },
+    });
+  }
+
+  return updated;
 }
 
 /**
@@ -1653,9 +1750,21 @@ export async function getTherapistDashboardAction() {
     const [counts] = await tx
       .select({
         all: sql<number>`count(*)::int`,
+        /*
+         * The bounds are passed as ISO strings with an explicit `::timestamptz`
+         * cast, NOT as JS `Date`s.
+         *
+         * Drizzle only applies a column's `toDriver` mapping when it can see the
+         * column — which it can for `gte`/`lt` below, but not for a value
+         * interpolated into a raw `sql` fragment. There the `Date` reaches
+         * postgres.js untyped and the driver throws `ERR_INVALID_ARG_TYPE`
+         * ("Received an instance of Date"), failing the whole dashboard query.
+         * The cast is what keeps the comparison a timestamptz one rather than
+         * text after the conversion.
+         */
         thisWeek: sql<number>`count(*) FILTER (
-          WHERE ${therapySessions.scheduledAt} >= ${todayStart}
-            AND ${therapySessions.scheduledAt} < ${weekEnd}
+          WHERE ${therapySessions.scheduledAt} >= ${todayStart.toISOString()}::timestamptz
+            AND ${therapySessions.scheduledAt} < ${weekEnd.toISOString()}::timestamptz
         )::int`,
         pending: sql<number>`count(*) FILTER (
           WHERE ${therapySessions.status} = 'pending'
@@ -2242,6 +2351,27 @@ export async function sendMessageAction(
   if (!isAdmin(user) && !isTherapist(user) && analyzeRisk(content) === "high") {
     await recordHighRiskMessageAlert(user.$id, content);
   }
+
+  /*
+   * Message CONTENT never reaches analytics — not the text, not its length, not
+   * a risk classification. Between-session messaging is the strongest signal of
+   * an engaged therapeutic relationship, so the fact that a message was sent is
+   * worth counting; what was said is a clinical record.
+   *
+   * Note in particular that the risk-scanner outcome computed immediately above
+   * is NOT captured. A `risk_alert` against a stable person id would amount to
+   * "this individual was flagged as in crisis" sitting in a third-party
+   * analytics store. That stays in Postgres behind RLS, where the clinical team
+   * reads it. See `lib/analytics/events.ts` for the full rule.
+   */
+  await captureServer({
+    distinctId: user.$id,
+    event: ANALYTICS_EVENTS.MESSAGE_SENT,
+    properties: {
+      sender_role: isAdmin(user) ? "admin" : isTherapist(user) ? "therapist" : "client",
+      in_session_thread: Boolean(toSessionRef(data.sessionId)),
+    },
+  });
 
   return doc;
 }

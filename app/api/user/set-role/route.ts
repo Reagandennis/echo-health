@@ -8,6 +8,8 @@ import {
   getUserRoles,
   isManagementConfigured,
 } from "@/lib/auth0-management";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
+import { captureServer } from "@/lib/analytics/server";
 
 /**
  * Assign a role to a user.
@@ -85,6 +87,22 @@ export async function POST(req: NextRequest) {
     }
 
     await assignRole(userId, role);
+
+    /*
+     * Attributed to the user whose role changed, not the requester — an admin
+     * assigning a role on someone's behalf is still that person's activation
+     * step, and attributing it to the admin would make the activation funnel
+     * count staff instead of users.
+     *
+     * `captureServer` cannot throw, so a PostHog outage can never turn a
+     * successful role assignment into a 500 the caller retries.
+     */
+    await captureServer({
+      distinctId: userId,
+      event: ANALYTICS_EVENTS.USER_ROLE_SELECTED,
+      properties: { role, assigned_by_admin: isAdmin && userId !== requester.$id },
+      set: { role },
+    });
 
     return NextResponse.json({
       success: true,

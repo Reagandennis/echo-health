@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getLoggedInUser } from "@/lib/auth/session";
 import { PLAN_PRICES } from "@/lib/constants";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
+import { captureServer } from "@/lib/analytics/server";
 
 /**
  * The plan a visitor picked on the landing page, if it survived the trip.
@@ -51,25 +53,54 @@ export default async function AuthRedirectPage({
   const plan = planParam(params.plan);
   const planQuery = plan ? `?plan=${plan}` : "";
 
+  /*
+   * The destination is computed BEFORE anything redirects, because `redirect()`
+   * works by throwing: a capture placed after one never runs, and a capture
+   * placed before each one would be five copies of the same call.
+   */
+  const role = user.labels.includes("admin")
+    ? "admin"
+    : user.labels.includes("therapist")
+      ? "therapist"
+      : user.labels.includes("client")
+        ? "client"
+        : "none";
+
   // Staff are not buying anything; a stray `?plan=` is ignored for them.
-  if (user.labels.includes("admin")) {
-    redirect("/admin");
-  }
-
-  if (user.labels.includes("therapist")) {
-    redirect("/therapist");
-  }
-
-  if (!user.labels.includes("client")) {
-    redirect(`/role-select${planQuery}`);
-  }
-
   // An existing client who arrived by clicking a plan wants that plan, not the
   // dashboard. /onboarding rather than /checkout so the choice is still shown
   // and confirmable before any money is involved.
-  if (plan) {
-    redirect(`/onboarding${planQuery}`);
-  }
+  const destination =
+    role === "admin"
+      ? "/admin"
+      : role === "therapist"
+        ? "/therapist"
+        : role === "none"
+          ? `/role-select${planQuery}`
+          : plan
+            ? `/onboarding${planQuery}`
+            : "/dashboard";
 
-  redirect("/dashboard");
+  /*
+   * THE ONLY PLACE A COMPLETED LOGIN IS OBSERVABLE.
+   *
+   * Universal Login means the browser leaves the app to authenticate, so the
+   * client-side `sign_in_started` / `sign_up_started` events measure intent and
+   * nothing else — they cannot distinguish a successful login from an abandoned
+   * one. Until this event existed, the platform's single most important
+   * conversion step was unmeasurable, and the saved funnels silently reported
+   * zero. See `lib/analytics/events.ts`.
+   *
+   * `role: "none"` is the closest honest proxy for "new account": a user who
+   * has authenticated but has never picked a role has just arrived.
+   */
+  await captureServer({
+    distinctId: user.$id,
+    event: ANALYTICS_EVENTS.USER_AUTHENTICATED,
+    properties: { role, destination, has_plan_intent: Boolean(plan) },
+    set: { role },
+    setOnce: { signup_cohort: new Date().toISOString().slice(0, 7) },
+  });
+
+  redirect(destination);
 }

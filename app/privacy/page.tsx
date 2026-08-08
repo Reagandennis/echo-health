@@ -18,7 +18,9 @@ const sections = [
 
 We are committed to maintaining the confidentiality, integrity, and security of your personal and health information in accordance with the Health Insurance Portability and Accountability Act of 1996 (HIPAA), the General Data Protection Regulation (GDPR), the California Consumer Privacy Act (CCPA)/California Privacy Rights Act (CPRA), and other applicable laws.
 
-By accessing or using Echo Health's website, mobile application, or services (collectively, the "Platform"), you acknowledge that you have read and understood this Privacy Policy.`,
+By accessing or using Echo Health's website, mobile application, or services (collectively, the "Platform"), you acknowledge that you have read and understood this Privacy Policy.
+
+This Privacy Policy also applies to TechGetAfrica apps and digital products that link to, incorporate, or reference this Privacy Policy, including FlameUp (flameup.com), a productivity app.`,
   },
   {
     id: "hipaa",
@@ -68,8 +70,35 @@ Our full Notice of Privacy Practices (NPP) is available on request and is provid
 We may collect special categories of sensitive data including: mental-health diagnoses, sexual orientation or gender identity (only if voluntarily disclosed), racial or ethnic origin (for matching preferences), and biometric data (if you use voice or video sessions). We treat all such data with heightened protections.`,
   },
   {
+    id: "flameup-disclosures",
+    title: "4. FlameUp App-Specific Disclosures",
+    content: `If you use FlameUp (flameup.com), this Privacy Policy applies to the personal information collected through the FlameUp app, website, and related services that reference this Privacy Policy.
+
+FlameUp is a productivity app. In that context, the healthcare-specific and PHI-specific provisions in this Privacy Policy apply only where legally required or where health information is actually collected through a feature that expressly supports that use.
+
+**Information FlameUp May Collect**
+- Account and profile information such as your name, email address, login credentials, and preferences
+- Productivity content you create or upload, such as tasks, notes, reminders, workspace content, or similar user-generated data
+- Device, app activity, and diagnostic information such as IP address, browser type, device identifiers, crash logs, and feature usage data
+- Billing and subscription information if you purchase paid features or services
+- Customer support communications and feedback you send to us
+
+**How FlameUp Uses Information**
+- Provide, maintain, and improve the FlameUp app and its productivity features
+- Sync your content across devices and maintain your account
+- Personalise your experience, reminders, and app settings
+- Process subscriptions, purchases, and related billing operations
+- Monitor performance, investigate bugs, prevent abuse, and keep the service secure
+- Respond to support requests and communicate service-related updates
+
+**How FlameUp Shares Information**
+FlameUp may share information with service providers that support hosting, authentication, cloud storage, payment processing, diagnostics, analytics, and customer support, depending on the features you use. We require those providers to protect personal information and use it only for authorised purposes.
+
+FlameUp is not intended to collect or process medical or health records as a core feature, and users should avoid storing highly sensitive medical information in productivity fields unless a feature expressly states that such information is supported and protected for that purpose.`,
+  },
+  {
     id: "how-we-use",
-    title: "4. How We Use Your Information",
+    title: "5. How We Use Your Information",
     content: `We use your information to:
 
 - **Provide and personalise services**: match you with appropriate therapists, facilitate video/audio/chat sessions, maintain session records
@@ -85,7 +114,7 @@ We do **not** sell your personal health information. We do **not** use your ther
   },
   {
     id: "gdpr",
-    title: "5. GDPR — Rights of EU/EEA Data Subjects",
+    title: "6. GDPR — Rights of EU/EEA Data Subjects",
     content: `If you are located in the European Union, European Economic Area, or United Kingdom, the following rights apply to you under the GDPR and UK GDPR:
 
 **Legal Bases for Processing**
@@ -113,7 +142,7 @@ You may contact our Data Protection Officer at: privacy@echohealth.app`,
   },
   {
     id: "ccpa",
-    title: "6. CCPA/CPRA — California Consumer Rights",
+    title: "7. CCPA/CPRA — California Consumer Rights",
     content: `If you are a California resident, the California Consumer Privacy Act (CCPA) as amended by the California Privacy Rights Act (CPRA) grants you the following rights:
 
 **Categories of Personal Information Collected**
@@ -136,7 +165,7 @@ You may designate an authorised agent to submit requests on your behalf by provi
   },
   {
     id: "data-sharing",
-    title: "7. How We Share Your Information",
+    title: "8. How We Share Your Information",
     content: `We share personal and health information only in the following limited circumstances:
 
 **Your Therapist**
@@ -158,7 +187,7 @@ We may share your information with your explicit consent for research studies, i
   },
   {
     id: "security",
-    title: "8. Data Security",
+    title: "9. Data Security",
     content: `We implement administrative, technical, and physical safeguards designed to protect your information against unauthorised access, disclosure, alteration, or destruction:
 
 - **Encryption at rest**: all PHI and personal data encrypted using AES-256
@@ -174,7 +203,7 @@ In the event of a breach affecting your PHI, we will notify you in writing withi
   },
   {
     id: "retention",
-    title: "9. Data Retention",
+    title: "10. Data Retention",
     content: `We retain your personal and health information for as long as necessary to:
 - Provide ongoing services to you
 - Comply with legal retention obligations (clinical records are typically retained for a minimum of 7 years under state law; some jurisdictions require longer retention for minors)
@@ -185,7 +214,7 @@ When data is no longer required, it is securely deleted or anonymised using indu
   },
   {
     id: "minors",
-    title: "10. Children's Privacy (COPPA)",
+    title: "11. Children's Privacy (COPPA)",
     content: `Echo Health's services are intended for adults (18+). We do not knowingly collect personal information from children under 13 without verifiable parental consent. If we become aware that we have inadvertently collected personal information from a child under 13, we will promptly delete it.
 
 For users aged 13–17, parental or guardian consent is required before account creation. Clinical records for minors are subject to additional state law protections, and parental access to minor PHI may be restricted depending on the nature of treatment and applicable law (e.g., treatment for substance use, reproductive health, or sexual abuse).
@@ -194,7 +223,7 @@ If you believe we have collected information from a child in violation of COPPA,
   },
   {
     id: "cookies",
-    title: "11. Cookies & Tracking Technologies",
+    title: "12. Cookies & Tracking Technologies",
     content: `We use cookies and similar technologies to:
 - Maintain your login session (strictly necessary)
 - Remember your preferences
@@ -211,14 +240,14 @@ We honour browser-level "Do Not Track" signals for non-essential analytics.`,
   },
   {
     id: "therapist-privacy",
-    title: "12. Therapist & Clinician Privacy",
+    title: "13. Therapist & Clinician Privacy",
     content: `If you are a therapist or clinician on the Echo Health platform, we collect additional professional information including: NPI number, state licences, DEA registration (if applicable), malpractice insurance details, educational credentials, professional references, and bank account details for payments.
 
 This information is used to verify your credentials, facilitate client matching, process payments, and comply with state licensing board requirements. Therapist credential information may be shared with state licensing authorities when required by law or in connection with a complaint.`,
   },
   {
     id: "international",
-    title: "13. International Data Transfers",
+    title: "14. International Data Transfers",
     content: `Echo Health is headquartered in the United States. If you access our services from outside the United States, your information may be transferred to, stored, and processed in the United States and other countries.
 
 For transfers from the EU/EEA/UK, we rely on:
@@ -230,7 +259,7 @@ By using our services, you consent to the transfer of your information to countr
   },
   {
     id: "your-choices",
-    title: "14. Your Choices & Controls",
+    title: "15. Your Choices & Controls",
     content: `- **Account deletion**: You may delete your account at any time through Settings → Account → Delete Account. Clinical records are retained as required by law.
 - **Marketing opt-out**: Unsubscribe via the link in any marketing email or through Settings → Notifications.
 - **Session recording**: Video sessions are not recorded by default. If recording is enabled, you will be notified and must consent.
@@ -239,7 +268,7 @@ By using our services, you consent to the transfer of your information to countr
   },
   {
     id: "contact",
-    title: "15. Contact Us & How to Exercise Your Rights",
+    title: "16. Contact Us & How to Exercise Your Rights",
     content: `For privacy-related requests, questions, or complaints:
 
 **Privacy & Compliance Team**
@@ -255,7 +284,7 @@ Response time: We aim to respond to all privacy requests within 30 days (or with
   },
   {
     id: "changes",
-    title: "16. Changes to This Policy",
+    title: "17. Changes to This Policy",
     content: `We may update this Privacy Policy from time to time. When we make material changes, we will: (a) post the updated policy with a revised "Last Updated" date; (b) notify you by email or in-app notification at least 30 days before the change takes effect; and (c) for changes affecting how we use your PHI, obtain your consent where required by HIPAA.
 
 Your continued use of the Platform after the effective date of any change constitutes acceptance of the updated policy.`,
@@ -297,6 +326,10 @@ export default function PrivacyPolicyPage() {
           <p className="mt-6 text-base leading-7 text-slate-500 max-w-2xl">
             Your privacy and the confidentiality of your mental-health
             information are fundamental to who we are. This policy covers your
+            use of Echo Health and TechGetAfrica apps that reference this
+            policy, including FlameUp (flameup.com), a productivity app, along
+            with your
+            {" "}
             rights under{" "}
             <strong className="text-slate-700 font-semibold">HIPAA</strong>,{" "}
             <strong className="text-slate-700 font-semibold">GDPR</strong>,{" "}

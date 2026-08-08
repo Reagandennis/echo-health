@@ -21,6 +21,11 @@ export const metadata: Metadata = {
     default: "Echo Health — Therapy, reimagined",
     template: "%s | Echo Health",
   },
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png", sizes: "500x500" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "500x500" }],
+    shortcut: [{ url: "/icon.png", type: "image/png" }],
+  },
   description:
     "Connect with licensed therapists on your terms. Echo Health makes mental wellness accessible, personal, and effective — whenever you need it.",
   keywords: [

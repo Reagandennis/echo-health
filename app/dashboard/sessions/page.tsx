@@ -32,7 +32,7 @@ function statusColor(s: TherapySession["status"]) {
     "in-progress": "bg-blue-100 text-blue-700",
     completed: "bg-emerald-100 text-emerald-700",
     cancelled: "bg-red-100 text-red-500",
-  }[s] ?? "bg-cream text-brand/50";
+  }[s] ?? "bg-cream text-stone-500";
 }
 
 function fmtDateTime(at: Date) {
@@ -99,7 +99,7 @@ function BookModal({
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-bold text-brand">Book a session</h2>
-          <button onClick={onClose} className="text-brand/40 hover:text-brand transition-colors" aria-label="Close"><X size={17} /></button>
+          <button onClick={onClose} className="text-stone-500 hover:text-brand transition-colors" aria-label="Close"><X size={17} /></button>
         </div>
         {done ? (
           <div className="flex flex-col items-center py-10 text-center gap-3">
@@ -107,7 +107,7 @@ function BookModal({
               <CalendarCheck size={26} className="text-brand" />
             </div>
             <p className="text-base font-semibold text-brand">Request sent!</p>
-            <p className="text-sm text-brand/50 max-w-xs">Your therapist will confirm shortly. Check your email for updates.</p>
+            <p className="text-sm text-stone-500 max-w-xs">Your therapist will confirm shortly. Check your email for updates.</p>
             <button onClick={onClose} className="mt-2 bg-brand text-white text-sm font-semibold px-6 py-2.5 rounded-full hover:bg-brand/90 transition-colors">Done</button>
           </div>
         ) : (
@@ -127,7 +127,7 @@ function BookModal({
             {/* Therapist selector */}
             {therapists.length > 1 && (
               <div>
-                <label htmlFor="therapist" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">Select Therapist</label>
+                <label htmlFor="therapist" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Select Therapist</label>
                 <div className="relative">
                   <select id="therapist" value={tid} onChange={(e) => setTid(e.target.value)}
                     className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/30 appearance-none">
@@ -135,34 +135,34 @@ function BookModal({
                       <option key={t.$id} value={t.$id}>{t.name} · {(t.specialties ?? []).slice(0, 2).join(", ")}</option>
                     ))}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand/40 pointer-events-none" />
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 pointer-events-none" />
                 </div>
               </div>
             )}
 
             {therapists.length === 1 && (
               <div className="bg-brand/5 border border-brand/10 rounded-xl px-4 py-3">
-                <p className="text-[10px] font-semibold text-brand/60 uppercase tracking-wide mb-1">Assigned Therapist</p>
+                <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide mb-1">Assigned Therapist</p>
                 <p className="text-sm font-bold text-brand">{therapists[0].name}</p>
-                <p className="text-xs text-brand/50 mt-0.5">{(therapists[0]?.specialties ?? []).slice(0, 2).join(", ")}</p>
+                <p className="text-xs text-stone-500 mt-0.5">{(therapists[0]?.specialties ?? []).slice(0, 2).join(", ")}</p>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="sess-date" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">Date</label>
+                <label htmlFor="sess-date" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Date</label>
                 <input id="sess-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)}
                   min={new Date().toISOString().split("T")[0]}
                   className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/30" />
               </div>
               <div>
-                <label htmlFor="sess-time" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">Time</label>
+                <label htmlFor="sess-time" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Time</label>
                 <input id="sess-time" type="time" required value={time} onChange={(e) => setTime(e.target.value)}
                   className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/30" />
               </div>
             </div>
             <div>
-              <label htmlFor="sess-type" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">Format</label>
+              <label htmlFor="sess-type" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Format</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { v: "video", icon: Video,         label: "Video" },
@@ -171,7 +171,7 @@ function BookModal({
                 ].map(({ v, icon: Icon, label }) => (
                   <button type="button" key={v} onClick={() => setType(v)}
                     className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs font-semibold transition-colors
-                      ${type === v ? "bg-brand text-white border-brand" : "border-brand/15 text-brand/60 hover:border-brand/30"}`}>
+                      ${type === v ? "bg-brand text-white border-brand" : "border-brand/15 text-stone-500 hover:border-brand/30"}`}>
                     <Icon size={15} />
                     {label}
                   </button>
@@ -179,12 +179,12 @@ function BookModal({
               </div>
             </div>
             <div>
-              <label htmlFor="sess-note" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                Note <span className="normal-case font-normal text-brand/35">(optional)</span>
+              <label htmlFor="sess-note" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">
+                Note <span className="normal-case font-normal text-stone-400">(optional)</span>
               </label>
               <textarea id="sess-note" value={note} onChange={(e) => setNote(e.target.value)} rows={3}
                 placeholder="Anything you'd like your therapist to know…"
-                className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none" />
+                className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none" />
             </div>
             <button type="submit" disabled={!canBook || saving || (therapists.length === 0 && !tid)}
               className="w-full bg-brand text-white font-semibold py-3 rounded-full hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -216,9 +216,9 @@ function FeedbackModal({ session, onClose }: { readonly session: TherapySession;
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-brand">Rate your session</h2>
-          <button onClick={onClose} className="text-brand/40 hover:text-brand transition-colors" aria-label="Close"><X size={17} /></button>
+          <button onClick={onClose} className="text-stone-500 hover:text-brand transition-colors" aria-label="Close"><X size={17} /></button>
         </div>
-        <p className="text-xs text-brand/40 mb-5">{date} · {time}</p>
+        <p className="text-xs text-stone-500 mb-5">{date} · {time}</p>
         {done ? (
           <div className="flex flex-col items-center py-8 text-center gap-3">
             <span className="text-4xl">🙏</span>
@@ -228,22 +228,22 @@ function FeedbackModal({ session, onClose }: { readonly session: TherapySession;
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <p className="text-xs font-semibold text-brand/60 uppercase tracking-wide mb-3">How was this session?</p>
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">How was this session?</p>
               <div className="flex gap-2 justify-center">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button type="button" key={n} onClick={() => setRating(n)} aria-label={`Rate ${n}`}>
-                    <Star size={28} className={`transition-colors ${n <= rating ? "fill-amber-400 text-amber-400" : "text-brand/20"}`} />
+                    <Star size={28} className={`transition-colors ${n <= rating ? "fill-amber-400 text-amber-400" : "text-stone-400"}`} />
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label htmlFor="feedback-comment" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
-                Comments <span className="normal-case font-normal text-brand/35">(optional)</span>
+              <label htmlFor="feedback-comment" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">
+                Comments <span className="normal-case font-normal text-stone-400">(optional)</span>
               </label>
               <textarea id="feedback-comment" rows={3} value={comment} onChange={(e) => setComment(e.target.value)}
                 placeholder="Share anything about the session…"
-                className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none" />
+                className="w-full rounded-xl border border-brand/15 px-3 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none" />
             </div>
             <button type="submit" disabled={rating === 0}
               className="w-full bg-brand text-white font-semibold py-3 rounded-full hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -276,13 +276,13 @@ function SessionCard({
     <div className="bg-white rounded-2xl border border-brand/10 p-5 flex items-start justify-between gap-4">
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-xl bg-brand/8 flex items-center justify-center shrink-0 mt-0.5">
-          <CalendarCheck size={18} className="text-brand/50" />
+          <CalendarCheck size={18} className="text-stone-500" />
         </div>
         <div>
           <p className="text-sm font-bold text-brand">{date}</p>
           <div className="flex items-center gap-2 mt-0.5">
-            <Clock size={11} className="text-brand/35" />
-            <span className="text-xs text-brand/50">{time}</span>
+            <Clock size={11} className="text-stone-400" />
+            <span className="text-xs text-stone-500">{time}</span>
           </div>
           <span className={`inline-block mt-2 text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${statusColor(session.status)}`}>
             {session.status}
@@ -449,7 +449,7 @@ export default function SessionsPage() {
       <div className="flex items-center justify-between mb-7">
         <div>
           <h1 className="text-xl font-bold text-brand">Sessions</h1>
-          <p className="text-sm text-brand/45 mt-0.5">{remaining} of {allowance} sessions remaining this month</p>
+          <p className="text-sm text-stone-500 mt-0.5">{remaining} of {allowance} sessions remaining this month</p>
         </div>
         <button onClick={() => setModal("book")} disabled={remaining === 0}
           className="flex items-center gap-2 bg-brand text-white text-sm font-semibold px-4 py-2.5 rounded-full hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -460,8 +460,8 @@ export default function SessionsPage() {
       {/* Usage bar */}
       <div className="bg-white rounded-2xl border border-brand/10 p-5 mb-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-brand/60">Monthly usage</span>
-          <span className="text-xs text-brand/40">{used}/{allowance} used</span>
+          <span className="text-xs font-semibold text-stone-500">Monthly usage</span>
+          <span className="text-xs text-stone-500">{used}/{allowance} used</span>
         </div>
         <div className="w-full bg-cream rounded-full h-2">
           <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${Math.min(100, (used / allowance) * 100)}%` }} />
@@ -473,7 +473,7 @@ export default function SessionsPage() {
         {(["upcoming", "past"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors capitalize
-              ${tab === t ? "bg-brand text-white" : "text-brand/50 hover:text-brand hover:bg-cream"}`}>
+              ${tab === t ? "bg-brand text-white" : "text-stone-500 hover:text-brand hover:bg-cream"}`}>
             {t} ({t === "upcoming" ? upcoming.length : past.length})
           </button>
         ))}
@@ -487,9 +487,9 @@ export default function SessionsPage() {
           {(tab === "upcoming" ? upcoming : past).length === 0 ? (
             <div className="flex flex-col items-center py-16 text-center">
               <div className="w-12 h-12 rounded-2xl bg-brand/8 flex items-center justify-center mb-3">
-                <CalendarCheck size={20} className="text-brand/30" />
+                <CalendarCheck size={20} className="text-stone-400" />
               </div>
-              <p className="text-sm text-brand/50">No {tab} sessions</p>
+              <p className="text-sm text-stone-500">No {tab} sessions</p>
               {tab === "upcoming" && (
                 <button onClick={() => setModal("book")} disabled={remaining === 0}
                   className="mt-4 flex items-center gap-2 bg-brand text-white text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-brand/90 transition-colors disabled:opacity-50">

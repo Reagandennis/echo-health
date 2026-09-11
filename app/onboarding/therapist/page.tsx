@@ -693,7 +693,7 @@ export default function TherapistOnboardingPage() {
                 </div>
               )}
 
-              <div className="bg-cream border border-brand/10 rounded-xl px-4 py-3 text-xs text-brand/80">
+              <div className="bg-cream border border-brand/10 rounded-xl px-4 py-3 text-xs text-stone-600">
                 Reviews typically complete within 1–2 business days. You&apos;ll be
                 emailed as soon as there is a decision.
               </div>

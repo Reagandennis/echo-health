@@ -31,7 +31,7 @@ export default function ResourcesPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-xl font-bold text-brand">Resources</h1>
-        <p className="text-sm text-brand/45 mt-0.5">Articles, exercises, and tools curated for your wellness journey.</p>
+        <p className="text-sm text-stone-500 mt-0.5">Articles, exercises, and tools curated for your wellness journey.</p>
       </div>
 
       {/* Therapist picks */}
@@ -67,16 +67,16 @@ export default function ResourcesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search resources…"
-          className="flex-1 bg-white rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="flex-1 bg-white rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <div className="flex gap-1.5 flex-wrap">
           <button onClick={() => setFilterTag(null)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${filterTag ? "bg-white border border-brand/15 text-brand/60 hover:border-brand/30" : "bg-brand text-white"}`}>
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${filterTag ? "bg-white border border-brand/15 text-stone-500 hover:border-brand/30" : "bg-brand text-white"}`}>
             All
           </button>
           {ALL_TAGS.map((t) => (
             <button key={t} onClick={() => setFilterTag(t === filterTag ? null : t)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${filterTag === t ? "bg-brand text-white" : "bg-white border border-brand/15 text-brand/60 hover:border-brand/30"}`}>
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${filterTag === t ? "bg-brand text-white" : "bg-white border border-brand/15 text-stone-500 hover:border-brand/30"}`}>
               {t}
             </button>
           ))}
@@ -86,7 +86,7 @@ export default function ResourcesPage() {
       {/* Grid */}
       {visible.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-center">
-          <p className="text-sm text-brand/40">No resources match your search.</p>
+          <p className="text-sm text-stone-500">No resources match your search.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -100,15 +100,15 @@ export default function ResourcesPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-brand/40 uppercase tracking-wide">{r.tag}</span>
+                      <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">{r.tag}</span>
                       {r.therapistPick && (
                         <span className="text-[10px] font-semibold bg-brand/10 text-brand px-2 py-0.5 rounded-full">Therapist pick</span>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-brand leading-snug group-hover:text-brand/80 transition-colors">{r.title}</p>
+                    <p className="text-sm font-semibold text-brand leading-snug group-hover:text-stone-700 transition-colors">{r.title}</p>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-brand/35">{r.readTime}</span>
-                      <ExternalLink size={12} className="text-brand/25 group-hover:text-brand/50 transition-colors" />
+                      <span className="text-xs text-stone-400">{r.readTime}</span>
+                      <ExternalLink size={12} className="text-stone-400 group-hover:text-stone-500 transition-colors" />
                     </div>
                   </div>
                 </div>

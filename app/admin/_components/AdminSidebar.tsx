@@ -21,9 +21,11 @@ import {
   ArrowLeft,
   PanelLeftClose,
   PanelLeft,
-  Stethoscope,
 } from "lucide-react";
 import SignOutButton from "@/app/components/SignOutButton";
+import BrandMark from "@/app/components/portal/BrandMark";
+import Avatar from "@/app/components/portal/Avatar";
+import MobileDrawer from "@/app/components/portal/MobileDrawer";
 
 /**
  * `badgeKey` names a count the LAYOUT supplies from a real query. An item
@@ -43,6 +45,7 @@ import SignOutButton from "@/app/components/SignOutButton";
  * a real count is available.
  */
 type BadgeKey = "riskAlerts";
+type BadgeCounts = Partial<Record<BadgeKey, number>>;
 
 type NavItem = {
   name: string;
@@ -97,6 +100,127 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const ALL_HREFS = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+
+/**
+ * The single link to highlight: the LONGEST href that prefixes the path.
+ * Plain prefix matching lit up both "Therapists" and "Verification Queue" on
+ * the queue page, since one href is a prefix of the other.
+ */
+function activeHrefFor(pathname: string): string | undefined {
+  return ALL_HREFS.filter((href) =>
+    href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`),
+  ).sort((a, b) => b.length - a.length)[0];
+}
+
+function AdminNav({ collapsed = false, badgeCounts }: { collapsed?: boolean; badgeCounts?: BadgeCounts }) {
+  const pathname = usePathname() ?? "";
+  const activeHref = activeHrefFor(pathname);
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (label: string) => {
+    setClosedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  return (
+    <nav aria-label="Admin" className="space-y-1">
+      {NAV_GROUPS.map((group, gi) => {
+        // Collapsed mode shows every item as an icon; group toggles need labels.
+        const open = collapsed || !group.label || !closedGroups[group.label];
+        return (
+          <div key={group.label ?? gi} className={gi > 0 ? "pt-2" : ""}>
+            {group.label && !collapsed && (
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label!)}
+                aria-expanded={open}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-300"
+              >
+                {group.label}
+                <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+              </button>
+            )}
+            {group.label && collapsed && <div className="mx-3 my-2 h-px bg-white/[0.08]" />}
+
+            {open && (
+              <ul className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = item.href === activeHref;
+                  /*
+                   * Zero renders nothing. An empty queue is not news, and a grey
+                   * "0" next to Risk & Crisis would be one more number to scan
+                   * past — the badge should mean "there is work here".
+                   */
+                  const count = item.badgeKey ? badgeCounts?.[item.badgeKey] : undefined;
+                  const showBadge = typeof count === "number" && count > 0;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        title={collapsed ? item.name : undefined}
+                        aria-current={active ? "page" : undefined}
+                        className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-white/[0.07] text-white"
+                            : "text-stone-400 hover:bg-white/[0.04] hover:text-stone-100"
+                        } ${collapsed ? "justify-center" : ""}`}
+                      >
+                        {active && (
+                          <span aria-hidden="true" className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-400" />
+                        )}
+                        <item.icon
+                          className={`h-4 w-4 shrink-0 ${
+                            active ? "text-brand-300" : "text-stone-500 group-hover:text-stone-300"
+                          }`}
+                        />
+                        {collapsed ? (
+                          <span className="sr-only">{item.name}</span>
+                        ) : (
+                          <span className="flex-1">{item.name}</span>
+                        )}
+                        {!collapsed && showBadge && (
+                          <span className="min-w-[18px] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                            {count}
+                          </span>
+                        )}
+                        {collapsed && showBadge && (
+                          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function AdminFooterLinks({ collapsed = false }: { collapsed?: boolean }) {
+  return (
+    <>
+      <Link
+        href="/dashboard"
+        title={collapsed ? "Client dashboard" : undefined}
+        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-stone-400 transition-colors hover:bg-white/[0.04] hover:text-stone-100 ${
+          collapsed ? "justify-center" : ""
+        }`}
+      >
+        <ArrowLeft className="h-4 w-4 shrink-0" />
+        {collapsed ? <span className="sr-only">Client dashboard</span> : "Client dashboard"}
+      </Link>
+      <SignOutButton
+        variant="sidebar"
+        iconOnly={collapsed}
+        className="text-stone-400 hover:bg-white/[0.04] hover:text-stone-100"
+      />
+    </>
+  );
+}
+
 interface AdminSidebarProps {
   userName: string;
   userLabel: string;
@@ -104,179 +228,85 @@ interface AdminSidebarProps {
    * Real counts, queried by the layout. Optional so the sidebar degrades to no
    * badges rather than to a wrong one if a caller omits it.
    */
-  badgeCounts?: Partial<Record<BadgeKey, number>>;
+  badgeCounts?: BadgeCounts;
 }
 
 export default function AdminSidebar({ userName, userLabel, badgeCounts }: AdminSidebarProps) {
-  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    "User Management": true,
-    "Operations": true,
-    "Clinical": true,
-    "Platform": true,
-  });
-
-  const isActive = (href: string, exact = false) => {
-    if (exact || href === "/admin") return pathname === href;
-    return pathname.startsWith(href);
-  };
-
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
-  };
 
   return (
     <aside
-      className={`hidden md:flex flex-col bg-stone-950 text-stone-100 transition-all duration-300 ${
+      className={`hidden flex-shrink-0 flex-col bg-stone-950 text-stone-100 transition-[width] duration-300 md:flex ${
         collapsed ? "w-[72px]" : "w-64"
-      } flex-shrink-0`}
+      }`}
     >
-      {/* Logo */}
-      <div className="flex items-center justify-between p-4 border-b border-stone-800 h-16">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Stethoscope className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-sm tracking-tight">Echo</span>
-              <span className="text-teal-400 font-bold text-sm"> Admin</span>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center mx-auto">
-            <Stethoscope className="w-4 h-4 text-white" />
-          </div>
-        )}
+      <div
+        className={`flex h-16 items-center border-b border-white/[0.06] px-4 ${
+          collapsed ? "justify-center" : "justify-between"
+        }`}
+      >
+        <BrandMark href="/admin" tone="dark" name="Echo" tagline="Admin console" size="sm" iconOnly={collapsed} />
         {!collapsed && (
           <button
+            type="button"
             onClick={() => setCollapsed(true)}
-            className="p-1.5 rounded-lg hover:bg-stone-800 text-stone-400 hover:text-stone-200 transition-colors"
+            aria-label="Collapse sidebar"
+            className="rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-white/[0.06] hover:text-stone-200"
           >
-            <PanelLeftClose className="w-4 h-4" />
+            <PanelLeftClose className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      {/* Expand toggle when collapsed */}
       {collapsed && (
         <button
+          type="button"
           onClick={() => setCollapsed(false)}
-          className="p-2 mt-2 mx-auto rounded-lg hover:bg-stone-800 text-stone-400 hover:text-stone-200 transition-colors"
+          aria-label="Expand sidebar"
+          className="mx-auto mt-2 rounded-lg p-2 text-stone-500 transition-colors hover:bg-white/[0.06] hover:text-stone-200"
         >
-          <PanelLeft className="w-4 h-4" />
+          <PanelLeft className="h-4 w-4" />
         </button>
       )}
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={gi} className={gi > 0 ? "pt-1" : ""}>
-            {/* Group header */}
-            {group.label && !collapsed && (
-              <button
-                onClick={() => toggleGroup(group.label!)}
-                className="flex items-center justify-between w-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-stone-500 hover:text-stone-400 transition-colors"
-              >
-                {group.label}
-                <ChevronDown
-                  className={`w-3 h-3 transition-transform duration-200 ${
-                    openGroups[group.label] ? "rotate-0" : "-rotate-90"
-                  }`}
-                />
-              </button>
-            )}
-            {group.label && collapsed && (
-              <div className="h-px bg-stone-800 mx-2 my-2" />
-            )}
+      <div className="flex-1 overflow-y-auto px-2 py-3">
+        <AdminNav collapsed={collapsed} badgeCounts={badgeCounts} />
+      </div>
 
-            {/* Items */}
-            {(!group.label || !collapsed ? openGroups[group.label!] !== false : true) && (
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const active = isActive(item.href, item.href === "/admin");
-                  /*
-                   * Zero renders nothing. An empty queue is not news, and a grey
-                   * "0" next to Risk & Crisis would be one more number to scan
-                   * past — the badge should mean "there is work here".
-                   */
-                  const count = item.badgeKey
-                    ? badgeCounts?.[item.badgeKey]
-                    : undefined;
-                  const showBadge = typeof count === "number" && count > 0;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      title={collapsed ? item.name : undefined}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group relative ${
-                        active
-                          ? "bg-teal-600/20 text-teal-300"
-                          : "text-stone-400 hover:bg-stone-800 hover:text-stone-100"
-                      } ${collapsed ? "justify-center" : ""}`}
-                    >
-                      {active && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-teal-400 rounded-r-full" />
-                      )}
-                      <item.icon
-                        className={`w-4 h-4 flex-shrink-0 ${
-                          active ? "text-teal-400" : "text-stone-500 group-hover:text-stone-300"
-                        }`}
-                      />
-                      {!collapsed && (
-                        <>
-                          <span className="text-sm font-medium flex-1">{item.name}</span>
-                          {showBadge && (
-                            <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                              {count}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {collapsed && showBadge && (
-                        <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-rose-500 rounded-full" />
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-      </nav>
-
-      {/* Footer */}
-      <div className={`border-t border-stone-800 p-2 space-y-1 ${collapsed ? "px-2" : ""}`}>
-        <Link
-          href="/dashboard"
-          title={collapsed ? "Client Dashboard" : undefined}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-800 transition-colors text-stone-500 hover:text-stone-300 ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <ArrowLeft className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Client Dashboard</span>}
-        </Link>
-
-        <SignOutButton
-          variant="sidebar"
-          className="text-stone-500 hover:bg-stone-800 hover:text-stone-300"
-        />
-
+      <div className="space-y-1 border-t border-white/[0.06] p-2">
+        <AdminFooterLinks collapsed={collapsed} />
         {!collapsed && (
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-stone-900 mt-1">
-            <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-              {userName.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-stone-200 truncate">{userName}</p>
-              <p className="text-[10px] text-stone-500 capitalize">{userLabel}</p>
+          <div className="mt-1 flex items-center gap-3 rounded-lg bg-white/[0.04] px-3 py-2.5">
+            <Avatar name={userName} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-stone-100">{userName}</p>
+              <p className="text-[11px] capitalize text-stone-500">{userLabel}</p>
             </div>
           </div>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The same navigation below `md`. The header's hamburger used to be a <button>
+ * with no handler, so on a phone the admin console had no navigation at all.
+ */
+export function AdminMobileNav({ badgeCounts }: { badgeCounts?: BadgeCounts }) {
+  return (
+    <MobileDrawer
+      tone="dark"
+      label="Admin navigation"
+      className="md:hidden"
+      header={<BrandMark href="/admin" tone="dark" name="Echo" tagline="Admin console" size="sm" />}
+    >
+      <div className="px-2 py-3">
+        <AdminNav badgeCounts={badgeCounts} />
+      </div>
+      <div className="space-y-1 border-t border-white/[0.06] p-2">
+        <AdminFooterLinks />
+      </div>
+    </MobileDrawer>
   );
 }

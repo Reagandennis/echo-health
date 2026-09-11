@@ -46,7 +46,7 @@ export default function PriceTag({
   // at text-4xl does not fit.
   sizeClass = "text-3xl sm:text-4xl",
   priceClass = "text-brand",
-  periodClass = "text-brand/50",
+  periodClass = "text-stone-500",
   showExact = false,
 }: PriceTagProps) {
   const { formatPrice, formatExact, isConverted } = useCurrency();

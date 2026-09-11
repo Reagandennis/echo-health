@@ -169,7 +169,7 @@ function OnboardingContent() {
           {/* Was "You can change or cancel at any time", which describes a
               subscription. These are one-time bundles: there is nothing to
               cancel, and what is actually true is the credits outlasting you. */}
-          <p className="mt-3 text-brand/60 text-base">
+          <p className="mt-3 text-stone-500 text-base">
             Select a plan to get matched with your therapist. One payment, no
             subscription, and your sessions never expire.
           </p>
@@ -213,7 +213,7 @@ function OnboardingContent() {
                   </span>
                 )}
 
-                <p className={`text-xs font-semibold uppercase tracking-widest mb-2 ${plan.highlighted ? "text-white/70" : "text-brand/50"}`}>
+                <p className={`text-xs font-semibold uppercase tracking-widest mb-2 ${plan.highlighted ? "text-white/70" : "text-stone-500"}`}>
                   {plan.name}
                 </p>
 
@@ -221,7 +221,7 @@ function OnboardingContent() {
                   amount={plan.price}
                   period={plan.period}
                   priceClass={plan.highlighted ? "text-white" : "text-brand"}
-                  periodClass={plan.highlighted ? "text-white/60" : "text-brand/50"}
+                  periodClass={plan.highlighted ? "text-white/60" : "text-stone-500"}
                 />
 
                 {/* What you actually get, stated plainly.
@@ -239,14 +239,14 @@ function OnboardingContent() {
                     {sessions} {sessions === 1 ? "session" : "sessions"} included
                   </p>
                   {sessions > 1 && (
-                    <p className={`text-xs mt-0.5 ${plan.highlighted ? "text-white/70" : "text-brand/50"}`}>
+                    <p className={`text-xs mt-0.5 ${plan.highlighted ? "text-white/70" : "text-stone-500"}`}>
                       {money(perSession)} per session
                       {plan.people > 1 && ` · ${money(perSession / plan.people)} per person`}
                     </p>
                   )}
                 </div>
 
-                <p className={`text-sm leading-relaxed mb-5 ${plan.highlighted ? "text-white/80" : "text-brand/60"}`}>
+                <p className={`text-sm leading-relaxed mb-5 ${plan.highlighted ? "text-white/80" : "text-stone-500"}`}>
                   {plan.description}
                 </p>
 
@@ -258,7 +258,7 @@ function OnboardingContent() {
                         className={`mt-0.5 shrink-0 ${plan.highlighted ? "text-white/70" : "text-brand"}`}
                         strokeWidth={2.5}
                       />
-                      <span className={plan.highlighted ? "text-white/90" : "text-brand/80"}>{feat}</span>
+                      <span className={plan.highlighted ? "text-white/90" : "text-stone-600"}>{feat}</span>
                     </li>
                   ))}
                 </ul>
@@ -277,14 +277,14 @@ function OnboardingContent() {
             {loading ? "Setting up…" : `Continue with ${selectedPlan?.name ?? "Plan"}`}
             {!loading && <ArrowRight size={16} />}
           </button>
-          <p className="text-xs text-brand/40">One-time purchase. No hidden fees.</p>
+          <p className="text-xs text-stone-500">One-time purchase. No hidden fees.</p>
         </div>
 
         {/* Reassurance, next to the button that costs money rather than in a
             footer nobody reaches. */}
         <ul className="mt-8 grid gap-3 sm:grid-cols-2 w-full max-w-2xl">
           {reassurances.map(({ icon: Icon, text }) => (
-            <li key={text} className="flex items-start gap-2.5 text-sm text-brand/70">
+            <li key={text} className="flex items-start gap-2.5 text-sm text-stone-600">
               <Icon size={15} className="mt-0.5 shrink-0 text-brand" strokeWidth={2} />
               {text}
             </li>
@@ -295,7 +295,7 @@ function OnboardingContent() {
             "⭐ 4.9 / 5 average rating" was removed, not rewritten. Nothing in
             this product collects or aggregates a rating — the figure existed
             only in this file, and it sat two inches from a price. */}
-        <div className="mt-12 flex flex-wrap justify-center gap-6 text-xs text-brand/40">
+        <div className="mt-12 flex flex-wrap justify-center gap-6 text-xs text-stone-500">
           <span>🔒 TLS-encrypted in transit</span>
           <span>💳 M-Pesa, card &amp; bank transfer via Paystack</span>
           <span>🧾 One-time payment, nothing auto-renews</span>

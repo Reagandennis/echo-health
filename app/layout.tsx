@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import ChatWidgetWrapper from "./components/ChatWidgetWrapper";
 import { siteUrl, siteName, defaultDescription } from "@/lib/seo";
@@ -14,6 +14,16 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
+});
+
+// Display serif for marketing headlines and greetings (`font-display`). The
+// soft axis keeps it warm rather than editorial; UI text stays in Geist.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  display: "swap",
+  style: ["normal", "italic"],
+  axes: ["SOFT", "opsz"],
 });
 
 export const metadata: Metadata = {
@@ -88,7 +98,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // globals.css sets `scroll-behavior: smooth` for in-page anchors. Next 16
+      // no longer suspends it during route changes unless asked to — without
+      // this, every navigation would visibly glide back to the top.
+      data-scroll-behavior="smooth"
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       <head>
         <script

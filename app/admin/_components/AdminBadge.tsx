@@ -8,13 +8,13 @@ type BadgeVariant =
   | "teal";
 
 const VARIANT_STYLES: Record<BadgeVariant, string> = {
-  success: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  warning: "bg-amber-100 text-amber-700 border-amber-200",
-  danger:  "bg-rose-100 text-rose-700 border-rose-200",
-  info:    "bg-blue-100 text-blue-700 border-blue-200",
-  neutral: "bg-stone-100 text-stone-600 border-stone-200",
-  purple:  "bg-purple-100 text-purple-700 border-purple-200",
-  teal:    "bg-teal-100 text-teal-700 border-teal-200",
+  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  warning: "bg-amber-50 text-amber-800 ring-amber-600/25",
+  danger:  "bg-rose-50 text-rose-700 ring-rose-600/20",
+  info:    "bg-sky-50 text-sky-700 ring-sky-600/20",
+  neutral: "bg-stone-100 text-stone-600 ring-stone-500/20",
+  purple:  "bg-violet-50 text-violet-700 ring-violet-600/20",
+  teal:    "bg-brand-50 text-brand-700 ring-brand-600/20",
 };
 
 interface AdminBadgeProps {
@@ -30,10 +30,10 @@ export default function AdminBadge({
 }: AdminBadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${VARIANT_STYLES[variant]}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ring-1 ring-inset ${VARIANT_STYLES[variant]}`}
     >
       {dot && (
-        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 flex-shrink-0" />
+        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 flex-shrink-0" />
       )}
       {label}
     </span>

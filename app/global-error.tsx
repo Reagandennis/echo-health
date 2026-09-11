@@ -24,11 +24,11 @@ export default function GlobalError({
           </div>
         </div>
         <h1 className="text-3xl font-bold text-brand mb-3">Something went wrong</h1>
-        <p className="text-brand/55 text-base max-w-sm leading-relaxed mb-2">
+        <p className="text-stone-500 text-base max-w-sm leading-relaxed mb-2">
           A critical error occurred. We&apos;re sorry for the inconvenience.
         </p>
         {error.digest && (
-          <p className="text-xs text-brand/30 font-mono mb-8">Error ID: {error.digest}</p>
+          <p className="text-xs text-stone-400 font-mono mb-8">Error ID: {error.digest}</p>
         )}
         {!error.digest && <div className="mb-8" />}
         <button

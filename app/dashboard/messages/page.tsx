@@ -115,10 +115,10 @@ export default function MessagesPage() {
           <p className="text-sm font-bold text-brand">Your Therapist</p>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-xs text-brand/40">Online · live updates active</span>
+            <span className="text-xs text-stone-500">Online · live updates active</span>
           </div>
         </div>
-        <div className="ml-auto text-xs text-brand/35 bg-cream px-3 py-1.5 rounded-full">🔒 Encrypted</div>
+        <div className="ml-auto text-xs text-stone-400 bg-cream px-3 py-1.5 rounded-full">🔒 Encrypted</div>
       </div>
 
       {/* Thread */}
@@ -130,16 +130,16 @@ export default function MessagesPage() {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
             <div className="w-14 h-14 rounded-2xl bg-brand/8 flex items-center justify-center mb-3">
-              <Send size={22} className="text-brand/30" />
+              <Send size={22} className="text-stone-400" />
             </div>
-            <p className="text-sm font-semibold text-brand/50">Start the conversation</p>
-            <p className="text-xs text-brand/35 mt-1 max-w-xs">Messages are private and delivered in real-time.</p>
+            <p className="text-sm font-semibold text-stone-500">Start the conversation</p>
+            <p className="text-xs text-stone-400 mt-1 max-w-xs">Messages are private and delivered in real-time.</p>
           </div>
         ) : (
           grouped.map(({ date, msgs }) => (
             <div key={date}>
               <div className="flex justify-center my-4">
-                <span className="text-xs text-brand/30 bg-cream/80 px-3 py-1 rounded-full border border-brand/8">{date}</span>
+                <span className="text-xs text-stone-400 bg-cream/80 px-3 py-1 rounded-full border border-brand/8">{date}</span>
               </div>
               {msgs.map((msg) => {
                 const mine = msg.senderId === user?.$id;
@@ -149,8 +149,8 @@ export default function MessagesPage() {
                       ${mine ? "bg-brand text-white rounded-br-sm" : "bg-white text-brand border border-brand/8 rounded-bl-sm"}`}>
                       <p>{msg.content}</p>
                       <div className={`flex items-center gap-1 mt-1 ${mine ? "justify-end" : "justify-start"}`}>
-                        <span className={`text-[10px] ${mine ? "text-white/50" : "text-brand/30"}`}>{msgTime(msg.createdAt)}</span>
-                        {mine ? <CheckCheck size={11} className="text-white/50" /> : <Check size={11} className="text-brand/25" />}
+                        <span className={`text-[10px] ${mine ? "text-white/50" : "text-stone-400"}`}>{msgTime(msg.createdAt)}</span>
+                        {mine ? <CheckCheck size={11} className="text-white/50" /> : <Check size={11} className="text-stone-400" />}
                       </div>
                     </div>
                   </div>
@@ -166,10 +166,10 @@ export default function MessagesPage() {
       <div className="bg-white border-t border-brand/10 px-4 py-3">
         <div className="flex items-end gap-2">
           <button className="w-9 h-9 rounded-xl bg-cream flex items-center justify-center hover:bg-brand/10 transition-colors shrink-0" aria-label="Attach file">
-            <Paperclip size={15} className="text-brand/50" />
+            <Paperclip size={15} className="text-stone-500" />
           </button>
           <button className="w-9 h-9 rounded-xl bg-cream flex items-center justify-center hover:bg-brand/10 transition-colors shrink-0" aria-label="Voice note">
-            <Mic size={15} className="text-brand/50" />
+            <Mic size={15} className="text-stone-500" />
           </button>
           <textarea
             ref={inputRef}
@@ -178,7 +178,7 @@ export default function MessagesPage() {
             onKeyDown={onKeyDown}
             placeholder="Message your therapist… (Enter to send)"
             rows={1}
-            className="flex-1 resize-none bg-cream rounded-2xl px-4 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/20 max-h-32 overflow-y-auto"
+            className="flex-1 resize-none bg-cream rounded-2xl px-4 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/20 max-h-32 overflow-y-auto"
           />
           <button
             onClick={() => void handleSend()}

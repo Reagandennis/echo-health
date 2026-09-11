@@ -88,7 +88,7 @@ export default function BillingPage() {
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-xl font-bold text-brand">Billing</h1>
-        <p className="text-sm text-brand/45 mt-0.5">Manage your plan and payment details.</p>
+        <p className="text-sm text-stone-500 mt-0.5">Manage your plan and payment details.</p>
       </div>
 
       {/* Current plan card */}
@@ -131,9 +131,9 @@ export default function BillingPage() {
           className="flex items-center justify-between bg-white rounded-2xl border border-brand/10 hover:border-brand/25 p-5 mb-6 transition-colors group">
           <div>
             <p className="text-sm font-semibold text-brand">Upgrade your plan</p>
-            <p className="text-xs text-brand/45 mt-0.5">Get more sessions and priority support.</p>
+            <p className="text-xs text-stone-500 mt-0.5">Get more sessions and priority support.</p>
           </div>
-          <ChevronRight size={16} className="text-brand/30 group-hover:text-brand transition-colors" />
+          <ChevronRight size={16} className="text-stone-400 group-hover:text-brand transition-colors" />
         </a>
       )}
 
@@ -148,7 +148,7 @@ export default function BillingPage() {
         </div>
         <div className="divide-y divide-brand/6">
           {payments.length === 0 && (
-            <p className="px-5 py-6 text-sm text-brand/45">
+            <p className="px-5 py-6 text-sm text-stone-500">
               No payments yet. Your receipts will appear here after your first purchase.
             </p>
           )}
@@ -165,7 +165,7 @@ export default function BillingPage() {
                     {PLAN_LABELS[p.plan] ?? p.plan} · {PLAN_SESSIONS[p.plan] ?? 1} session
                     {(PLAN_SESSIONS[p.plan] ?? 1) > 1 ? "s" : ""}
                   </p>
-                  <p className="text-xs text-brand/40">
+                  <p className="text-xs text-stone-500">
                     {new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}
                     {p.channel ? ` · ${p.channel}` : ""}
                   </p>
@@ -175,7 +175,7 @@ export default function BillingPage() {
                 <p className="text-sm font-semibold text-brand">
                   {money(p.amountMinor, p.currency)}
                 </p>
-                <p className="text-xs text-brand/40 capitalize">{p.status}</p>
+                <p className="text-xs text-stone-500 capitalize">{p.status}</p>
               </div>
             </div>
           ))}

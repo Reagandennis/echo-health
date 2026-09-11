@@ -90,7 +90,7 @@ export default function AboutPage() {
         <section className="px-6 py-24 bg-white">
           <div className="mx-auto max-w-4xl grid md:grid-cols-2 gap-16 items-center">
             <div>
-              <span className="text-xs font-bold uppercase tracking-widest text-brand/60 mb-4 block">Our Story</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 block">Our Story</span>
               <h2 className="text-3xl font-bold text-slate-800 mb-6 leading-tight">
                 Born out of frustration, built with care.
               </h2>

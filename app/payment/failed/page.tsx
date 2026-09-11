@@ -31,11 +31,11 @@ function PaymentFailedContent() {
 
       <div className="text-center max-w-md mb-10">
         <h1 className="text-3xl font-bold text-brand mb-3">Payment unsuccessful</h1>
-        <p className="text-brand/60 text-base leading-relaxed">{message}</p>
+        <p className="text-stone-500 text-base leading-relaxed">{message}</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6 w-full max-w-sm mb-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-brand/40 mb-4">What happened?</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-stone-500 mb-4">What happened?</p>
         <div className="space-y-2 text-sm">
           {[
             { label: "Error type", value: reason.charAt(0).toUpperCase() + reason.slice(1) },
@@ -43,7 +43,7 @@ function PaymentFailedContent() {
             { label: "Charge", value: "None — you were not charged" },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
-              <span className="text-brand/40">{label}</span>
+              <span className="text-stone-500">{label}</span>
               <span className={`font-medium ${label === "Charge" ? "text-emerald-600" : "text-brand"}`}>
                 {value}
               </span>
@@ -67,7 +67,7 @@ function PaymentFailedContent() {
         </button>
       </div>
 
-      <button className="flex items-center gap-1.5 text-xs text-brand/40 hover:text-brand mt-6 transition-colors">
+      <button className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-brand mt-6 transition-colors">
         <Headphones size={13} /> Contact support
       </button>
     </div>
@@ -76,7 +76,7 @@ function PaymentFailedContent() {
 
 export default function PaymentFailedPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-brand/60">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-stone-500">Loading...</p></div>}>
       <PaymentFailedContent />
     </Suspense>
   );

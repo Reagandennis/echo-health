@@ -58,10 +58,10 @@ function SignInLaunch() {
     <div className="flex flex-col gap-8">
       {/* Heading */}
       <div>
-        <h1 className="text-2xl font-bold text-brand">Welcome back</h1>
-        <p className="mt-1 text-sm text-brand/55">
+        <h1 className="font-display text-3xl tracking-tight text-stone-900">Welcome back</h1>
+        <p className="mt-2 text-sm text-stone-500">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-semibold text-brand hover:opacity-75 transition-opacity underline underline-offset-2">
+          <Link href="/signup" className="font-semibold text-brand-700 hover:text-brand-800 transition-colors underline underline-offset-2">
             Sign up free
           </Link>
         </p>
@@ -69,7 +69,7 @@ function SignInLaunch() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           {error}
         </div>
       )}
@@ -79,20 +79,20 @@ function SignInLaunch() {
         <button
           type="button"
           onClick={handleSignIn}
-          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           Sign in
         </button>
-        <p className="text-center text-xs text-brand/40 leading-relaxed">
+        <p className="text-center text-xs text-stone-500 leading-relaxed">
           You&apos;ll be taken to our secure sign-in page to enter your email and password.
         </p>
       </div>
 
       {/* Divider */}
       <div className="flex items-center gap-3">
-        <span className="flex-1 h-px bg-cream/70" />
-        <span className="text-xs text-brand/30 font-medium">or continue with</span>
-        <span className="flex-1 h-px bg-cream/70" />
+        <span className="flex-1 h-px bg-stone-200" />
+        <span className="text-xs text-stone-400 font-medium">or continue with</span>
+        <span className="flex-1 h-px bg-stone-200" />
       </div>
 
       {/* OAuth */}
@@ -100,7 +100,7 @@ function SignInLaunch() {
         <button
           type="button"
           onClick={handleGoogle}
-          className="flex items-center justify-center gap-3 w-full rounded-xl border border-cream py-3 text-sm font-medium text-brand/70 hover:bg-cream/30 transition-colors"
+          className="flex items-center justify-center gap-3 w-full rounded-xl border border-stone-300 bg-white py-3 text-sm font-medium text-stone-700 shadow-xs hover:bg-stone-50 transition-colors"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -116,7 +116,7 @@ function SignInLaunch() {
       <div className="flex items-center justify-center text-sm">
         <Link
           href="/forgot-password"
-          className="text-brand/60 font-medium hover:text-brand transition-colors underline underline-offset-2"
+          className="text-stone-500 font-medium hover:text-stone-800 transition-colors underline underline-offset-2"
         >
           Forgot password?
         </Link>

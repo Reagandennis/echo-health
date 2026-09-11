@@ -19,7 +19,7 @@ export default function StatCounter({
   duration = 2000,
   label,
   className = "text-brand",
-  labelClassName = "text-brand/60",
+  labelClassName = "text-stone-500",
 }: StatCounterProps) {
   const [count, setCount] = useState(0);
   const [started, setStarted] = useState(false);

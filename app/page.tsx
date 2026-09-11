@@ -12,10 +12,12 @@ import {
   Infinity as InfinityIcon,
   Wallet,
   Check,
+  ArrowRight,
 } from "lucide-react";
 import TestimonialCard from "./components/TestimonialCard";
 import PriceTag from "./components/PriceTag";
 import Footer from "./components/Footer";
+import BrandMark from "./components/portal/BrandMark";
 import { PLAN_PRICES, PLAN_SESSIONS, PLAN_PERIOD_LABELS } from "@/lib/constants";
 
 /* ─── Data ─────────────────────────────────────────── */
@@ -109,7 +111,7 @@ const testimonials = [
     name: "Jamie L.",
     detail: "Using Echo Health for 6 months",
     initials: "JL",
-    color: "bg-brand",
+    color: "bg-brand-600",
   },
   {
     quote:
@@ -117,7 +119,7 @@ const testimonials = [
     name: "Devon M.",
     detail: "Anxiety & stress management",
     initials: "DM",
-    color: "bg-[#5aa8b0]",
+    color: "bg-brand-800",
   },
   {
     quote:
@@ -125,7 +127,7 @@ const testimonials = [
     name: "Rosa K.",
     detail: "Individual & couples therapy",
     initials: "RK",
-    color: "bg-[#8abbbf]",
+    color: "bg-stone-600",
   },
 ];
 
@@ -215,6 +217,26 @@ const trust = [
   { icon: CalendarCheck, label: "Book around your schedule" },
 ];
 
+/* ─── Pieces ───────────────────────────────────────── */
+
+function SectionHeading({
+  eyebrow,
+  title,
+  body,
+}: {
+  readonly eyebrow: string;
+  readonly title: string;
+  readonly body?: string;
+}) {
+  return (
+    <div className="mx-auto max-w-2xl text-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">{eyebrow}</p>
+      <h2 className="mt-3 font-display text-3xl tracking-tight text-stone-900 sm:text-5xl">{title}</h2>
+      {body && <p className="mx-auto mt-5 max-w-xl leading-7 text-stone-600">{body}</p>}
+    </div>
+  );
+}
+
 /* ─── Page ─────────────────────────────────────────── */
 
 export default function Home() {
@@ -222,22 +244,29 @@ export default function Home() {
     <div className="flex flex-col flex-1 font-sans bg-white">
 
       {/* ── Nav ──────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-xl font-semibold tracking-tight">
-            <span className="text-brand">Echo Psychology </span>
-            <span className="text-slate-700">Group</span>
-          </span> 
-          <nav className="hidden gap-8 text-sm font-medium sm:flex text-slate-500">
-            <a href="#how" className="hover:text-brand transition-colors">How it works</a>
-            <a href="#therapists" className="hover:text-brand transition-colors">Therapists</a>
-            <a href="#pricing" className="hover:text-brand transition-colors">Pricing</a>
+      <header className="sticky top-0 z-50 w-full border-b border-stone-200/60 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <BrandMark
+            size="sm"
+            name={
+              <>
+                <span className="text-brand-700">Echo Psychology</span>
+                <span className="hidden text-stone-700 sm:inline"> Group</span>
+              </>
+            }
+          />
+          <nav className="hidden items-center gap-8 text-sm font-medium text-stone-600 md:flex">
+            <a href="#how" className="transition-colors hover:text-stone-900">How it works</a>
+            <a href="#therapists" className="transition-colors hover:text-stone-900">Therapists</a>
+            <a href="#pricing" className="transition-colors hover:text-stone-900">Pricing</a>
           </nav>
-          <div className="flex items-center gap-3">
-            <Link href="/signin" className="hidden sm:inline text-sm font-medium text-brand hover:opacity-80 transition-opacity">
+          {/* "Sign in" used to be `hidden sm:inline`, so a returning client on
+              a phone had no way to sign in from the home page. */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Link href="/signin" className="rounded-full px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-100 hover:text-stone-900">
               Sign in
             </Link>
-            <Link href="/signup" className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+            <Link href="/signup" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700">
               Get started
             </Link>
           </div>
@@ -247,52 +276,73 @@ export default function Home() {
       <main className="flex flex-col flex-1">
 
         {/* ── Hero ─────────────────────────────────── */}
-        <section className="flex flex-col items-center justify-center px-6 py-28 text-center bg-white">
-          <div className="mx-auto max-w-2xl">
-            <span className="inline-block rounded-full bg-cream px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-brand mb-8">
+        <section className="relative isolate overflow-hidden bg-aurora px-6 pt-20 pb-28 sm:pt-28 sm:pb-36">
+          <Image
+            src="/echo-butterfly.png"
+            alt=""
+            width={500}
+            height={500}
+            preload
+            className="pointer-events-none absolute left-1/2 top-0 -z-10 w-[680px] max-w-none -translate-x-1/2 opacity-[0.06]"
+          />
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-brand-700 ring-1 ring-inset ring-brand-200 backdrop-blur">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
               Therapy, reimagined
             </span>
-            <h1 className="text-5xl sm:text-6xl font-bold leading-tight tracking-tight text-slate-800">
+            <h1 className="mt-8 font-display text-5xl leading-[1.05] tracking-tight text-stone-900 sm:text-7xl">
               Feel heard.{" "}
-              <span className="text-brand">
-                Heal forward.
-              </span>
+              <br className="hidden sm:block" />
+              <em className="text-brand-600">Heal forward.</em>
             </h1>
-            <p className="mt-6 text-lg leading-8 max-w-xl mx-auto text-slate-500">
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-stone-600">
               Connect with licensed therapists who truly listen. Echo Health
               makes mental wellness personal, flexible, and within reach —
               whenever you need it.
             </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/signup" className="w-full sm:w-auto rounded-full bg-brand px-8 py-3.5 text-sm font-semibold text-white shadow-md hover:opacity-90 transition-opacity">
+            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/signup"
+                className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-900/15 transition-colors hover:bg-brand-700 sm:w-auto"
+              >
                 Match with a therapist
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              <a href="#how" className="w-full sm:w-auto rounded-full border-2 border-brand bg-cream/30 px-8 py-3.5 text-sm font-semibold text-brand hover:bg-cream/60 transition-colors">
+              <a
+                href="#how"
+                className="inline-flex w-full items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-stone-800 shadow-sm ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400 sm:w-auto"
+              >
                 Learn how it works
               </a>
             </div>
           </div>
 
           {/* Trust badges */}
-          <div className="mt-16 flex flex-wrap items-center justify-center gap-8">
+          <ul className="mx-auto mt-14 flex max-w-3xl flex-wrap items-center justify-center gap-x-8 gap-y-3">
             {trust.map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-center gap-2 text-sm text-slate-400">
-                <Icon className="w-4 h-4 text-brand/50" strokeWidth={1.8} />
+              <li key={label} className="flex items-center gap-2 text-sm font-medium text-stone-600">
+                <Icon className="h-4 w-4 text-brand-600" strokeWidth={1.8} />
                 {label}
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
 
         {/* ── How the money works ──────────────────── */}
-        <section className="bg-teal-700 px-6 py-20 text-white">
-          <div className="mx-auto max-w-5xl">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <section className="px-4 sm:px-6">
+          <div className="relative mx-auto -mt-12 max-w-6xl overflow-hidden rounded-3xl bg-brand-900 px-6 py-12 text-white shadow-xl shadow-brand-950/10 sm:px-12 sm:py-14">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_90%_at_100%_0%,oklch(55%_0.1_205/0.4),transparent_70%)]"
+            />
+            <div className="relative grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
               {guarantees.map(({ icon: Icon, title, body }) => (
                 <div key={title} className="flex flex-col gap-3">
-                  <Icon className="w-6 h-6 text-white/80" strokeWidth={1.8} />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15">
+                    <Icon className="h-5 w-5 text-brand-200" strokeWidth={1.8} />
+                  </span>
                   <h3 className="font-semibold text-white">{title}</h3>
-                  <p className="text-sm leading-6 text-white/70">{body}</p>
+                  <p className="text-sm leading-6 text-brand-100/75">{body}</p>
                 </div>
               ))}
             </div>
@@ -300,37 +350,34 @@ export default function Home() {
         </section>
 
         {/* ── How it works ─────────────────────────── */}
-        <section id="how" className="px-6 py-24 bg-white">
-          <div className="mx-auto max-w-5xl">
-            <div className="text-center mb-16">
-              <span className="text-xs font-semibold uppercase tracking-widest text-brand/50">Simple process</span>
-              <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-brand">
-                Go from curious to cared-for in minutes
-              </h2>
-              <p className="mt-4 text-brand/60 max-w-lg mx-auto leading-7">
-                No waiting rooms, no referrals, no guesswork. Getting started
-                is easier than you think.
-              </p>
-            </div>
-            <div className="grid gap-8 sm:grid-cols-3">
+        <section id="how" className="px-6 py-24 sm:py-28">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeading
+              eyebrow="Simple process"
+              title="Go from curious to cared-for in minutes"
+              body="No waiting rooms, no referrals, no guesswork. Getting started is easier than you think."
+            />
+            <ol className="mt-16 grid gap-6 md:grid-cols-3">
               {steps.map((step, i) => (
-                <div
+                <li
                   key={step.title}
-                  className="relative flex flex-col gap-5 rounded-2xl border border-cream/70 bg-white p-8 shadow-sm hover:shadow-md transition-shadow"
+                  className="flex flex-col gap-6 rounded-3xl bg-white p-8 shadow-sm ring-1 ring-stone-200/70 transition-shadow hover:shadow-md"
                 >
-                  <span className="absolute -top-3 -left-3 w-7 h-7 rounded-full bg-brand text-white text-xs font-bold flex items-center justify-center shadow">
-                    {i + 1}
-                  </span>
-                  <div className="w-12 h-12 rounded-xl bg-cream/60 flex items-center justify-center">
-                    <step.icon className="w-6 h-6 text-brand" strokeWidth={1.8} />
+                  <div className="flex items-center justify-between">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100">
+                      <step.icon className="h-6 w-6" strokeWidth={1.8} />
+                    </span>
+                    <span aria-hidden="true" className="font-display text-4xl text-stone-200">
+                      0{i + 1}
+                    </span>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-brand text-lg">{step.title}</h3>
-                    <p className="mt-2 text-sm text-brand/60 leading-6">{step.body}</p>
+                    <h3 className="text-lg font-semibold text-stone-900">{step.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-stone-600">{step.body}</p>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
         </section>
 
@@ -344,48 +391,43 @@ export default function Home() {
             the day `sessionFeedback` is actually aggregated. */}
 
         {/* ── Therapists ───────────────────────────── */}
-        <section id="therapists" className="px-6 py-24 bg-white">
-          <div className="mx-auto max-w-5xl">
-            <div className="text-center mb-16">
-              <span className="text-xs font-semibold uppercase tracking-widest text-brand/50">Our team</span>
-              <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-slate-800">
-                Meet a few of our therapists
-              </h2>
-              <p className="mt-4 text-slate-500 max-w-lg mx-auto leading-7">
-                Every Echo Health therapist is fully licensed, background-checked,
-                and vetted through our rigorous credentialing process.
-              </p>
-            </div>
-            <div className="grid gap-8 sm:grid-cols-3">
+        <section id="therapists" className="border-y border-stone-200/60 bg-stone-50 px-6 py-24 sm:py-28">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeading
+              eyebrow="Our team"
+              title="Meet a few of our therapists"
+              body="Every Echo Health therapist is fully licensed, background-checked, and vetted through our rigorous credentialing process."
+            />
+            <div className="mt-16 grid gap-6 md:grid-cols-3">
               {therapists.map((t) => (
-                <div
+                <article
                   key={t.name}
-                  className="flex flex-col rounded-2xl border border-cream/70 overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+                  className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/70 transition-shadow hover:shadow-lg"
                 >
-                  <div className="relative h-56 w-full overflow-hidden bg-cream/30">
+                  <div className="relative h-64 w-full overflow-hidden bg-stone-100">
                     <Image
                       src={t.photo}
                       alt={`Photo of ${t.name}`}
                       fill
                       loading="lazy"
-                      className="object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                      className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
                       sizes="(max-width: 768px) 100vw, 33vw"
                     />
                   </div>
-                  <div className="p-6 flex flex-col gap-3 flex-1">
+                  <div className="flex flex-1 flex-col gap-4 p-6">
                     <div>
-                      <h3 className="font-semibold text-slate-800">{t.name}</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">{t.title} · {t.experience}</p>
+                      <h3 className="font-semibold text-stone-900">{t.name}</h3>
+                      <p className="mt-0.5 text-sm text-stone-500">{t.title} · {t.experience}</p>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-auto">
+                    <div className="mt-auto flex flex-wrap gap-2">
                       {t.specialties.map((s) => (
-                        <span key={s} className="rounded-full bg-cream px-3 py-1 text-xs font-medium text-brand/80">
+                        <span key={s} className="rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-800 ring-1 ring-inset ring-brand-100">
                           {s}
                         </span>
                       ))}
                     </div>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
             <div className="mt-12 text-center">
@@ -393,23 +435,22 @@ export default function Home() {
                   page — the button did nothing. Sends visitors to pricing, the
                   next real step, since browsing the full roster requires an
                   account. */}
-              <a href="#pricing" className="rounded-full border-2 border-brand px-8 py-3 text-sm font-semibold text-brand hover:bg-cream/40 transition-colors">
+              <a
+                href="#pricing"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3 text-sm font-semibold text-stone-800 shadow-sm ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400"
+              >
                 See plans &amp; get matched
+                <ArrowRight className="h-4 w-4" />
               </a>
             </div>
           </div>
         </section>
 
         {/* ── Testimonials ─────────────────────────── */}
-        <section className="px-6 py-24 bg-cream">
-          <div className="mx-auto max-w-5xl">
-            <div className="text-center mb-16">
-              <span className="text-xs font-semibold uppercase tracking-widest text-brand/50">Stories</span>
-              <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-slate-800">
-                Heard from the people who matter most
-              </h2>
-            </div>
-            <div className="grid gap-8 sm:grid-cols-3">
+        <section className="px-6 py-24 sm:py-28">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeading eyebrow="Stories" title="Heard from the people who matter most" />
+            <div className="mt-16 grid gap-6 md:grid-cols-3">
               {testimonials.map((t) => (
                 <TestimonialCard key={t.name} {...t} />
               ))}
@@ -418,43 +459,38 @@ export default function Home() {
         </section>
 
         {/* ── Pricing ──────────────────────────────── */}
-        <section id="pricing" className="px-6 py-24 bg-white">
+        <section id="pricing" className="border-t border-stone-200/60 bg-stone-50 px-6 py-24 sm:py-28">
           <div className="mx-auto max-w-5xl">
-            <div className="text-center mb-16">
-              <span className="text-xs font-bold uppercase tracking-widest text-brand/50">Pricing</span>
-              <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-slate-800">
-                Simple, transparent plans
-              </h2>
-              <p className="mt-4 text-slate-500 max-w-md mx-auto leading-7">
-                One-time payment — no subscription and no auto-renewal. Your session
-                credits never expire. Pay with M-Pesa, card, or bank transfer.
-              </p>
-            </div>
+            <SectionHeading
+              eyebrow="Pricing"
+              title="Simple, transparent plans"
+              body="One-time payment — no subscription and no auto-renewal. Your session credits never expire. Pay with M-Pesa, card, or bank transfer."
+            />
             {/* Three-up only from `md`. At the old `sm` breakpoint (640px) each
                 card had roughly 145px of content width, which is not enough for
                 a plan price at any weight that reads as a headline. The extra
                 row gap on mobile is for the "Most popular" badge, which hangs
                 above its card and clipped the card stacked above it. */}
-            <div className="grid gap-x-6 gap-y-10 md:gap-6 md:grid-cols-3 items-stretch">
+            <div className="mt-16 grid items-stretch gap-x-6 gap-y-10 md:grid-cols-3 md:gap-6">
               {plans.map((plan) => (
                 <div
                   key={plan.name}
-                  className={`relative flex flex-col rounded-2xl border-2 p-8 shadow-sm transition-shadow hover:shadow-md ${
+                  className={`relative flex flex-col rounded-3xl p-8 transition-shadow ${
                     plan.highlighted
-                      ? "border-brand bg-brand text-white"
-                      : "border-slate-200 bg-white text-slate-800"
+                      ? "bg-brand-900 text-white shadow-xl shadow-brand-950/20"
+                      : "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200 hover:shadow-md"
                   }`}
                 >
                   {plan.highlighted && (
-                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-cream px-4 py-1 text-xs font-bold uppercase tracking-widest text-brand shadow">
+                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-sage px-4 py-1 text-xs font-bold uppercase tracking-widest text-brand-950 shadow">
                       Most popular
                     </span>
                   )}
                   <div className="mb-6">
-                    <h3 className={`text-lg font-bold ${plan.highlighted ? "text-white" : "text-brand"}`}>
+                    <h3 className={`text-lg font-semibold ${plan.highlighted ? "text-white" : "text-stone-900"}`}>
                       {plan.name}
                     </h3>
-                    <p className={`mt-1 text-sm ${plan.highlighted ? "text-white/70" : "text-slate-400"}`}>
+                    <p className={`mt-1 text-sm leading-6 ${plan.highlighted ? "text-brand-100/80" : "text-stone-500"}`}>
                       {plan.description}
                     </p>
                   </div>
@@ -462,18 +498,21 @@ export default function Home() {
                     <PriceTag
                       amount={plan.price}
                       period={plan.period}
-                      priceClass={plan.highlighted ? "text-white" : "text-brand"}
-                      periodClass={plan.highlighted ? "text-white/60" : "text-brand/50"}
+                      priceClass={plan.highlighted ? "text-white" : "text-stone-900"}
+                      periodClass={plan.highlighted ? "text-brand-100/70" : "text-stone-500"}
                     />
                   </div>
-                  <ul className="flex flex-col gap-3 flex-1 mb-8">
+                  <ul className="mb-8 flex flex-1 flex-col gap-3">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm">
-                        <Check
-                          className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-cream" : "text-brand"}`}
-                          strokeWidth={2.5}
-                        />
-                        <span className={plan.highlighted ? "text-white/80" : "text-brand/70"}>{f}</span>
+                      <li key={f} className="flex items-start gap-3 text-sm">
+                        <span
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                            plan.highlighted ? "bg-white/10 text-brand-200" : "bg-brand-50 text-brand-700"
+                          }`}
+                        >
+                          <Check className="h-3 w-3" strokeWidth={3} />
+                        </span>
+                        <span className={plan.highlighted ? "text-white/85" : "text-stone-600"}>{f}</span>
                       </li>
                     ))}
                   </ul>
@@ -483,8 +522,8 @@ export default function Home() {
                       here means never being asked again. */}
                   <Link
                     href={`/signup?plan=${plan.id}`}
-                    className={`block text-center rounded-full py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${
-                      plan.highlighted ? "bg-white text-brand" : "bg-brand text-white"
+                    className={`block rounded-full py-3 text-center text-sm font-semibold transition-colors ${
+                      plan.highlighted ? "bg-white text-brand-900 hover:bg-brand-50" : "bg-brand text-white hover:bg-brand-700"
                     }`}
                   >
                     {plan.cta}
@@ -496,25 +535,35 @@ export default function Home() {
         </section>
 
         {/* ── CTA Banner ───────────────────────────── */}
-        <section className="bg-teal-700 px-6 py-20 text-center">
-          <div className="mx-auto max-w-2xl">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Your first step starts here.
-            </h2>
-            {/* Was "Thousands of people have already taken control of their
-                mental health with Echo Health" — the same unevidenced volume
-                claim as the counters above, in prose. The CTA also said "free to
-                start", which it is not: the cheapest way in is a paid session. */}
-            <p className="mt-4 text-white/80 leading-7">
-              Answer a few questions, meet a licensed therapist, and pay only for
-              the sessions you book. Today can be your day one.
-            </p>
-            <Link
-              href="/signup"
-              className="mt-8 inline-block rounded-full bg-white px-10 py-4 text-sm font-semibold text-teal-700 shadow-lg hover:opacity-90 transition-opacity"
-            >
-              Match with a therapist
-            </Link>
+        <section className="bg-stone-50 px-4 pb-24 sm:px-6">
+          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-brand-gradient px-6 py-16 text-center sm:px-12 sm:py-20">
+            <Image
+              src="/echo-butterfly.png"
+              alt=""
+              width={500}
+              height={500}
+              className="pointer-events-none absolute -bottom-28 -right-20 w-[440px] opacity-10 brightness-0 invert"
+            />
+            <div className="relative mx-auto max-w-2xl">
+              <h2 className="font-display text-3xl tracking-tight text-white sm:text-5xl">
+                Your first step starts here.
+              </h2>
+              {/* Was "Thousands of people have already taken control of their
+                  mental health with Echo Health" — the same unevidenced volume
+                  claim as the counters above, in prose. The CTA also said "free to
+                  start", which it is not: the cheapest way in is a paid session. */}
+              <p className="mx-auto mt-4 max-w-lg leading-7 text-white">
+                Answer a few questions, meet a licensed therapist, and pay only for
+                the sessions you book. Today can be your day one.
+              </p>
+              <Link
+                href="/signup"
+                className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-brand-800 shadow-lg transition-colors hover:bg-brand-50"
+              >
+                Match with a therapist
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </section>
 

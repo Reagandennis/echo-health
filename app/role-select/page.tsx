@@ -165,7 +165,7 @@ function RoleSelectContent() {
           <h1 className="text-3xl sm:text-4xl font-bold text-brand leading-tight">
             How will you be using<br />Echo Health?
           </h1>
-          <p className="mt-3 text-brand/55 text-base">
+          <p className="mt-3 text-stone-500 text-base">
             Choose your role. You won&apos;t be able to change this later.
           </p>
         </div>
@@ -200,16 +200,16 @@ function RoleSelectContent() {
                 </div>
 
                 {/* Label */}
-                <p className="text-xs font-semibold uppercase tracking-widest text-brand/40 mb-1">
+                <p className="text-xs font-semibold uppercase tracking-widest text-stone-500 mb-1">
                   {role.subtitle}
                 </p>
                 <h2 className="text-xl font-bold text-brand mb-3">{role.title}</h2>
-                <p className="text-sm text-brand/60 leading-relaxed mb-5">{role.description}</p>
+                <p className="text-sm text-stone-500 leading-relaxed mb-5">{role.description}</p>
 
                 {/* Perks */}
                 <ul className="space-y-2">
                   {role.perks.map((perk) => (
-                    <li key={perk} className="flex items-center gap-2 text-sm text-brand/70">
+                    <li key={perk} className="flex items-center gap-2 text-sm text-stone-600">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSelected ? "bg-brand" : "bg-brand/30"}`} />
                       {perk}
                     </li>
@@ -248,7 +248,7 @@ function RoleSelectContent() {
               </>
             )}
           </button>
-          <p className="text-xs text-brand/35">This can&apos;t be changed once set.</p>
+          <p className="text-xs text-stone-400">This can&apos;t be changed once set.</p>
         </div>
       </main>
     </div>

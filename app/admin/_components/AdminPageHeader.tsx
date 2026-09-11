@@ -21,36 +21,35 @@ export default function AdminPageHeader({
   actions,
 }: AdminPageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-      <div>
+    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+      <div className="min-w-0">
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav className="flex items-center gap-1 text-xs text-stone-400 mb-2">
-            <Link href="/admin" className="hover:text-teal-400 transition-colors">
+          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-xs text-stone-500 mb-2">
+            <Link href="/admin" className="hover:text-brand-700 transition-colors">
               Admin
             </Link>
             {breadcrumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1">
-                <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                <ChevronRight className="w-3 h-3 flex-shrink-0 text-stone-400" />
                 {crumb.href ? (
-                  <Link
-                    href={crumb.href}
-                    className="hover:text-teal-400 transition-colors"
-                  >
+                  <Link href={crumb.href} className="hover:text-brand-700 transition-colors">
                     {crumb.label}
                   </Link>
                 ) : (
-                  <span className="text-stone-300">{crumb.label}</span>
+                  // The current page. Was stone-300 on a near-white page — 1.5:1,
+                  // effectively invisible.
+                  <span aria-current="page" className="font-medium text-stone-700">{crumb.label}</span>
                 )}
               </span>
             ))}
           </nav>
         )}
-        <h1 className="text-2xl font-bold text-stone-900">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">{title}</h1>
         {description && (
-          <p className="text-sm text-stone-500 mt-1">{description}</p>
+          <p className="text-sm text-stone-500 mt-1 max-w-2xl">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 flex-shrink-0">{actions}</div>}
     </div>
   );
 }

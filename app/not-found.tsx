@@ -6,16 +6,16 @@ export default function NotFound() {
     <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-4 text-center">
       {/* Illustration */}
       <div className="mb-8 relative">
-        <div className="text-[120px] font-black text-brand/8 leading-none select-none">404</div>
+        <div className="text-[120px] font-black text-stone-400 leading-none select-none">404</div>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center">
-            <Search size={28} className="text-brand/50" strokeWidth={1.5} />
+            <Search size={28} className="text-stone-500" strokeWidth={1.5} />
           </div>
         </div>
       </div>
 
       <h1 className="text-3xl font-bold text-brand mb-3">Page not found</h1>
-      <p className="text-brand/55 text-base max-w-sm leading-relaxed mb-10">
+      <p className="text-stone-500 text-base max-w-sm leading-relaxed mb-10">
         The page you&apos;re looking for doesn&apos;t exist or may have been moved.
       </p>
 
@@ -34,7 +34,7 @@ export default function NotFound() {
         </Link>
       </div>
 
-      <p className="text-xs text-brand/30 mt-10">echo health · support@echohealth.com</p>
+      <p className="text-xs text-stone-400 mt-10">echo health · support@echohealth.com</p>
     </div>
   );
 }

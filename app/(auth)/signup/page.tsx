@@ -61,31 +61,31 @@ export default function SignUpPage() {
     <div className="flex flex-col gap-8">
       {/* Heading */}
       <div>
-        <h1 className="text-2xl font-bold text-brand">Create your account</h1>
-        <p className="mt-1 text-sm text-brand/55">
+        <h1 className="font-display text-3xl tracking-tight text-stone-900">Create your account</h1>
+        <p className="mt-2 text-sm text-stone-500">
           Already have an account?{" "}
-          <Link href="/signin" className="font-semibold text-brand hover:opacity-75 transition-opacity underline underline-offset-2">
+          <Link href="/signin" className="font-semibold text-brand-700 hover:text-brand-800 transition-colors underline underline-offset-2">
             Sign in
           </Link>
         </p>
       </div>
 
       {/* Terms */}
-      <label className="flex items-start gap-3 cursor-pointer select-none text-sm text-brand/60 leading-5">
+      <label className="flex items-start gap-3 cursor-pointer select-none text-sm text-stone-600 leading-5">
         <input
           type="checkbox"
           name="terms"
           checked={agreed}
           onChange={(e) => setAgreed(e.target.checked)}
-          className="mt-0.5 w-4 h-4 rounded border-cream accent-brand shrink-0"
+          className="mt-0.5 w-4 h-4 rounded border-stone-300 accent-brand shrink-0"
         />
         <span>
           I agree to the{" "}
-          <a href="https://echohealth.app/terms" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
+          <a href="https://echohealth.app/terms" className="text-brand-700 font-medium underline underline-offset-2 hover:text-brand-800 transition-colors">
             Terms of Service
           </a>{" "}
           and{" "}
-          <a href="https://echohealth.app/privacy" className="text-brand font-medium underline underline-offset-2 hover:opacity-75 transition-opacity">
+          <a href="https://echohealth.app/privacy" className="text-brand-700 font-medium underline underline-offset-2 hover:text-brand-800 transition-colors">
             Privacy Policy
           </a>
         </span>
@@ -97,20 +97,20 @@ export default function SignUpPage() {
           type="button"
           onClick={handleSignUp}
           disabled={!agreed}
-          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           Create account
         </button>
-        <p className="text-center text-xs text-brand/40 leading-relaxed">
+        <p className="text-center text-xs text-stone-500 leading-relaxed">
           You&apos;ll be taken to our secure sign-up page to choose an email and password.
         </p>
       </div>
 
       {/* Divider */}
       <div className="flex items-center gap-3">
-        <span className="flex-1 h-px bg-cream/70" />
-        <span className="text-xs text-brand/30 font-medium">or continue with</span>
-        <span className="flex-1 h-px bg-cream/70" />
+        <span className="flex-1 h-px bg-stone-200" />
+        <span className="text-xs text-stone-400 font-medium">or continue with</span>
+        <span className="flex-1 h-px bg-stone-200" />
       </div>
 
       {/* OAuth */}
@@ -118,7 +118,7 @@ export default function SignUpPage() {
         type="button"
         onClick={handleGoogle}
         disabled={!agreed}
-        className="flex items-center justify-center gap-3 w-full rounded-xl border border-cream py-3 text-sm font-medium text-brand/70 hover:bg-cream/30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        className="flex items-center justify-center gap-3 w-full rounded-xl border border-stone-300 bg-white py-3 text-sm font-medium text-stone-700 shadow-xs hover:bg-stone-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>

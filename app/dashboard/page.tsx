@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   CalendarCheck, TrendingUp, Clock, HeartHandshake, ChevronRight,
-  Sparkles, Video, MessageCircle, Plus, AlertCircle, Star, Target,
+  Video, MessageCircle, Plus, AlertCircle, Star, Target,
 } from "lucide-react";
 import type { TherapySession, MoodLog, Goal } from "@/lib/types/documents";
-import { MOOD_EMOJIS, PLACEHOLDER_THERAPIST_ID } from "@/lib/constants";
+import { MOOD_EMOJIS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
-import { 
-  listPatientSessionsAction, 
-  listMoodLogsAction, 
+import {
+  listPatientSessionsAction,
+  listMoodLogsAction,
   listGoalsAction,
   getTherapistAction,
   getProfileByUserIdAction,
@@ -19,7 +20,7 @@ import {
 } from "@/app/actions/database";
 
 function MoodSparkline({ logs }: { readonly logs: MoodLog[] }) {
-  if (logs.length < 2) return <p className="text-xs text-brand/35">Not enough data yet</p>;
+  if (logs.length < 2) return <p className="text-xs text-stone-400">Not enough data yet</p>;
   const w = 160; const h = 40; const pad = 4;
   const scores = logs.map((l) => l.score);
   const min = Math.min(...scores); const max = Math.max(...scores);
@@ -31,15 +32,26 @@ function MoodSparkline({ logs }: { readonly logs: MoodLog[] }) {
   }).join(" ");
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
-      <polyline points={pts} fill="none" stroke="#35858E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points={pts} fill="none" className="stroke-brand-600" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {scores.map((s, i) => {
         const x = pad + (i / (scores.length - 1)) * (w - pad * 2);
         const y = h - pad - ((s - min) / range) * (h - pad * 2);
-        return <circle key={`${i}-${s}`} cx={x} cy={y} r="2.5" fill="#35858E" />;
+        return <circle key={`${i}-${s}`} cx={x} cy={y} r="2.5" className="fill-brand-600" />;
       })}
     </svg>
   );
 }
+
+function CardLabel({ icon: Icon, children }: { readonly icon: typeof CalendarCheck; readonly children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon size={15} className="text-brand-600" />
+      <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">{children}</span>
+    </div>
+  );
+}
+
+const CARD = "rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs";
 
 export default function DashboardHome() {
   const user = useUser();
@@ -52,7 +64,7 @@ export default function DashboardHome() {
 
   useEffect(() => {
     if (!user) return;
-    
+
     (async () => {
       try {
         const [creditData, sess, moods, goalList, profile] = await Promise.all([
@@ -66,7 +78,7 @@ export default function DashboardHome() {
         setSessions(sess);
         setMoodLogs(moods);
         setGoals(goalList);
-        
+
         const tid = profile?.therapistId || sess[0]?.therapistId;
         if (tid) {
           try {
@@ -99,7 +111,6 @@ export default function DashboardHome() {
   const allowance = credits.entitled;
   const now = new Date();
   const completed = sessions.filter((s) => s.status === "completed").length;
-  const used = credits.used;
   const remaining = credits.remaining;
   const upcoming = sessions
     .filter((s) => s.status !== "cancelled" && s.status !== "completed" && new Date(s.scheduledAt) > now)
@@ -110,124 +121,110 @@ export default function DashboardHome() {
   const latestMoodEmoji = MOOD_EMOJIS.find((m) => m.score === latestMood?.score);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       {/* Welcome */}
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 bg-brand/10 text-brand text-sm font-medium px-4 py-1.5 rounded-full mb-3">
-          <Sparkles size={13} /> Your wellness dashboard
-        </div>
-        <h1 className="text-2xl font-bold text-brand">Good to see you, {firstName} 👋</h1>
-        <p className="text-brand/50 text-sm mt-1">Here&apos;s your mental wellness overview for today.</p>
+        <p className="text-sm font-medium text-brand-700">Your wellness dashboard</p>
+        <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 sm:text-4xl">
+          Good to see you, {firstName} 👋
+        </h1>
+        <p className="mt-2 text-sm text-stone-500">Here&apos;s your mental wellness overview for today.</p>
       </div>
 
       {/* Next session + Therapist snapshot */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-brand/10 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <CalendarCheck size={15} className="text-brand" />
-            <span className="text-xs font-bold text-brand uppercase tracking-wide">Next Session</span>
-          </div>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section className={`flex flex-col ${CARD}`}>
+          <CardLabel icon={CalendarCheck}>Next session</CardLabel>
           {nextSession ? (
-            <>
-              <p className="text-lg font-bold text-brand">
+            <div className="mt-4">
+              <p className="text-lg font-semibold text-stone-900">
                 {new Date(nextSession.scheduledAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
               </p>
-              <p className="text-sm text-brand/50 mb-1">
+              <p className="mb-3 text-sm text-stone-500">
                 {new Date(nextSession.scheduledAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
               </p>
-              <span className="inline-flex items-center gap-1 text-xs text-brand/50 bg-cream px-2.5 py-1 rounded-full mb-4">
-                <Video size={11} /> Video call
+              <span className="mb-5 inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600">
+                <Video size={12} /> Video call
               </span>
               <div className="flex gap-2">
-                <button className="flex-1 flex items-center justify-center gap-1.5 bg-brand text-white text-xs font-semibold py-2 rounded-full hover:bg-brand/90 transition-colors">
-                  <Video size={12} /> Join
-                </button>
+                {/* Was a <button> with no handler. The session page is where
+                    the call is joined from. */}
+                <Link href={`/dashboard/sessions/${nextSession.$id}`}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700">
+                  <Video size={14} /> Join
+                </Link>
                 <Link href="/dashboard/sessions"
-                  className="flex-1 flex items-center justify-center text-xs font-semibold text-brand border border-brand/20 py-2 rounded-full hover:bg-cream transition-colors">
+                  className="flex flex-1 items-center justify-center rounded-full py-2.5 text-sm font-semibold text-stone-700 ring-1 ring-inset ring-stone-300 transition hover:bg-stone-50">
                   Reschedule
                 </Link>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 py-4">
-              {/* Butterfly illustration — echoes the logo */}
-              <svg viewBox="0 0 80 60" className="w-16 h-12 opacity-25" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M40 30 C30 20 10 18 8 28 C6 38 20 42 40 30Z" fill="#33b2a1" />
-                <path d="M40 30 C50 20 70 18 72 28 C74 38 60 42 40 30Z" fill="#1BB8C8" />
-                <path d="M40 30 C32 36 18 44 20 52 C22 58 34 54 40 30Z" fill="#4BC96A" />
-                <path d="M40 30 C48 36 62 44 60 52 C58 58 46 54 40 30Z" fill="#33b2a1" />
-                <ellipse cx="40" cy="28" rx="2" ry="5" fill="#1BB8C8" />
-              </svg>
-              <p className="text-sm text-brand/50 text-center">No upcoming sessions scheduled.</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4 text-center">
+              <Image src="/echo-logo-mark.png" alt="" width={48} height={48} loading="eager" className="opacity-40" />
+              <p className="text-sm text-stone-500">No upcoming sessions scheduled.</p>
               <Link href="/dashboard/sessions"
-                className="flex items-center gap-1.5 bg-brand text-white text-xs font-semibold px-4 py-2 rounded-full hover:bg-brand/90 transition-colors">
-                <Plus size={12} /> Book a session
+                className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700">
+                <Plus size={14} /> Book a session
               </Link>
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="bg-white rounded-2xl border border-brand/10 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <HeartHandshake size={15} className="text-brand" />
-            <span className="text-xs font-bold text-brand uppercase tracking-wide">Your Therapist</span>
-          </div>
+        <section className={`flex flex-col ${CARD}`}>
+          <CardLabel icon={HeartHandshake}>Your therapist</CardLabel>
           {therapistName ? (
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand/10 flex items-center justify-center text-brand font-bold text-lg">
+            <div className="mb-5 mt-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-lg font-semibold text-brand-800">
                 {therapistName[0]}
               </div>
               <div>
-                <p className="text-base font-bold text-brand">{therapistName}</p>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-brand/40">Available</span>
-                </div>
+                <p className="text-base font-semibold text-stone-900">{therapistName}</p>
+                {/* Said "Available" beside a green dot, on every render — it was
+                    never derived from the therapist's actual availability. */}
+                <p className="mt-0.5 text-xs text-stone-500">Your matched therapist</p>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-cream flex items-center justify-center text-brand/30 font-bold text-lg">?</div>
+            <div className="mb-5 mt-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 text-lg font-semibold text-stone-400">?</div>
               <div>
-                <p className="text-sm font-semibold text-brand/60">Not yet assigned</p>
-                <p className="text-xs text-brand/35">Complete onboarding to match</p>
+                <p className="text-sm font-semibold text-stone-700">Not yet assigned</p>
+                <p className="text-xs text-stone-500">Complete onboarding to match</p>
               </div>
             </div>
           )}
           <Link href="/dashboard/messages"
-            className="flex items-center justify-center gap-2 w-full border border-brand/20 text-brand text-xs font-semibold py-2 rounded-full hover:bg-cream transition-colors">
-            <MessageCircle size={13} /> Send a message
+            className="mt-auto flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-sm font-semibold text-stone-700 ring-1 ring-inset ring-stone-300 transition hover:bg-stone-50">
+            <MessageCircle size={14} /> Send a message
           </Link>
-        </div>
+        </section>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { icon: CalendarCheck, label: "Sessions left", value: `${remaining}/${allowance}`, accent: remaining > 0 },
           { icon: TrendingUp,    label: "Completed",     value: String(completed) },
           { icon: Clock,         label: "Hours",         value: `${(completed * 50 / 60).toFixed(1)}h` },
           { icon: Target,        label: "Active goals",  value: String(activeGoals.length) },
         ].map(({ icon: Icon, label, value, accent }) => (
-          <div key={label} className={`rounded-2xl border p-4 ${accent ? "bg-brand border-brand" : "bg-white border-brand/10"}`}>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${accent ? "bg-white/20" : "bg-brand/10"}`}>
-              <Icon size={15} className={accent ? "text-white" : "text-brand"} />
+          <div key={label} className={`rounded-2xl p-4 ${accent ? "bg-brand-gradient shadow-md shadow-brand-900/10" : "border border-stone-200/80 bg-white shadow-xs"}`}>
+            <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${accent ? "bg-white/15" : "bg-brand-50"}`}>
+              <Icon size={15} className={accent ? "text-white" : "text-brand-700"} />
             </div>
-            <p className={`text-xl font-bold ${accent ? "text-white" : "text-brand"}`}>{value}</p>
-            <p className={`text-xs mt-0.5 ${accent ? "text-white/55" : "text-brand/40"}`}>{label}</p>
+            <p className={`text-2xl font-semibold tracking-tight tabular-nums ${accent ? "text-white" : "text-stone-900"}`}>{value}</p>
+            <p className={`mt-0.5 text-xs ${accent ? "text-white/80" : "text-stone-500"}`}>{label}</p>
           </div>
         ))}
       </div>
 
       {/* Mood trend + Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-brand/10 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp size={15} className="text-brand" />
-              <span className="text-xs font-bold text-brand uppercase tracking-wide">Mood — last 7 days</span>
-            </div>
-            <Link href="/dashboard/progress" className="flex items-center gap-1 text-xs text-brand/50 hover:text-brand transition-colors">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <section className={`lg:col-span-2 ${CARD}`}>
+          <div className="mb-5 flex items-center justify-between">
+            <CardLabel icon={TrendingUp}>Mood — last 7 days</CardLabel>
+            <Link href="/dashboard/progress" className="flex items-center gap-1 text-xs font-medium text-stone-500 transition-colors hover:text-brand-700">
               Full report <ChevronRight size={12} />
             </Link>
           </div>
@@ -236,42 +233,41 @@ export default function DashboardHome() {
             {latestMood && latestMoodEmoji ? (
               <div className="flex flex-col items-center">
                 <span className="text-3xl">{latestMoodEmoji.emoji}</span>
-                <span className="text-xs text-brand/50 mt-1">{latestMoodEmoji.label}</span>
-                <span className="text-xs text-brand/30">Today</span>
+                <span className="mt-1 text-xs font-medium text-stone-600">{latestMoodEmoji.label}</span>
+                <span className="text-xs text-stone-400">Today</span>
               </div>
             ) : (
               <Link href="/dashboard/progress"
-                className="flex items-center gap-1.5 text-xs text-brand bg-brand/10 px-3 py-2 rounded-full hover:bg-brand/15 transition-colors whitespace-nowrap">
-                <Plus size={11} /> Log today&apos;s mood
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-100 transition-colors hover:bg-brand-100">
+                <Plus size={12} /> Log today&apos;s mood
               </Link>
             )}
           </div>
-        </div>
+        </section>
 
-        <div className="bg-white rounded-2xl border border-brand/10 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertCircle size={15} className="text-brand" />
-            <span className="text-xs font-bold text-brand uppercase tracking-wide">Alerts</span>
+        <section className={CARD}>
+          <div className="mb-4">
+            <CardLabel icon={AlertCircle}>Alerts</CardLabel>
           </div>
           <div className="space-y-2">
             {remaining === 0 && (
-              <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                <AlertCircle size={13} className="text-amber-500 mt-0.5 shrink-0" />
-                <p className="text-xs text-amber-700">No sessions left. <Link href="/dashboard/billing" className="underline font-semibold">Upgrade plan</Link></p>
+              <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 p-3 ring-1 ring-inset ring-amber-200/70">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                <p className="text-xs leading-5 text-amber-800">No sessions left. <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">Upgrade plan</Link></p>
               </div>
             )}
             {activeGoals.length === 0 && (
-              <div className="flex items-start gap-2 p-3 bg-brand/5 rounded-xl">
-                <Target size={13} className="text-brand/50 mt-0.5 shrink-0" />
-                <p className="text-xs text-brand/60">No active goals. <Link href="/dashboard/goals" className="underline font-semibold">Add a goal</Link></p>
+              <div className="flex items-start gap-2.5 rounded-xl bg-stone-50 p-3 ring-1 ring-inset ring-stone-200/70">
+                <Target size={14} className="mt-0.5 shrink-0 text-stone-400" />
+                <p className="text-xs leading-5 text-stone-600">No active goals. <Link href="/dashboard/goals" className="font-semibold text-brand-700 underline underline-offset-2">Add a goal</Link></p>
               </div>
             )}
-            <div className="flex items-start gap-2 p-3 bg-brand/5 rounded-xl">
-              <Star size={13} className="text-brand mt-0.5 shrink-0" />
-              <p className="text-xs text-brand/70">Keep logging your mood daily for better insights.</p>
+            <div className="flex items-start gap-2.5 rounded-xl bg-brand-50/70 p-3 ring-1 ring-inset ring-brand-100">
+              <Star size={14} className="mt-0.5 shrink-0 text-brand-600" />
+              <p className="text-xs leading-5 text-stone-600">Keep logging your mood daily for better insights.</p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

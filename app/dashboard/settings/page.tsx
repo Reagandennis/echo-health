@@ -81,7 +81,7 @@ export default function SettingsPage() {
     <div className="max-w-xl mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-xl font-bold text-brand">Settings</h1>
-        <p className="text-sm text-brand/45 mt-0.5">Manage your profile, preferences, and privacy.</p>
+        <p className="text-sm text-stone-500 mt-0.5">Manage your profile, preferences, and privacy.</p>
       </div>
 
       {/* Profile */}
@@ -92,8 +92,8 @@ export default function SettingsPage() {
         </Field>
         <Field label="Email address">
           <input value={email} disabled
-            className="w-full bg-cream/20 rounded-xl border border-brand/10 px-4 py-2.5 text-sm text-brand/40 cursor-not-allowed" />
-          <p className="text-[11px] text-brand/30 mt-1">Email cannot be changed here.</p>
+            className="w-full bg-cream/20 rounded-xl border border-brand/10 px-4 py-2.5 text-sm text-stone-500 cursor-not-allowed" />
+          <p className="text-[11px] text-stone-400 mt-1">Email cannot be changed here.</p>
         </Field>
       </Section>
 
@@ -101,11 +101,11 @@ export default function SettingsPage() {
       <Section icon={AlertTriangle} title="Emergency contact">
         <Field label="Contact name">
           <input value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} placeholder="e.g. Jane Doe"
-            className="w-full bg-cream/40 rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-brand/30" />
+            className="w-full bg-cream/40 rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-stone-400" />
         </Field>
         <Field label="Phone number">
           <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} placeholder="+1 (555) 000-0000"
-            className="w-full bg-cream/40 rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-brand/30" />
+            className="w-full bg-cream/40 rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand focus:outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-stone-400" />
         </Field>
       </Section>
 
@@ -115,7 +115,7 @@ export default function SettingsPage() {
           <div className="flex gap-2">
             {["video", "audio", "chat"].map((t) => (
               <button key={t} onClick={() => setSessionType(t)}
-                className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize border transition-colors ${sessionType === t ? "bg-brand text-white border-brand" : "bg-white border-brand/15 text-brand/50 hover:border-brand/30"}`}>
+                className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize border transition-colors ${sessionType === t ? "bg-brand text-white border-brand" : "bg-white border-brand/15 text-stone-500 hover:border-brand/30"}`}>
                 {t}
               </button>
             ))}
@@ -125,7 +125,7 @@ export default function SettingsPage() {
           <div className="flex gap-2">
             {["direct", "gentle", "structured"].map((c) => (
               <button key={c} onClick={() => setCommStyle(c)}
-                className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize border transition-colors ${commStyle === c ? "bg-brand text-white border-brand" : "bg-white border-brand/15 text-brand/50 hover:border-brand/30"}`}>
+                className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize border transition-colors ${commStyle === c ? "bg-brand text-white border-brand" : "bg-white border-brand/15 text-stone-500 hover:border-brand/30"}`}>
                 {c}
               </button>
             ))}
@@ -146,9 +146,9 @@ export default function SettingsPage() {
 
       {/* Privacy */}
       <Section icon={Shield} title="Privacy & data">
-        <button className="w-full flex items-center justify-between py-3 text-sm text-brand hover:text-brand/70 transition-colors group">
+        <button className="w-full flex items-center justify-between py-3 text-sm text-brand hover:text-stone-700 transition-colors group">
           <span>Export my data</span>
-          <ChevronRight size={14} className="text-brand/30 group-hover:text-brand/60 transition-colors" />
+          <ChevronRight size={14} className="text-stone-400 group-hover:text-stone-600 transition-colors" />
         </button>
         <hr className="border-brand/8" />
         {confirmDelete ? (
@@ -156,7 +156,7 @@ export default function SettingsPage() {
             <p className="text-sm text-red-600 font-semibold mb-3">Are you sure? This cannot be undone.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(false)}
-                className="flex-1 py-2 rounded-xl border border-brand/15 text-xs font-semibold text-brand/50 hover:border-brand/30 transition-colors">
+                className="flex-1 py-2 rounded-xl border border-brand/15 text-xs font-semibold text-stone-500 hover:border-brand/30 transition-colors">
                 Cancel
               </button>
               <button className="flex-1 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition-colors">
@@ -204,7 +204,7 @@ type FieldProps = {
 function Field({ label, children }: FieldProps) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-brand/50 mb-1.5">{label}</label>
+      <label className="block text-xs font-semibold text-stone-500 mb-1.5">{label}</label>
       {children}
     </div>
   );

@@ -263,7 +263,7 @@ export default function ChatWidget() {
             <form onSubmit={handleGateSubmit} className="flex flex-col gap-4 p-5">
               <div>
                 <p className="text-sm font-semibold text-brand mb-1">Before we start</p>
-                <p className="text-xs text-brand/50 leading-relaxed">
+                <p className="text-xs text-stone-500 leading-relaxed">
                   Please share your name and email so our team can follow up with you.
                 </p>
               </div>
@@ -273,14 +273,14 @@ export default function ChatWidget() {
                   placeholder="Your name"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setGateError(""); }}
-                  className="w-full rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/30 bg-cream/40"
+                  className="w-full rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/30 bg-cream/40"
                 />
                 <input
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setGateError(""); }}
-                  className="w-full rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/30 bg-cream/40"
+                  className="w-full rounded-xl border border-brand/15 px-4 py-2.5 text-sm text-brand placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/30 bg-cream/40"
                 />
               </div>
               {gateError && <p className="text-red-500 text-xs">{gateError}</p>}
@@ -343,7 +343,7 @@ export default function ChatWidget() {
                     }
                   }}
                   placeholder="Type a message…"
-                  className="flex-1 text-sm text-brand placeholder:text-brand/30 bg-transparent outline-none"
+                  className="flex-1 text-sm text-brand placeholder:text-stone-400 bg-transparent outline-none"
                 />
                 <button
                   onClick={() => { handleSend().catch(() => null); }}

@@ -189,11 +189,16 @@ export default function TherapistHomePage() {
   }
 
   const statCards = [
-    { label: "Total Sessions", value: stats.total, icon: CalendarCheck, color: "bg-brand/10 text-brand" },
-    { label: "This Week", value: stats.thisWeek, icon: TrendingUp, color: "bg-emerald-100 text-emerald-600" },
-    { label: "Pending Approval", value: stats.pending, icon: Clock, color: "bg-amber-100 text-amber-600" },
-    { label: "Today's Sessions", value: todaySessions.length, icon: CheckCircle2, color: "bg-purple-100 text-purple-600" },
+    { label: "Total Sessions", value: stats.total, icon: CalendarCheck, color: "bg-brand-50 text-brand-700" },
+    { label: "This Week", value: stats.thisWeek, icon: TrendingUp, color: "bg-brand-50 text-brand-700" },
+    { label: "Pending Approval", value: stats.pending, icon: Clock, color: "bg-amber-50 text-amber-700" },
+    { label: "Today's Sessions", value: todaySessions.length, icon: CheckCircle2, color: "bg-sky-50 text-sky-700" },
   ];
+
+  // Derived from the ticking `now` state rather than a fresh Date(), for the
+  // same purity reason as above. It used to say "Good morning" all day.
+  const hour = new Date(now).getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const quickLinks = [
     { href: "/therapist/clients", label: "View Clients", icon: Users },
@@ -209,10 +214,10 @@ export default function TherapistHomePage() {
   );
 
   return (
-    <div className="p-6 space-y-8 max-w-5xl mx-auto">
+    <div className="px-4 py-8 sm:px-6 space-y-8 max-w-5xl mx-auto">
       {/* Greeting */}
       <div>
-        <h1 className="text-2xl font-bold text-stone-900">Good morning, {therapistName} 👋</h1>
+        <h1 className="font-display text-3xl tracking-tight text-stone-900">{greeting}, {therapistName} 👋</h1>
         <p className="text-stone-500 mt-1">{fmtDate(new Date().toISOString())} — here&apos;s your day at a glance.</p>
       </div>
 
@@ -251,11 +256,11 @@ export default function TherapistHomePage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-white rounded-2xl border border-stone-200 p-5 shadow-sm">
+          <div key={label} className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-xs">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${color}`}>
               <Icon size={18} />
             </div>
-            <p className="text-2xl font-bold text-stone-900">{value}</p>
+            <p className="text-2xl font-semibold tracking-tight tabular-nums text-stone-900">{value}</p>
             <p className="text-xs text-stone-500 mt-0.5">{label}</p>
           </div>
         ))}
@@ -265,7 +270,7 @@ export default function TherapistHomePage() {
         {/* Left Column: Pending Requests & Agenda */}
         <div className="space-y-6">
           {pendingRequests.length > 0 && (
-            <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden border-l-4 border-l-amber-400">
+            <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden border-l-4 border-l-amber-400">
               <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-amber-50/30">
                 <div className="flex items-center gap-2">
                   <Clock size={16} className="text-amber-600" />
@@ -310,7 +315,7 @@ export default function TherapistHomePage() {
           )}
 
           {/* Today's agenda */}
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm">
+          <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs">
           <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
             <h2 className="font-semibold text-stone-900">Today&apos;s Agenda</h2>
             <Link href="/therapist/sessions" className="text-xs text-brand font-medium flex items-center gap-1 hover:underline">
@@ -367,7 +372,7 @@ export default function TherapistHomePage() {
 
       {/* Right Column: Quick actions & Alerts */}
       <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm">
+          <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs">
             <div className="px-6 py-4 border-b border-stone-100">
               <h2 className="font-semibold text-stone-900">Quick Actions</h2>
             </div>

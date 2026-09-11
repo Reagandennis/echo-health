@@ -187,6 +187,17 @@ Keep `HIGH_RISK_KEYWORDS` / `MODERATE_RISK_KEYWORDS` as the source of truth; the
 - Messages are written with the **admin client** (the browser SDK has no session) and stored across `chatMessages` / `chatSessions` collections. A `text === "heartbeat"` message is an online-presence ping, not a real message (`role: "system"`).
 - Sibling routes: `history/` (fetch a thread), `offline/` (capture a message when no agent is online), `reply/` (agent → visitor). Risk scanning runs here via `analyzeRisk`.
 
+### UI & design tokens
+
+The palette, fonts and shared surfaces live in `app/globals.css` — read its header comment before changing a colour.
+
+- **`stone-*` and `slate-*` are not Tailwind's.** Both are remapped to one neutral ("ink"), tinted slightly toward the brand hue, so the portals (stone) and marketing pages (slate) read as one product. They are identical; use either. **`teal-*` is remapped to the brand scale.**
+- **`brand` is `brand-600`** — 5:1 on white, safe for text and for white-on-brand buttons. `brand-50…950` exist for tints and hovers. Don't set text in faded brand (`text-brand/50` is ~2:1); use `text-stone-500`/`-600` for secondary copy.
+- `font-display` (Fraunces) is for marketing headlines and greetings only; UI text stays in Geist.
+- Surfaces: `bg-app-surface` (portal background), `bg-brand-gradient` (brand panels), `bg-aurora` (marketing hero). There is no dark theme; `color-scheme: light` is deliberate.
+- **Portal chrome:** each section's `layout.tsx` is only the auth/role gate; the chrome is `ClientShell` / `TherapistShell` / `AdminShell`. Shared pieces are in `app/components/portal/` (`BrandMark`, `Avatar`, `NavList`, `MobileDrawer`). Nav configs live in client modules because lucide icons are functions and cannot cross the server→client boundary as props.
+- **Logos:** `public/echo-logo.png` is the original and has an opaque white background. `public/echo-butterfly.png` (full) and `public/echo-logo-mark.png` (tight crop) are transparent derivatives — use those anywhere the background is not white.
+
 ### Cross-cutting request helpers
 
 - **Validation** — `lib/validation.ts` holds the zod schemas for every API-route body and a `parseOrError(schema, body)` helper returning `{ ok, data } | { ok: false, message }`. Add a schema here and validate at the top of new route handlers rather than hand-rolling checks.

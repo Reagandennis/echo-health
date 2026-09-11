@@ -175,7 +175,7 @@ function CheckoutContent() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-brand/10">
         <span className="text-xl font-bold text-brand tracking-tight">echo health</span>
-        <div className="flex items-center gap-1.5 text-xs text-brand/40">
+        <div className="flex items-center gap-1.5 text-xs text-stone-500">
           <Lock size={12} />
           Secured with 256-bit encryption
         </div>
@@ -186,14 +186,14 @@ function CheckoutContent() {
         <div className="flex-1 w-full max-w-lg">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-sm text-brand/50 hover:text-brand mb-6 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-brand mb-6 transition-colors"
           >
             <ArrowLeft size={15} />
             Back to plans
           </button>
 
           <h1 className="text-2xl font-bold text-brand mb-1">Complete your order</h1>
-          <p className="text-sm text-brand/50 mb-8">
+          <p className="text-sm text-stone-500 mb-8">
             {promoApplied
               ? `Your promo code gives ${PROMO_DISCOUNT_PERCENT}% off. You'll be charged the discounted amount.`
               : "You'll be redirected to Paystack to complete payment."}
@@ -211,7 +211,7 @@ function CheckoutContent() {
                 <Lock size={16} className="text-brand mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-brand">Secure checkout by Paystack</p>
-                  <p className="text-xs text-brand/55 mt-1 leading-relaxed">
+                  <p className="text-xs text-stone-500 mt-1 leading-relaxed">
                     You&apos;ll be redirected to Paystack to complete payment by card,
                     M-Pesa or bank transfer. Echo Health never sees your card details.
                   </p>
@@ -233,12 +233,12 @@ function CheckoutContent() {
                 <Sparkles size={16} className="text-brand shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-brand">Promo code applied!</p>
-                  <p className="text-xs text-brand/50">{promoInput.toUpperCase()} · {PROMO_DISCOUNT_PERCENT}% off</p>
+                  <p className="text-xs text-stone-500">{promoInput.toUpperCase()} · {PROMO_DISCOUNT_PERCENT}% off</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleRemovePromo}
-                  className="text-brand/40 hover:text-brand transition-colors"
+                  className="text-stone-500 hover:text-brand transition-colors"
                   aria-label="Remove promo code"
                 >
                   <X size={15} />
@@ -246,7 +246,7 @@ function CheckoutContent() {
               </div>
             ) : promoOpen ? (
               <div>
-                <label htmlFor="promoCode" className="block text-xs font-semibold text-brand/60 uppercase tracking-wide mb-1.5">
+                <label htmlFor="promoCode" className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">
                   Promo code
                 </label>
                 <div className="flex gap-2">
@@ -258,7 +258,7 @@ function CheckoutContent() {
                     onChange={(e) => { setPromoInput(e.target.value); setPromoError(""); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleApplyPromo(); } }}
                     placeholder="ECHO-XXXX"
-                    className={`flex-1 rounded-xl border px-4 py-3 text-sm text-brand bg-white placeholder:text-brand/30 focus:outline-none focus:ring-2 focus:ring-brand/40 transition uppercase
+                    className={`flex-1 rounded-xl border px-4 py-3 text-sm text-brand bg-white placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand/40 transition uppercase
                       ${promoError ? "border-red-400" : "border-brand/15"}`}
                   />
                   <button
@@ -279,7 +279,7 @@ function CheckoutContent() {
               <button
                 type="button"
                 onClick={() => setPromoOpen(true)}
-                className="text-sm text-brand/50 hover:text-brand underline underline-offset-4 transition-colors"
+                className="text-sm text-stone-500 hover:text-brand underline underline-offset-4 transition-colors"
               >
                 Have a promo code?
               </button>
@@ -304,7 +304,7 @@ function CheckoutContent() {
                 : `Continue to payment — ${plan.name}`}
             </button>
 
-            <p className="text-center text-xs text-brand/35 mt-1">
+            <p className="text-center text-xs text-stone-400 mt-1">
               By continuing you agree to our Terms of Service and Privacy Policy. This is a one-time purchase, not a subscription.
             </p>
 
@@ -313,7 +313,7 @@ function CheckoutContent() {
                 Terms make the payment non-refundable. */}
             <ul className="space-y-2.5 border-t border-brand/8 pt-5">
               {reassurances.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-start gap-2.5 text-sm text-brand/70">
+                <li key={text} className="flex items-start gap-2.5 text-sm text-stone-600">
                   <Icon size={15} className="mt-0.5 shrink-0 text-brand" strokeWidth={2} />
                   {text}
                 </li>
@@ -329,14 +329,14 @@ function CheckoutContent() {
             payment before they had seen the amount. */}
         <div className="w-full max-w-sm order-first lg:order-none lg:sticky lg:top-12">
           <div className="bg-white rounded-2xl border border-brand/10 shadow-sm p-6">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand/40 mb-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-stone-500 mb-4">
               Order summary
             </p>
 
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <p className="text-lg font-bold text-brand">{plan.name} Plan</p>
-                <p className="text-xs text-brand/40 mt-0.5">
+                <p className="text-xs text-stone-500 mt-0.5">
                   {sessions} {sessions === 1 ? "session" : "sessions"} · one-time payment · credits never expire
                 </p>
               </div>
@@ -346,7 +346,7 @@ function CheckoutContent() {
                 period={plan.period}
                 sizeClass="text-2xl"
                 priceClass="text-brand"
-                periodClass="text-brand/40 text-xs"
+                periodClass="text-stone-500 text-xs"
               />
             </div>
 
@@ -354,7 +354,7 @@ function CheckoutContent() {
               {plan.features.map((feat) => (
                 <li key={feat} className="flex items-start gap-2 text-sm">
                   <Check size={14} className="text-brand mt-0.5 shrink-0" strokeWidth={2.5} />
-                  <span className="text-brand/70">{feat}</span>
+                  <span className="text-stone-600">{feat}</span>
                 </li>
               ))}
             </ul>
@@ -372,8 +372,8 @@ function CheckoutContent() {
                 { icon: Lock, label: "Card details handled by Paystack, never by us" },
                 { icon: Wallet, label: "No hidden fees, ever" },
               ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-xs text-brand/40">
-                  <Icon size={13} className="text-brand/30 shrink-0" />
+                <div key={label} className="flex items-center gap-2 text-xs text-stone-500">
+                  <Icon size={13} className="text-stone-400 shrink-0" />
                   {label}
                 </div>
               ))}
@@ -387,7 +387,7 @@ function CheckoutContent() {
 
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-brand/60">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-stone-500">Loading...</p></div>}>
       <CheckoutContent />
     </Suspense>
   );

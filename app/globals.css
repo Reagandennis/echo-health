@@ -1,8 +1,61 @@
 @import "tailwindcss";
 
+/*
+ * ── Echo design tokens ────────────────────────────────────────────────────
+ *
+ * The palette is taken from the butterfly logo (leaf green → teal → cyan).
+ * Raw values live on :root; `@theme inline` below maps them onto Tailwind
+ * colour names, so every utility resolves to one of these variables.
+ *
+ * Two remaps are deliberate. They let the ~2,500 existing class names pick up
+ * the palette without a codemod:
+ *
+ *  - `stone-*` and `slate-*` both resolve to ONE neutral, "ink", tinted very
+ *    slightly towards the brand hue. The app had drifted into two greys — warm
+ *    stone in the portals, cool slate on the marketing pages — which read as
+ *    two different products. The lightness steps match Tailwind's stone, so
+ *    existing contrast relationships hold (400 is nudged darker; see below).
+ *  - `teal-*` resolves to the brand scale, so `teal-600` and `brand` can no
+ *    longer disagree.
+ *
+ * `brand` with no step is brand-600: 5.0:1 on white, which passes AA for body
+ * text AND for white text on a brand button. The previous `#1a9e90` was 3.3:1
+ * and failed both — on every primary button in the app.
+ */
 :root {
   --background: #ffffff;
-  --foreground: #1c1c1e;
+  --foreground: oklch(21.6% 0.01 202);
+
+  /* Brand — the logo's teal. 500 is the logo colour itself; 600+ is text-safe. */
+  --brand-50: oklch(98.2% 0.016 178);
+  --brand-100: oklch(95.4% 0.038 178);
+  --brand-200: oklch(90.5% 0.07 179);
+  --brand-300: oklch(83.5% 0.102 180);
+  --brand-400: oklch(74.5% 0.122 181);
+  --brand-500: oklch(65.5% 0.118 182);
+  --brand-600: oklch(53% 0.097 184);
+  --brand-700: oklch(47% 0.084 186);
+  --brand-800: oklch(40.5% 0.07 188);
+  --brand-900: oklch(34.5% 0.056 190);
+  --brand-950: oklch(25% 0.042 193);
+
+  /*
+   * Ink — the single neutral. 400 sits at 65% lightness rather than Tailwind's
+   * 71%: it is the app's default "meta text" colour (timestamps, hints, empty
+   * states), and at 71% it measured 2.6:1 on white. 65% gives ~3.2:1 without
+   * making it compete with 500–600 body text.
+   */
+  --ink-50: oklch(98.5% 0.002 190);
+  --ink-100: oklch(97% 0.003 190);
+  --ink-200: oklch(92.3% 0.005 190);
+  --ink-300: oklch(86.9% 0.008 190);
+  --ink-400: oklch(65% 0.012 192);
+  --ink-500: oklch(55.3% 0.014 194);
+  --ink-600: oklch(44.4% 0.013 196);
+  --ink-700: oklch(37.4% 0.012 198);
+  --ink-800: oklch(26.8% 0.011 200);
+  --ink-900: oklch(21.6% 0.01 202);
+  --ink-950: oklch(14.7% 0.009 205);
 }
 
 @theme inline {
@@ -10,46 +63,153 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Marketing headlines and greetings only — UI text stays in Geist. */
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
 
-  /* Primary brand — deep refined teal */
-  --color-brand: #1a9e90;
+  --color-brand: var(--brand-600);
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
 
-  /* Soft mint-white surface */
-  --color-cream: #e6f6f4;
+  --color-teal-50: var(--brand-50);
+  --color-teal-100: var(--brand-100);
+  --color-teal-200: var(--brand-200);
+  --color-teal-300: var(--brand-300);
+  --color-teal-400: var(--brand-400);
+  --color-teal-500: var(--brand-500);
+  --color-teal-600: var(--brand-600);
+  --color-teal-700: var(--brand-700);
+  --color-teal-800: var(--brand-800);
+  --color-teal-900: var(--brand-900);
+  --color-teal-950: var(--brand-950);
 
-  /* Accent mint — for specialty tags, chips */
-  --color-sage: #4bc96a;
+  --color-stone-50: var(--ink-50);
+  --color-stone-100: var(--ink-100);
+  --color-stone-200: var(--ink-200);
+  --color-stone-300: var(--ink-300);
+  --color-stone-400: var(--ink-400);
+  --color-stone-500: var(--ink-500);
+  --color-stone-600: var(--ink-600);
+  --color-stone-700: var(--ink-700);
+  --color-stone-800: var(--ink-800);
+  --color-stone-900: var(--ink-900);
+  --color-stone-950: var(--ink-950);
 
-  /* Accent cyan — for secondary highlights */
-  --color-cyan-accent: #1bb8c8;
+  --color-slate-50: var(--ink-50);
+  --color-slate-100: var(--ink-100);
+  --color-slate-200: var(--ink-200);
+  --color-slate-300: var(--ink-300);
+  --color-slate-400: var(--ink-400);
+  --color-slate-500: var(--ink-500);
+  --color-slate-600: var(--ink-600);
+  --color-slate-700: var(--ink-700);
+  --color-slate-800: var(--ink-800);
+  --color-slate-900: var(--ink-900);
+  --color-slate-950: var(--ink-950);
+
+  /* Soft mint surface — chips, hover fills, tinted panels. */
+  --color-cream: oklch(96.4% 0.024 180);
+  /* The logo's two outer hues, for gradients and decoration — not for text. */
+  --color-sage: oklch(78% 0.15 148);
+  --color-cyan-accent: oklch(70% 0.115 205);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  /* Shadows tinted with the ink hue instead of pure black, so cards sit on the
+     page rather than looking cut out of it. */
+  --shadow-xs: 0 1px 2px 0 oklch(22% 0.02 200 / 0.05);
+  --shadow-sm: 0 1px 2px 0 oklch(22% 0.02 200 / 0.04), 0 1px 3px 0 oklch(22% 0.02 200 / 0.07);
+  --shadow-md: 0 2px 4px -1px oklch(22% 0.02 200 / 0.05), 0 6px 14px -3px oklch(22% 0.02 200 / 0.09);
+  --shadow-lg: 0 4px 8px -2px oklch(22% 0.02 200 / 0.05), 0 16px 32px -8px oklch(22% 0.02 200 / 0.12);
+  --shadow-xl: 0 8px 16px -4px oklch(22% 0.02 200 / 0.06), 0 28px 56px -12px oklch(22% 0.02 200 / 0.18);
+
+  --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-sheet-up: sheet-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 180ms ease-out;
+
+  @keyframes drawer-in {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+/*
+ * There is no dark theme, so the page opts out of one explicitly.
+ *
+ * This file used to flip `--background` to near-black under
+ * `prefers-color-scheme: dark` while every component hard-codes light surfaces
+ * and dark text — so anyone with a dark OS got dark text on black wherever a
+ * page did not paint its own background.
+ */
+@layer base {
+  html {
+    color-scheme: light;
+    /* Anchor links (#how, #pricing) land below the sticky marketing header. */
+    scroll-padding-top: 5rem;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+  }
+
+  ::selection {
+    background-color: var(--brand-200);
+    color: var(--brand-950);
+  }
+
+  /* One visible focus style for everything that does not define its own.
+     Inputs that use `outline-none` + a ring keep their ring: utilities win. */
+  :focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+  }
 }
 
-/* ── Gradient utilities ──────────────────────────────────────── */
+/* ── Surfaces ─────────────────────────────────────────────────────────── */
 
-/* Sidebar / nav header gradient */
-.bg-brand-gradient {
-  background: linear-gradient(135deg, #1a9e90 0%, #1bb8c8 100%);
+/* Brand panel — the logo's teal deepening into cyan. */
+@utility bg-brand-gradient {
+  background-image: linear-gradient(135deg, var(--brand-800) 0%, var(--brand-600) 55%, oklch(55% 0.095 208) 100%);
 }
 
-/* Very light tinted page surface */
-.bg-warm-surface {
-  background: linear-gradient(160deg, #f0faf9 0%, #e6f6f4 100%);
+/* Portal page background — near-white, with the faintest brand wash at the top. */
+@utility bg-app-surface {
+  background-color: var(--ink-50);
+  background-image: radial-gradient(120% 50% at 50% -15%, oklch(95.5% 0.03 180 / 0.7), transparent 65%);
+  background-repeat: no-repeat;
 }
 
-/* Page background — near-white with whisper of cool mint */
-.bg-app-surface {
-  background: linear-gradient(180deg, #f7fffe 0%, #edf9f7 100%);
+/* Hero wash — the logo's green and cyan, very soft, over white. */
+@utility bg-aurora {
+  background-color: #fff;
+  background-image:
+    radial-gradient(50% 60% at 10% 0%, oklch(93% 0.07 150 / 0.55), transparent 70%),
+    radial-gradient(45% 55% at 90% 5%, oklch(92% 0.06 205 / 0.6), transparent 70%),
+    radial-gradient(80% 70% at 50% -10%, oklch(96.5% 0.035 180), transparent 75%);
+  background-repeat: no-repeat;
 }

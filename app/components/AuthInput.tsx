@@ -22,35 +22,40 @@ export default function AuthInput({
   const [visible, setVisible] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword ? (visible ? "text" : "password") : type;
+  const errorId = `${id}-error`;
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-brand/80">
+      <label htmlFor={id} className="text-sm font-medium text-stone-700">
         {label}
-        {props.required && <span className="text-brand ml-0.5">*</span>}
+        {props.required && <span className="text-rose-600 ml-0.5">*</span>}
       </label>
       <div className="relative">
         {Icon && (
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-brand/30">
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400">
             <Icon className="w-4 h-4" strokeWidth={1.8} />
           </span>
         )}
+        {/* The border was `cream` — mint on white at 1.1:1, so an empty field
+            had no visible edge. stone-300 is the lightest that reads as one. */}
         <input
           id={id}
           name={id}
           type={inputType}
-          className={`w-full rounded-xl border bg-white py-3 text-sm text-brand placeholder:text-brand/30 outline-none transition-colors
-            focus:border-brand focus:ring-2 focus:ring-brand/15
-            ${error ? "border-red-400" : "border-cream"}
-            ${Icon ? "pl-10" : "pl-4"}
-            ${isPassword ? "pr-10" : "pr-4"}`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
+          className={`w-full rounded-xl border bg-white py-2.5 text-sm text-stone-900 placeholder:text-stone-400 shadow-xs outline-none transition
+            focus:ring-4
+            ${error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/15" : "border-stone-300 focus:border-brand-500 focus:ring-brand-500/15"}
+            ${Icon ? "pl-10" : "pl-3.5"}
+            ${isPassword ? "pr-10" : "pr-3.5"}`}
           {...props}
         />
         {isPassword && (
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand/30 hover:text-brand transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-stone-400 hover:text-stone-700 transition-colors"
             aria-label={visible ? "Hide password" : "Show password"}
           >
             {visible ? (
@@ -61,7 +66,7 @@ export default function AuthInput({
           </button>
         )}
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p id={errorId} className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }

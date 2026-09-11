@@ -50,7 +50,7 @@ function PaymentSuccessContent() {
           Payment confirmed
         </div>
         <h1 className="text-3xl font-bold text-brand mb-3">You&apos;re all set!</h1>
-        <p className="text-brand/60 text-base leading-relaxed">
+        <p className="text-stone-500 text-base leading-relaxed">
           Your <span className="font-semibold text-brand">{plan} Plan</span> is now active.
           We&apos;re matching you with the right therapist and will notify you shortly.
         </p>
@@ -58,8 +58,8 @@ function PaymentSuccessContent() {
 
       <div className="bg-white rounded-2xl border border-brand/10 shadow-sm p-6 w-full max-w-sm mb-8">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand/40">Receipt</p>
-          <button className="flex items-center gap-1 text-xs text-brand/50 hover:text-brand transition-colors">
+          <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">Receipt</p>
+          <button className="flex items-center gap-1 text-xs text-stone-500 hover:text-brand transition-colors">
             <Download size={12} /> Download
           </button>
         </div>
@@ -71,7 +71,7 @@ function PaymentSuccessContent() {
             { label: "Support", value: "support@echohealth.com" },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
-              <span className="text-brand/40">{label}</span>
+              <span className="text-stone-500">{label}</span>
               <span className={`font-medium ${label === "Status" ? "text-emerald-600" : "text-brand"}`}>
                 {value}
               </span>
@@ -87,14 +87,14 @@ function PaymentSuccessContent() {
         Go to dashboard
         <ArrowRight size={16} />
       </button>
-      <p className="text-xs text-brand/35 mt-4">Redirecting automatically in {count}s…</p>
+      <p className="text-xs text-stone-400 mt-4">Redirecting automatically in {count}s…</p>
     </div>
   );
 }
 
 export default function PaymentSuccessPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-brand/60">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-cream flex items-center justify-center"><p className="text-stone-500">Loading...</p></div>}>
       <PaymentSuccessContent />
     </Suspense>
   );

@@ -31,7 +31,7 @@ export default function ProgressBar({ label, value, delay = 0 }: ProgressBarProp
   return (
     <div ref={ref} className="flex flex-col gap-2">
       <div className="flex justify-between items-center">
-        <span className="text-sm font-medium text-brand/80">{label}</span>
+        <span className="text-sm font-medium text-stone-600">{label}</span>
         <span className="text-sm font-bold text-brand tabular-nums">{value}%</span>
       </div>
       <div className="h-2.5 w-full rounded-full bg-cream/60 overflow-hidden">

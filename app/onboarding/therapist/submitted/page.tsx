@@ -28,7 +28,7 @@ export default function TherapistApplicationSubmittedPage() {
           </div>
 
           <h1 className="text-2xl font-bold text-brand">Application submitted</h1>
-          <p className="mt-3 text-sm text-brand/60 leading-relaxed">
+          <p className="mt-3 text-sm text-stone-500 leading-relaxed">
             Thanks — your credentials are with our verification team. We review
             every clinician before granting access to client data, so this step
             is manual by design.
@@ -37,13 +37,13 @@ export default function TherapistApplicationSubmittedPage() {
           <div className="mt-7 space-y-3 text-left">
             <div className="flex gap-3 items-start bg-cream rounded-xl px-4 py-3">
               <Clock size={17} className="text-brand mt-0.5 shrink-0" />
-              <p className="text-sm text-brand/70">
+              <p className="text-sm text-stone-600">
                 Reviews typically complete within 1–2 business days.
               </p>
             </div>
             <div className="flex gap-3 items-start bg-cream rounded-xl px-4 py-3">
               <Mail size={17} className="text-brand mt-0.5 shrink-0" />
-              <p className="text-sm text-brand/70">
+              <p className="text-sm text-stone-600">
                 You&apos;ll be notified once approved. <strong>Sign out and back
                 in</strong> afterwards — your access is issued when you log in.
               </p>

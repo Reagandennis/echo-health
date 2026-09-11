@@ -113,14 +113,14 @@ export default async function AdminDashboardPage() {
   const resolveTherapist = (id?: string) => (id && therapistById.get(id)) || "Unknown";
 
   const stats = [
-    { label: "Total Clients", value: profiles.length.toString(), change: "Active users", trend: "up" as const, icon: Users, iconColor: "bg-blue-100 text-blue-700", subtext: "Platform users" },
-    { label: "Active Sessions", value: activeSessions.toString(), change: "Confirmed", trend: "up" as const, icon: Calendar, iconColor: "bg-teal-100 text-teal-700", subtext: "Live / Upcoming" },
-    { label: "Monthly Revenue", value: `$${(completedSessions * 50).toLocaleString()}`, change: "+8.2%", trend: "up" as const, icon: CreditCard, iconColor: "bg-emerald-100 text-emerald-700", subtext: "Estimated" },
-    { label: "Risk Alerts", value: openRiskAlerts.length.toString(), change: `${criticalAlerts} critical`, trend: "down" as const, icon: AlertTriangle, iconColor: "bg-rose-100 text-rose-700", subtext: "Needs attention" },
-    { label: "Pending KYC", value: pendingKyc.toString(), change: "Awaiting review", trend: "neutral" as const, icon: ShieldCheck, iconColor: "bg-purple-100 text-purple-700", subtext: "Therapist queue" },
-    { label: "Support Chats", value: supportChats.length.toString(), change: "Active sessions", trend: "up" as const, icon: HeadphonesIcon, iconColor: "bg-amber-100 text-amber-700", subtext: "Customer care" },
-    { label: "Total Therapists", value: therapists.length.toString(), change: "Clinicians", trend: "up" as const, icon: UserCheck, iconColor: "bg-indigo-100 text-indigo-700", subtext: "Verified & pending" },
-    { label: "Sessions Completed", value: completedSessions.toString(), change: "Total volume", trend: "up" as const, icon: TrendingUp, iconColor: "bg-orange-100 text-orange-700", subtext: "All time" },
+    { label: "Total Clients", value: profiles.length.toString(), change: "Active users", trend: "up" as const, icon: Users, iconColor: "bg-brand-50 text-brand-700", subtext: "Platform users" },
+    { label: "Active Sessions", value: activeSessions.toString(), change: "Confirmed", trend: "up" as const, icon: Calendar, iconColor: "bg-brand-50 text-brand-700", subtext: "Live / Upcoming" },
+    { label: "Monthly Revenue", value: `$${(completedSessions * 50).toLocaleString()}`, change: "+8.2%", trend: "up" as const, icon: CreditCard, iconColor: "bg-emerald-50 text-emerald-700", subtext: "Estimated" },
+    { label: "Risk Alerts", value: openRiskAlerts.length.toString(), change: `${criticalAlerts} critical`, trend: "down" as const, icon: AlertTriangle, iconColor: "bg-rose-50 text-rose-700", subtext: "Needs attention" },
+    { label: "Pending KYC", value: pendingKyc.toString(), change: "Awaiting review", trend: "neutral" as const, icon: ShieldCheck, iconColor: "bg-amber-50 text-amber-700", subtext: "Therapist queue" },
+    { label: "Support Chats", value: supportChats.length.toString(), change: "Active sessions", trend: "up" as const, icon: HeadphonesIcon, iconColor: "bg-sky-50 text-sky-700", subtext: "Customer care" },
+    { label: "Total Therapists", value: therapists.length.toString(), change: "Clinicians", trend: "up" as const, icon: UserCheck, iconColor: "bg-brand-50 text-brand-700", subtext: "Verified & pending" },
+    { label: "Sessions Completed", value: completedSessions.toString(), change: "Total volume", trend: "up" as const, icon: TrendingUp, iconColor: "bg-brand-50 text-brand-700", subtext: "All time" },
   ];
 
   // `createdAt` is a real Date — compare with getTime(), never localeCompare.
@@ -140,9 +140,9 @@ export default async function AdminDashboardPage() {
   ];
 
   const attention = [
-    { label: "Therapists awaiting KYC", value: pendingKyc, href: "/admin/therapists/verification-queue", icon: ShieldCheck, tone: "text-purple-700 bg-purple-100" },
-    { label: "Critical risk alerts", value: criticalAlerts, href: "/admin/risk", icon: AlertTriangle, tone: "text-rose-700 bg-rose-100" },
-    { label: "Open support chats", value: supportChats.length, href: "/admin/customer-care", icon: HeadphonesIcon, tone: "text-amber-700 bg-amber-100" },
+    { label: "Therapists awaiting KYC", value: pendingKyc, href: "/admin/therapists/verification-queue", icon: ShieldCheck, tone: "text-amber-700 bg-amber-50" },
+    { label: "Critical risk alerts", value: criticalAlerts, href: "/admin/risk", icon: AlertTriangle, tone: "text-rose-700 bg-rose-50" },
+    { label: "Open support chats", value: supportChats.length, href: "/admin/customer-care", icon: HeadphonesIcon, tone: "text-sky-700 bg-sky-50" },
   ];
 
   return (
@@ -150,7 +150,7 @@ export default async function AdminDashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">System Overview</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">System Overview</h1>
           <p className="text-sm text-stone-500 mt-0.5">
             Welcome back, {user.name.split(" ")[0]} — real-time platform health &amp; key metrics
           </p>
@@ -176,7 +176,7 @@ export default async function AdminDashboardPage() {
         {/* Left: recent activity */}
         <div className="lg:col-span-2 space-y-6">
           {/* Recent sessions */}
-          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm">
+          <section className="bg-white rounded-2xl border border-stone-200/80 shadow-xs">
             <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
               <h2 className="text-sm font-bold text-stone-900">Recent Sessions</h2>
               <Link href="/admin/sessions" className="text-xs font-semibold text-teal-600 hover:text-teal-700 inline-flex items-center gap-1">
@@ -210,7 +210,7 @@ export default async function AdminDashboardPage() {
           </section>
 
           {/* Recent signups */}
-          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm">
+          <section className="bg-white rounded-2xl border border-stone-200/80 shadow-xs">
             <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
               <h2 className="text-sm font-bold text-stone-900">Recent Signups</h2>
               <Link href="/admin/users" className="text-xs font-semibold text-teal-600 hover:text-teal-700 inline-flex items-center gap-1">
@@ -246,14 +246,14 @@ export default async function AdminDashboardPage() {
         {/* Right: action panel + breakdown */}
         <div className="space-y-6">
           {/* Needs attention */}
-          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+          <section className="bg-white rounded-2xl border border-stone-200/80 shadow-xs p-6">
             <h2 className="text-sm font-bold text-stone-900 mb-4">Needs Attention</h2>
             <div className="space-y-2">
               {attention.map((a) => (
                 <Link
                   key={a.label}
                   href={a.href}
-                  className="flex items-center gap-3 rounded-xl border border-stone-100 px-3 py-3 hover:border-teal-200 hover:bg-teal-50/40 transition-colors group"
+                  className="flex items-center gap-3 rounded-xl border border-stone-200/70 px-3 py-3 hover:border-brand-200 hover:bg-brand-50/50 transition-colors group"
                 >
                   <span className={`p-2 rounded-lg ${a.tone}`}>
                     <a.icon className="w-4 h-4" />
@@ -267,7 +267,7 @@ export default async function AdminDashboardPage() {
           </section>
 
           {/* Session breakdown */}
-          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+          <section className="bg-white rounded-2xl border border-stone-200/80 shadow-xs p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-stone-900">Session Breakdown</h2>
               <span className="text-xs text-stone-400">{totalSessions} total</span>
@@ -295,19 +295,22 @@ export default async function AdminDashboardPage() {
       {/* Quick action cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Verify Therapists", desc: `${pendingKyc} pending`, href: "/admin/therapists/verification-queue", color: "from-purple-500 to-indigo-600" },
-          { label: "Review Risk Alerts", desc: `${openRiskAlerts.length} active`, href: "/admin/risk", color: "from-rose-500 to-rose-700" },
-          { label: "Support Queue", desc: `${supportChats.length} chats`, href: "/admin/customer-care", color: "from-amber-500 to-orange-600" },
-          { label: "Export Report", desc: "Analytics", href: "/admin/analytics/export", color: "from-teal-500 to-teal-700" },
+          { label: "Verify Therapists", desc: `${pendingKyc} pending`, href: "/admin/therapists/verification-queue", icon: ShieldCheck, tone: "bg-amber-50 text-amber-700" },
+          { label: "Review Risk Alerts", desc: `${openRiskAlerts.length} active`, href: "/admin/risk", icon: AlertTriangle, tone: "bg-rose-50 text-rose-700" },
+          { label: "Support Queue", desc: `${supportChats.length} chats`, href: "/admin/customer-care", icon: HeadphonesIcon, tone: "bg-sky-50 text-sky-700" },
+          { label: "Export Report", desc: "Analytics", href: "/admin/analytics/export", icon: TrendingUp, tone: "bg-brand-50 text-brand-700" },
         ].map((action) => (
           <Link
             key={action.label}
             href={action.href}
-            className={`bg-gradient-to-br ${action.color} rounded-2xl p-5 text-white hover:opacity-90 transition-opacity group`}
+            className="group flex flex-col rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs transition hover:border-brand-200 hover:shadow-md"
           >
-            <p className="font-bold text-sm">{action.label}</p>
-            <p className="text-xs opacity-80 mt-0.5">{action.desc}</p>
-            <ArrowRight className="w-4 h-4 mt-4 opacity-60 group-hover:opacity-100 transition-opacity" />
+            <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${action.tone}`}>
+              <action.icon className="h-4 w-4" />
+            </span>
+            <p className="mt-4 text-sm font-semibold text-stone-900">{action.label}</p>
+            <p className="mt-0.5 text-xs text-stone-500">{action.desc}</p>
+            <ArrowRight className="mt-3 h-4 w-4 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
           </Link>
         ))}
       </div>

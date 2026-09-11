@@ -27,28 +27,28 @@ export default function MoodChart({ data }: { data: MoodChartDatum[] }) {
       <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
         <defs>
           <linearGradient id="moodGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#35858E" stopOpacity={0.2} />
-            <stop offset="95%" stopColor="#35858E" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--brand-600)" stopOpacity={0.2} />
+            <stop offset="95%" stopColor="var(--brand-600)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#35858E10" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--ink-200)" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 10, fill: "#35858E80" }}
+          tick={{ fontSize: 10, fill: "var(--ink-500)" }}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
           domain={[1, 10]}
           ticks={[1, 5, 10]}
-          tick={{ fontSize: 10, fill: "#35858E80" }}
+          tick={{ fontSize: 10, fill: "var(--ink-500)" }}
           tickLine={false}
           axisLine={false}
         />
         <Tooltip
           contentStyle={{
             background: "#fff",
-            border: "1px solid #35858E20",
+            border: "1px solid var(--ink-200)",
             borderRadius: 12,
             fontSize: 12,
           }}
@@ -57,10 +57,10 @@ export default function MoodChart({ data }: { data: MoodChartDatum[] }) {
         <Area
           type="monotone"
           dataKey="score"
-          stroke="#35858E"
+          stroke="var(--brand-600)"
           strokeWidth={2}
           fill="url(#moodGrad)"
-          dot={{ r: 3, fill: "#35858E" }}
+          dot={{ r: 3, fill: "var(--brand-600)" }}
         />
       </AreaChart>
     </ResponsiveContainer>

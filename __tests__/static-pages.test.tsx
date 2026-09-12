@@ -9,7 +9,16 @@ describe("static public pages", () => {
     expect(screen.getByRole("heading", { name: /Mental Health Guides/i })).toBeInTheDocument();
     expect(screen.getByText("Understanding and Managing Anxiety")).toBeInTheDocument();
     expect(screen.getByText("An Introduction to CBT")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Your email address")).toBeInTheDocument();
+    /*
+     * Was `getByPlaceholderText("Your email address")`.
+     *
+     * That asserted the presence of a newsletter sign-up whose email field and
+     * "Subscribe" button were not inside a `<form>` and had no handler — every
+     * address typed into it was silently dropped, and there is no mailing-list
+     * endpoint in this app to wire it to. The test was pinning a broken
+     * control in place. It now asserts the CTA that replaced it.
+     */
+    expect(screen.getByRole("link", { name: /Find your therapist/i })).toBeInTheDocument();
   });
 
   it("renders the privacy policy with compliance metadata", () => {

@@ -89,8 +89,8 @@ export default function GuidesPage() {
             Mental health guides
           </h1>
           <p className="mt-5 text-[17px] leading-8 text-stone-600">
-            Evidence-based articles and exercises to help you navigate life&apos;s
-            challenges.
+            Plain-language explanations of what you might be dealing with, and
+            what therapy for it actually involves.
           </p>
           <p className="mt-5 text-sm text-stone-500">
             The long-form guides are still being written. Where we already have
@@ -134,9 +134,10 @@ export default function GuidesPage() {
         </div>
       </Section>
 
-      {/* The condition pages are the only long-form content that exists, so the
-          rail is how the two cards with no twin above still hand a reader
-          somewhere to go. */}
+      {/* The condition pages are the only long-form content that exists, and
+          three of the eight have no card above. The rail is what stops those
+          three being unreachable from the page that is supposed to be the
+          resource library. */}
       <RelatedLinks
         title="Read about what you're dealing with"
         links={CONDITIONS.map((c) => ({

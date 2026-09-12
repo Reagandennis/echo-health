@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Footer from "../components/Footer";
+import Footer from "@/app/components/Footer";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({

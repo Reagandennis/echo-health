@@ -1,6 +1,6 @@
 import { AlertTriangle, Phone, MessageSquare, ArrowLeft, Globe, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import Footer from "../components/Footer";
+import Footer from "@/app/components/Footer";
 import { pageMetadata } from "@/lib/seo";
 import { CRISIS_REGIONS, CRISIS_DIRECTORY_URL, type CrisisService } from "@/lib/constants";
 

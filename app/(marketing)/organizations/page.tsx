@@ -9,7 +9,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
-import Footer from "../components/Footer";
+import Footer from "@/app/components/Footer";
 
 /* ─── Data ─────────────────────────────────────────── */
 

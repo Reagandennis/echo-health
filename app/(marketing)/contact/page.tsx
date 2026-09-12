@@ -1,6 +1,6 @@
 import { ArrowLeft, MessageCircle, Building2, Stethoscope, Mail } from "lucide-react";
 import Link from "next/link";
-import Footer from "../components/Footer";
+import Footer from "@/app/components/Footer";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({

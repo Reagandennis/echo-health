@@ -14,10 +14,10 @@ import {
   Check,
   ArrowRight,
 } from "lucide-react";
-import TestimonialCard from "./components/TestimonialCard";
-import PriceTag from "./components/PriceTag";
-import Footer from "./components/Footer";
-import BrandMark from "./components/portal/BrandMark";
+import TestimonialCard from "@/app/components/TestimonialCard";
+import PriceTag from "@/app/components/PriceTag";
+import Footer from "@/app/components/Footer";
+import BrandMark from "@/app/components/portal/BrandMark";
 import { PLAN_PRICES, PLAN_SESSIONS, PLAN_PERIOD_LABELS } from "@/lib/constants";
 
 /* ─── Data ─────────────────────────────────────────── */

@@ -1,6 +1,6 @@
 import { ArrowLeft, MapPin, Laptop, HeartPulse, Coffee, GraduationCap } from "lucide-react";
 import Link from "next/link";
-import Footer from "../components/Footer";
+import Footer from "@/app/components/Footer";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({

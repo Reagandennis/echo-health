@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import ChatWidgetWrapper from "./components/ChatWidgetWrapper";
-import { siteUrl, siteName, defaultDescription } from "@/lib/seo";
+import { siteUrl, siteName, legalEntityName, defaultDescription } from "@/lib/seo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,9 +51,17 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true },
   },
-  alternates: {
-    canonical: siteUrl,
-  },
+  /*
+   * NO `alternates.canonical` here, deliberately.
+   *
+   * A canonical in the root layout is not a default, it is a footgun: Next's
+   * metadata inheritance hands it to every page that does not override it, so
+   * any page whose author forgets `pageMetadata` silently tells Google it is a
+   * duplicate of the home page. That had already happened to `/organizations`
+   * — the highest commercial-intent page on the site was instructing Google to
+   * drop it — and to all three auth pages. Each page now declares its own via
+   * `pageMetadata({ path })`.
+   */
   openGraph: {
     type: "website",
     url: siteUrl,
@@ -72,17 +80,46 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * The organisation entity.
+ *
+ * Three things here were wrong and are worth naming, because each failed
+ * silently:
+ *
+ *  - `logo` pointed at `/favicon.ico`, which does not exist in this repo (the
+ *    app uses `app/icon.png` / `app/apple-icon.png`). Google requires a
+ *    fetchable logo, and `.ico` is not an accepted format anyway, so the
+ *    property was invalid and no logo could ever appear in a knowledge panel.
+ *    `/echo-logo.png` is the opaque-white original, which is the correct asset
+ *    for a logo slot.
+ *  - `medicalSpecialty` listed "Psychology", which is not a member of
+ *    schema.org's MedicalSpecialty enumeration. An invalid member invalidates
+ *    the property.
+ *  - `sameAs` claimed `twitter.com/echohealth` while the footer linked to bare
+ *    `twitter.com` with no handle, so the structured data asserted an account
+ *    the page did not link to. The footer now links the same handles.
+ *
+ * `alternateName` is here because the rendered wordmark and the registered
+ * entity are different strings — without it they resolve as two entities.
+ */
 const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "MedicalOrganization",
   name: siteName,
+  alternateName: legalEntityName,
   url: siteUrl,
-  logo: `${siteUrl}/favicon.ico`,
+  logo: `${siteUrl}/echo-logo.png`,
   description: defaultDescription,
-  medicalSpecialty: ["Psychiatric", "Psychology"],
-  areaServed: "Online",
+  medicalSpecialty: "Psychiatric",
+  areaServed: { "@type": "Country", name: "Kenya" },
+  availableService: {
+    "@type": "MedicalTherapy",
+    name: "Online psychotherapy",
+  },
   sameAs: [
     "https://twitter.com/echohealth",
+    "https://instagram.com/echohealth",
+    "https://linkedin.com/company/echohealth",
   ],
 };
 

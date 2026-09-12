@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import GuidesPage from "@/app/guides/page";
-import PrivacyPolicyPage, { metadata } from "@/app/privacy/page";
+import GuidesPage from "@/app/(marketing)/guides/page";
+import PrivacyPolicyPage, { metadata } from "@/app/(marketing)/privacy/page";
 
 describe("static public pages", () => {
   it("renders the guides library content", () => {

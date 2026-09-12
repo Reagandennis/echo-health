@@ -3,11 +3,30 @@ import Image from "next/image";
 import { ShieldCheck, Lock, CalendarCheck } from "lucide-react";
 import BrandMark from "@/app/components/portal/BrandMark";
 
+/**
+ * `noindex` is the lever here, not robots.txt.
+ *
+ * These three pages were previously `Disallow`ed in robots.txt while the home
+ * page linked to two of them with an ordinary `<Link>`. Disallow blocks
+ * *crawling*, not *indexing*: Google indexed them as URL-only entries ("No
+ * information is available for this page") and, because it was forbidden to
+ * fetch them, could never discover a `noindex` added later. They are now
+ * fetchable and explicitly excluded instead.
+ *
+ * It has to live in this layout because all three pages are `"use client"`,
+ * and a client component cannot export `metadata` at all.
+ *
+ * `follow: true` on purpose — these pages link onward to /terms and /privacy,
+ * and there is no reason to strand those.
+ */
 export const metadata: Metadata = {
   title: {
-    default: "Account",
+    default: "Sign in to Echo Health",
     template: "%s | Echo Health",
   },
+  description:
+    "Sign in to Echo Health to message your therapist, join a session, or manage your bookings.",
+  robots: { index: false, follow: true },
 };
 
 // The same three the landing page's trust strip vetted as true — see the note

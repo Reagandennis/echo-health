@@ -57,6 +57,29 @@ export const ANALYTICS_EVENTS = {
   /** Server-side: a role was assigned via `/api/user/set-role`. */
   USER_ROLE_SELECTED: "user_role_selected",
 
+  /**
+   * The public intake quiz at `/get-started`.
+   *
+   * ## These carry a step NUMBER and nothing else. Never an answer.
+   *
+   * The quiz asks what someone is struggling with, whether they have been in
+   * therapy before, and who the therapy is for. Every one of those answers is
+   * health information about a person who becomes identifiable two screens
+   * later at sign-up — `intake_step_completed` with `{ answer: "depression" }`
+   * would put "this individual reported depression" into a third-party
+   * analytics store, which is precisely what the privacy rules in AGENTS.md
+   * exist to prevent.
+   *
+   * `step` and `total` are enough to build the drop-off funnel these events
+   * are for. If you find yourself wanting to segment that funnel by answer,
+   * the answer is in Postgres behind RLS — query it there.
+   */
+  INTAKE_STARTED: "intake_started",
+  /** Carries `{ step, total }`. NEVER the answer. See above. */
+  INTAKE_STEP_COMPLETED: "intake_step_completed",
+  /** Reached the recommendation screen. Carries the recommended plan id only. */
+  INTAKE_COMPLETED: "intake_completed",
+
   // ── Client activation ──────────────────────────────────────────────────────
   /** @unwired Directory browsing — see the wiring note at the bottom of this file. */
   THERAPIST_DIRECTORY_VIEWED: "therapist_directory_viewed",

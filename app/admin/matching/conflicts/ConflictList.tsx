@@ -17,28 +17,60 @@ interface Conflict {
   resolved: boolean;
 }
 
+/*
+ * Narrowed here rather than typed as `any[]`.
+ *
+ * These arrive from actions returning `Doc`, which is `any` on purpose — see
+ * its note in `app/actions/database.ts`. That decision is scoped and
+ * documented, but it does not have to leak into a component's props: `any[]`
+ * here means `p.userId` and `t.$id` below are unchecked, which is exactly how
+ * the bug recorded in `getPatientName` shipped — `patientId` holds an auth
+ * provider subject and was being compared against `p.$id`, so every row
+ * rendered "Unknown Patient" and nothing complained.
+ */
+interface ProfileRef {
+  $id: string;
+  userId: string;
+  name: string | null;
+}
+interface TherapistRef {
+  $id: string;
+  name: string | null;
+}
+
 interface Props {
   initialConflicts: Conflict[];
-  profiles: any[];
-  therapists: any[];
+  profiles: ProfileRef[];
+  therapists: TherapistRef[];
 }
 
 export default function ConflictList({ initialConflicts, profiles, therapists }: Props) {
   const router = useRouter();
   const [conflicts, setConflicts] = useState(initialConflicts);
   const [resolving, setResolving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleResolve(id: string) {
     setResolving(id);
+    setError(null);
     try {
       await resolveMatchConflictAction(id);
       setConflicts(prev => prev.map(c => c.$id === id ? { ...c, resolved: true } : c));
       router.refresh();
     } catch (err) {
-      console.error(err);
-      alert("Failed to resolve conflict.");
+      /*
+       * Was `alert()`. A modal dialog blocks the whole tab until dismissed,
+       * says nothing about which conflict failed, and is the only place in
+       * this console that reports an error that way — everywhere else renders
+       * it inline. It also loses the reason, which is usually the useful part.
+       */
+      setError(
+        err instanceof Error ? err.message : "Could not resolve that conflict."
+      );
+    } finally {
+      /* In a `finally` so a throw cannot leave the row spinning forever. */
+      setResolving(null);
     }
-    setResolving(null);
   }
 
   function getPatientName(id: string) {
@@ -54,6 +86,11 @@ export default function ConflictList({ initialConflicts, profiles, therapists }:
 
   return (
     <div className="space-y-4">
+      {error && (
+        <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+          {error}
+        </p>
+      )}
       {conflicts.length === 0 ? (
         <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center">
           <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">

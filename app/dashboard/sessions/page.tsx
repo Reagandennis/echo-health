@@ -63,11 +63,27 @@ function BookModal({
   const [note, setNote]       = useState("");
   const [tid, setTid]         = useState(therapists[0]?.$id ?? PLACEHOLDER_THERAPIST_ID);
 
+  /*
+   * Adopt a default ONLY when the current choice is not a real option.
+   *
+   * This used to be an unconditional `setTid(therapists[0].$id)` keyed on
+   * `[therapists]`, which silently discarded a deliberate selection. The parent
+   * calls `setTherapists(therapistList)` from an effect keyed on
+   * `[user, applySessions]`, so any change in the identity of `user` — a
+   * `/api/me` refetch from `UserProvider`, for instance — produces a NEW array
+   * and re-runs this effect. With more than one therapist the form renders a
+   * `<select>`; whoever had picked the second therapist was reset to the first,
+   * with no visible change to the field they had already set, and the booking
+   * went to the wrong clinician.
+   *
+   * The guard makes the effect do only the job it was added for: filling in a
+   * default when the list arrives after the modal has mounted.
+   */
   useEffect(() => {
-    if (therapists.length > 0) {
-      setTid(therapists[0].$id);
-    }
-  }, [therapists]);
+    if (therapists.length === 0) return;
+    const stillValid = therapists.some((t) => t.$id === tid);
+    if (!stillValid) setTid(therapists[0].$id);
+  }, [therapists, tid]);
   const [saving, setSaving]   = useState(false);
   const [done, setDone]       = useState(false);
 

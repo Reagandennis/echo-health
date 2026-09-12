@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { User, Bell, Shield, ChevronRight, AlertTriangle } from "lucide-react";
 import { updateUserMetadataAction } from "@/app/actions/user-metadata";
 import { useUser } from "@/app/components/UserProvider";
@@ -26,8 +26,30 @@ export default function SettingsPage() {
   const [saveError,     setSaveError]       = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete]   = useState(false);
 
+  /*
+   * Hydrate the form from the session ONCE per user, not on every change of
+   * `user`'s identity.
+   *
+   * This effect was keyed on `[user]` and assigned every field unconditionally.
+   * `useUser()` comes from `UserProvider`, which fetches `/api/me` from the
+   * browser — so a refetch hands back a new object with the same contents, the
+   * effect re-runs, and every field is overwritten from the server copy. Anyone
+   * part-way through editing their emergency contact lost what they had typed,
+   * with no error and nothing to undo.
+   *
+   * It also fought the save: `updateUserMetadataAction` returns the applied
+   * patch precisely so the page can keep showing what it just wrote, and this
+   * would reset the inputs to the pre-write session values on the next refetch.
+   *
+   * Keyed on `user.$id` so switching accounts still re-hydrates, while a
+   * same-user refetch leaves the form alone.
+   */
+  const hydratedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!user) return;
+    if (hydratedFor.current === user.$id) return;
+    hydratedFor.current = user.$id;
+
     setName(user.name ?? "");
     setEmail(user.email ?? "");
     const prefs = user.prefs as UserPrefs | undefined;

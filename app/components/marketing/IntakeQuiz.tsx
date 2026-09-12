@@ -411,7 +411,7 @@ function Recommendation({
   const sessions = PLAN_SESSIONS[plan];
 
   /*
-   * The safety gate, at the only moment it can still change anything.
+   * The safety gate — and an honest note on how far it currently reaches.
    *
    * `requiresLicensedPractitioner` reads the intake and says whether this
    * person needs a clinician rather than a coach. It fails towards the
@@ -424,6 +424,19 @@ function Recommendation({
    * and the plan is paid for, the same sentence is a refund conversation, and
    * the incentive to not have it is exactly the one `/terms` §2 commits us
    * against.
+   *
+   * ## ⚠️ What it does NOT do, because the answers never leave the browser
+   *
+   * These answers live in `sessionStorage` and are submitted nowhere — by
+   * design, for the privacy reason in `lib/intake.ts`, but the consequence is
+   * that the server never learns them. So this gate *tells the client* what
+   * they need; it cannot *constrain the assignment*. An administrator on
+   * `/admin/matching/assign` sees none of this.
+   *
+   * Closing that is real work — persisting intake answers is persisting
+   * health information, which needs a table, RLS, a retention period and a
+   * privacy-policy change. Until then the commitment in `/terms` §2 is kept by
+   * a person reading this screen's output, not by the system.
    */
   const clinical = requiresLicensedPractitioner(answers);
 

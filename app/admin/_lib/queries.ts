@@ -217,6 +217,70 @@ export async function listTherapistFeedback(therapistId: string): Promise<
 }
 
 /**
+ * The quality signals that genuinely exist for one session.
+ *
+ * ## What is NOT here, and why
+ *
+ * No latency, no packet loss, no reconnection count, no "quality score". The
+ * page this feeds used to show all four, plus a 52-bar connection timeline
+ * generated with `Math.random()` on every render. None of it could have been
+ * real: video runs on the Echo backend, which relays call setup and never sees
+ * media, and `therapy_sessions` has no telemetry columns — the vestigial
+ * `patient_tracks` / `therapist_tracks` jsonb from the retired Cloudflare SFU
+ * are the closest thing and hold nothing useful.
+ *
+ * What does exist is the client's own rating, which is the signal clients were
+ * actually told about: `/reviews` says session feedback "goes to your therapist
+ * and to the team that reviews session quality". Admins are admitted to
+ * `session_feedback` by policy for exactly that purpose.
+ *
+ * Returns `null` when the session does not exist or RLS hides it, so the page
+ * can 404 rather than render an empty shell.
+ */
+export async function getSessionQuality(sessionId: string): Promise<{
+  id: string;
+  status: string;
+  sessionType: string | null;
+  scheduledAt: Date;
+  feedback: { rating: number; comment: string | null; createdAt: Date; author: string }[];
+} | null> {
+  if (!isUuid(sessionId)) return null;
+
+  return withCurrentUser(async (tx) => {
+    const [session] = await tx
+      .select({
+        id: therapySessions.id,
+        status: therapySessions.status,
+        sessionType: therapySessions.sessionType,
+        scheduledAt: therapySessions.scheduledAt,
+      })
+      .from(therapySessions)
+      .where(eq(therapySessions.id, sessionId))
+      .limit(1);
+
+    if (!session) return null;
+
+    const feedback = await tx
+      .select({
+        rating: sessionFeedback.rating,
+        comment: sessionFeedback.comment,
+        createdAt: sessionFeedback.createdAt,
+        author: profiles.name,
+      })
+      .from(sessionFeedback)
+      .leftJoin(profiles, eq(profiles.userId, sessionFeedback.userId))
+      .where(eq(sessionFeedback.sessionId, sessionId))
+      .orderBy(desc(sessionFeedback.createdAt))
+      .limit(20);
+
+    return {
+      ...session,
+      feedback: feedback.map((f) => ({ ...f, author: f.author ?? "Former client" })),
+    };
+  });
+}
+
+/**
  * Promo codes with their real redemption counts.
  *
  * `promos` is keyed by `code` (a natural text primary key) and has no `id`

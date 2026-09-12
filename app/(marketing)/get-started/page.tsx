@@ -15,7 +15,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Get started — find your therapist",
   description:
-    "Answer a few questions about what you're looking for and we'll match you with a licensed therapist. Takes about three minutes, and nothing is shared until you create an account.",
+    "Answer a few questions and we'll match you with a licensed therapist. Takes about three minutes, and nothing is shared until you create an account.",
   path: "/get-started",
 });
 

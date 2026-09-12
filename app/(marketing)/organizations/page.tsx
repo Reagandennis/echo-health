@@ -18,7 +18,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Echo Health for employers",
   description:
-    "Give your team confidential access to licensed therapists in Kenya. Priced in shillings, booked directly by employees, with no visibility for you into who attends or what is discussed.",
+    "Give your team confidential access to licensed therapists in Kenya. Priced in shillings, booked by employees directly, with no visibility for you into who attends.",
   path: "/organizations",
 });
 

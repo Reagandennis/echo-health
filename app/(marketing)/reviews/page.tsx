@@ -48,7 +48,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Reviews, feedback and how to judge us",
   description:
-    "Echo Health does not publish client testimonials, and this page explains why — plus the things you can actually check before trusting a therapy service with something this personal.",
+    "Echo Health does not publish client testimonials, and this page explains why — plus what you can actually check before trusting a therapy service.",
   path: "/reviews",
 });
 

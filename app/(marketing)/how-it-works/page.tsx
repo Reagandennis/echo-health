@@ -36,7 +36,7 @@ import { PLAN_CURRENCY, PLAN_PRICES } from "@/lib/constants";
 export const metadata = pageMetadata({
   title: "How Echo Health works",
   description:
-    "From a three-minute questionnaire to your first 50-minute session: how matching, booking, paying and switching therapists work on Echo Health — and what happens if it isn't a fit.",
+    "From a three-minute questionnaire to your first 50-minute session: how matching, booking, paying and switching therapists work on Echo Health.",
   path: "/how-it-works",
 });
 

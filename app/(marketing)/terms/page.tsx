@@ -45,7 +45,7 @@ import { pageMetadata, legalEntityName } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Terms of Service",
   description:
-    "Echo Health's Terms of Service — the rules and agreements that govern your use of our platform.",
+    "Echo Health's Terms of Service: what you agree to when you book a session, how session credits and cancellations work, and the limits of the service.",
   path: "/terms",
 });
 

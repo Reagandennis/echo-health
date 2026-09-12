@@ -26,7 +26,7 @@ const money = (amount: number) =>
 export const metadata = pageMetadata({
   title: "Frequently Asked Questions",
   description:
-    "Answers to common questions about Echo Health therapy, pricing, insurance, and privacy.",
+    "Answers about Echo Health therapy: what sessions cost in shillings, how matching works, what stays private, and how to cancel or switch therapist.",
   path: "/faq",
 });
 

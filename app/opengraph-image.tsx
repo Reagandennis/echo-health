@@ -1,10 +1,25 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "Echo Health — Therapy, reimagined";
+export const alt = "Echo Health — online therapy with licensed therapists in Kenya";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
+/**
+ * The share card.
+ *
+ * The badge here used to read "HIPAA compliant". HIPAA is a United States
+ * statute with no application to a Kenyan service, and the rest of the site
+ * had already removed that claim — but this file kept reasserting it in the
+ * one asset that travels furthest, since it is what appears every time anyone
+ * pastes an Echo link into a chat, a tweet or a message. A false claim in an
+ * image is no less false for being hard to grep.
+ *
+ * Sitting at the app root, this cascades to every segment and outranks the
+ * `openGraph.images` metadata field, so it is the card for all ~30 public
+ * routes. If a page ever needs its own, add an `opengraph-image.tsx` to that
+ * segment rather than editing this one.
+ */
 export default async function OpengraphImage() {
   return new ImageResponse(
     (
@@ -54,7 +69,7 @@ export default async function OpengraphImage() {
               margin: 0,
             }}
           >
-            Feel heard. <br /> Heal forward.
+            You deserve <br /> to be heard.
           </h1>
           <p
             style={{
@@ -83,7 +98,7 @@ export default async function OpengraphImage() {
               border: "1px solid rgba(255,255,255,0.3)",
             }}
           >
-            HIPAA compliant · Licensed clinicians
+            Licence-verified therapists
           </span>
         </div>
       </div>

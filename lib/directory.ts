@@ -1,3 +1,4 @@
+import net from "node:net";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { therapists } from "@/lib/db/schema";
 import { withAnonymous } from "@/lib/db/session";
@@ -86,12 +87,186 @@ const publicColumns = {
  * server logs, because "the directory is empty" and "the directory is broken"
  * look identical from the outside and only one of them needs a person.
  */
-async function safely<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
+/**
+ * How long a public page will wait for the database before giving up.
+ *
+ * These are marketing pages. A visitor who waits three seconds for a
+ * therapist grid has already had a bad experience, and one who waits for
+ * `connect_timeout` (30s in `lib/db/index.ts`, sized for Azure's ~1.7s
+ * handshake) has left. The ISR window is five minutes, so a timed-out render
+ * is retried shortly anyway.
+ *
+ * `Promise.race` does not cancel the query — it stops waiting for it. The
+ * connection returns to the pool when it eventually settles. That is an
+ * acceptable trade for one row on a marketing page; it would not be for a
+ * write.
+ */
+const QUERY_TIMEOUT_MS = 3_000;
+
+/* ── Reachability gate ───────────────────────────────────────────────────── */
+
+/**
+ * ## Why a TCP probe, and not just a try/catch
+ *
+ * A try/catch is not enough, and this was worth several hours to establish.
+ *
+ * When Postgres is not listening, Node resolves `localhost` to both `::1` and
+ * `127.0.0.1`, both refuse, and Node's socket layer produces an
+ * `AggregateError`. The query promise rejects with it and `safely()` below
+ * catches it cleanly — you can see it do so in the log. But a SECOND throw
+ * then escapes on a later tick, outside any promise this module holds:
+ *
+ *   ⨯ uncaughtException: TypeError: object null is not iterable
+ *       (cannot read property Symbol(Symbol.iterator))
+ *       at AggregateError (<anonymous>)
+ *
+ * That is Next's dev server reconstructing the `AggregateError` after its
+ * serialiser has dropped the `errors` array — `new AggregateError(null)`
+ * throws exactly this. It cannot be caught from application code, it poisons
+ * the render worker, and the symptom is `GET / 500 in 2.2min` on a connection
+ * that was actually refused in 8 milliseconds. Every marketing page that does
+ * NOT touch the database served in ~150ms throughout.
+ *
+ * So the fix is to never open that socket when there is nothing behind it. A
+ * raw `net.connect` is entirely under our control: it either connects or it
+ * does not, it cannot produce an AggregateError, and it costs about a
+ * millisecond locally.
+ *
+ * ## What this is NOT
+ *
+ * It is not a health check and it is not a circuit breaker for the app. It
+ * guards the PUBLIC marketing pages only, which is the one place where "the
+ * database is unavailable" should degrade to a quieter page rather than an
+ * error. The authenticated portals still fail loudly, which is correct — a
+ * therapist whose client list silently came back empty would be worse than one
+ * who sees an error.
+ */
+const REACHABLE_TTL_MS = 60_000;
+const UNREACHABLE_TTL_MS = 10_000;
+const PROBE_TIMEOUT_MS = 1_000;
+
+let probeCache: { ok: boolean; until: number } | null = null;
+let probeInFlight: Promise<boolean> | null = null;
+
+/** Host and port from `APP_DATABASE_URL`, or null if it is unparseable. */
+function dbAddress(): { host: string; port: number } | null {
+  const raw = process.env.APP_DATABASE_URL;
+  if (!raw) return null;
   try {
-    return await run();
+    const url = new URL(raw);
+    return { host: url.hostname, port: Number(url.port) || 5432 };
+  } catch {
+    return null;
+  }
+}
+
+function probe(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    /* `once` on all three, and `destroy()` in the settle path: without it a
+       refused probe leaves a socket in FIN_WAIT and the event loop holds open
+       for the timeout duration. */
+    const settle = (ok: boolean) => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(PROBE_TIMEOUT_MS);
+    socket.once("connect", () => settle(true));
+    socket.once("timeout", () => settle(false));
+    socket.once("error", () => settle(false));
+    socket.connect(port, host);
+  });
+}
+
+/**
+ * Is the database worth asking? Cached, and deduped across concurrent renders.
+ *
+ * A healthy answer is held for a minute, so the steady-state cost is one TCP
+ * connect per minute per instance. A failure is held for only ten seconds, so
+ * a database that comes back mid-session is picked up almost immediately
+ * rather than staying "down" for a full minute.
+ */
+async function databaseReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (probeCache && probeCache.until > now) return probeCache.ok;
+  if (probeInFlight) return probeInFlight;
+
+  const address = dbAddress();
+  if (!address) {
+    probeCache = { ok: false, until: now + UNREACHABLE_TTL_MS };
+    return false;
+  }
+
+  probeInFlight = probe(address.host, address.port)
+    .then((ok) => {
+      probeCache = { ok, until: Date.now() + (ok ? REACHABLE_TTL_MS : UNREACHABLE_TTL_MS) };
+      if (!ok) {
+        console.warn(
+          `[directory] ${address.host}:${address.port} is not accepting connections — ` +
+            `public pages will render without therapist data for the next ` +
+            `${UNREACHABLE_TTL_MS / 1000}s.`
+        );
+      }
+      return ok;
+    })
+    .finally(() => {
+      probeInFlight = null;
+    });
+
+  return probeInFlight;
+}
+
+/**
+ * Flatten an error to a single string.
+ *
+ * ## Do not pass the error OBJECT to `console.error` here
+ *
+ * This looks like pointless ceremony and is not. A refused Postgres connection
+ * rejects with an `AggregateError` carrying one `Error` per resolved address
+ * (`::1` and `127.0.0.1`). Handing that object to `console.error` inside a
+ * Next.js server render makes the dev server's error serialiser drop the
+ * `errors` array and then reconstruct `new AggregateError(null)`, which throws
+ * `TypeError: object null is not iterable`. That throw escapes as an
+ * `uncaughtException`, stalls the render worker, and turns a caught, handled,
+ * 8-millisecond connection refusal into `GET / 500 in 2.2min`.
+ *
+ * So the failure mode was not the database being down — that part was handled.
+ * It was the logging of the database being down. Keep this returning a string.
+ */
+function describe(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const causes = (error.errors ?? [])
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .join("; ");
+    return `AggregateError(${error.message || "no message"})${causes ? `: ${causes}` : ""}`;
+  }
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  return String(error);
+}
+
+async function safely<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
+  /* The gate, before the driver is touched at all. See `databaseReachable`. */
+  if (!(await databaseReachable())) return fallback;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`timed out after ${QUERY_TIMEOUT_MS}ms`)),
+          QUERY_TIMEOUT_MS
+        );
+      }),
+    ]);
   } catch (error) {
-    console.error(`[directory] ${what} failed; serving an empty directory.`, error);
+    console.error(`[directory] ${what} failed; serving an empty directory. ${describe(error)}`);
     return fallback;
+  } finally {
+    /* Without this the timer keeps the event loop alive for three seconds
+       after every successful query, which in dev shows up as a server that
+       will not exit promptly on Ctrl-C. */
+    if (timer) clearTimeout(timer);
   }
 }
 

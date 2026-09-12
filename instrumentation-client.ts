@@ -31,6 +31,29 @@ const isLocal =
  */
 async function initPostHog() {
   /*
+   * No key, no SDK — return before downloading 91 KB to do nothing.
+   *
+   * This used to be `process.env.NEXT_PUBLIC_POSTHOG_KEY!`, and the `!` was a
+   * lie to the type checker: the variable is genuinely absent on any checkout
+   * whose `.env` has not had analytics credentials added, which is every fresh
+   * clone. posthog-js then logged "PostHog was initialized without a token.
+   * This likely indicates a misconfiguration" on every page load, which reads
+   * like a broken build rather than an unset optional variable.
+   *
+   * Bailing here also means `markAnalyticsReady` is never called, so
+   * `lib/analytics/client.ts` holds its queue and every `capture()` in the app
+   * is a no-op instead of an error. Running locally without analytics is a
+   * supported state, not a degraded one.
+   */
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  if (!key) {
+    if (!isProd) {
+      console.info("[analytics] NEXT_PUBLIC_POSTHOG_KEY is unset — PostHog is disabled.");
+    }
+    return;
+  }
+
+  /*
    * Dynamic, and this is the load-bearing line.
    *
    * A static import here would put the 167 KB (gzipped) SDK in the initial
@@ -40,7 +63,7 @@ async function initPostHog() {
    */
   const { default: posthog } = await import("posthog-js");
 
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+  posthog.init(key, {
     api_host: "/ingest",
     ui_host: "https://us.posthog.com",
     defaults: "2026-01-30",

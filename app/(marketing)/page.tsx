@@ -236,7 +236,7 @@ const FAQS: readonly Faq[] = [
   },
   {
     q: "Is Echo Health right for me?",
-    a: "Echo suits people who want to talk to a licensed therapist regularly and privately. It is not right if you are in immediate danger, need medication prescribed or managed, need an official diagnosis for a legal or insurance purpose, or have been ordered into therapy by a court — we cannot do any of those things. If you need help right now, call 999 or see our crisis page.",
+    a: "Echo suits people who want to talk to a licensed therapist regularly and privately. It is not right if you are in immediate danger, need medication prescribed or managed, need an official diagnosis for a legal or insurance purpose, or have been ordered into therapy by a court — we cannot do any of those things. If you need help right now, contact your local emergency number or see our crisis page.",
   },
   {
     q: "How long until I'm matched?",

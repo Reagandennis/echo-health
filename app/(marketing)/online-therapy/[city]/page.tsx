@@ -233,7 +233,7 @@ export default async function CityPage({
     },
     {
       q: "What if I am in crisis?",
-      a: "Echo is not an emergency service and nobody is watching the platform for urgent messages. If you or someone else is in immediate danger, call 999 or 112. Our crisis page lists verified helplines with their real opening hours, including Kenya Red Cross on 1199 and Childline Kenya on 116 for under-18s.",
+      a: "Echo is not an emergency service and nobody is watching the platform for urgent messages. If you or someone else is in immediate danger, contact your local emergency number. Our crisis page lists verified helplines by country, with their real opening hours.",
     },
   ];
 
@@ -409,14 +409,7 @@ export default async function CityPage({
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-700">
               Echo is not a crisis service. If you or someone else is in
-              immediate danger, call{" "}
-              <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                999
-              </a>{" "}
-              or{" "}
-              <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                112
-              </a>
+              immediate danger, contact your local emergency number
               , or see our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 verified crisis lines

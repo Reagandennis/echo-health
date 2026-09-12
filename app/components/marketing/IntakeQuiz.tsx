@@ -296,12 +296,15 @@ function CrisisNote() {
   return (
     <p className="mt-12 flex items-start gap-2.5 rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-600">
       <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+      {/* No phone number here either — see the note in `SiteFooter`. The
+          people answering this form are worldwide, so naming one country's
+          emergency number sends most of them somewhere that will not answer. */}
       <span>
         If you need help right now, this form is not the fastest route.{" "}
         <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
-          See verified crisis lines
-        </Link>{" "}
-        or call 999.
+          See verified crisis lines for your country
+        </Link>
+        , or contact your local emergency number.
       </span>
     </p>
   );

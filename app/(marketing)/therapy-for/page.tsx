@@ -168,14 +168,7 @@ export default function TherapyForIndexPage() {
           <div className="mt-9 flex items-start gap-3 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-600">
-              If you or someone else is in immediate danger, call{" "}
-              <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                999
-              </a>{" "}
-              or{" "}
-              <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                112
-              </a>
+              If you or someone else is in immediate danger, contact your local emergency number
               . Our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 crisis page

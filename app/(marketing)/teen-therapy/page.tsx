@@ -222,14 +222,7 @@ export default function TeenTherapyPage() {
                       {CHILDLINE.name} — {CHILDLINE.contact}
                     </a>{" "}
                     is {CHILDLINE.cost?.toLowerCase() ?? "available"} and answers{" "}
-                    {CHILDLINE.availability.toLowerCase()}. In immediate danger, call{" "}
-                    <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                      999
-                    </a>{" "}
-                    or{" "}
-                    <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                      112
-                    </a>
+                    {CHILDLINE.availability.toLowerCase()}. In immediate danger, contact your local emergency number
                     . More on our{" "}
                     <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                       crisis page
@@ -239,14 +232,7 @@ export default function TeenTherapyPage() {
                 ) : (
                   <>
                     If a young person needs help right now, this is not the place.
-                    Call{" "}
-                    <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                      999
-                    </a>{" "}
-                    or{" "}
-                    <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                      112
-                    </a>
+                    Contact your local emergency number
                     , or see our{" "}
                     <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                       verified crisis lines

@@ -107,7 +107,7 @@ const FIRST_SESSION = [
 ];
 
 const NOT_FOR = [
-  "You are in immediate danger, or someone else is — call 999 or 112, or see our crisis page.",
+  "You are in immediate danger, or someone else is — contact your local emergency number, or see our crisis page.",
   "You need medication prescribed, changed or monitored. Echo cannot prescribe.",
   "You need a formal diagnosis for a court, an insurer, a school or an employer.",
   "You have been ordered into therapy by a court — we cannot fulfil court-mandated treatment.",

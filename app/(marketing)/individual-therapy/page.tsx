@@ -290,14 +290,7 @@ export default function IndividualTherapyPage() {
             <div className="mt-6 flex items-start gap-3 rounded-3xl bg-brand-50 p-6 ring-1 ring-brand-100">
               <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" strokeWidth={1.8} aria-hidden="true" />
               <p className="text-sm leading-6 text-stone-700">
-                In immediate danger? Call{" "}
-                <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                  999
-                </a>{" "}
-                or{" "}
-                <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                  112
-                </a>
+                In immediate danger? Contact your local emergency number
                 , or see our{" "}
                 <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                   verified crisis lines

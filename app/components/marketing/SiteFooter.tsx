@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ShieldCheck, Lock, BadgeCheck } from "lucide-react";
 import BrandMark from "../portal/BrandMark";
 import { FOOTER_COLUMNS, FOOTER_LOCATIONS, FOOTER_LEGAL } from "@/lib/navigation";
+import { CRISIS_DIRECTORY_URL } from "@/lib/constants";
 
 /**
  * The site's link hub.
@@ -51,21 +52,43 @@ const SOCIALS = [
 export default function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-stone-200/70 bg-stone-50">
-      {/* ── Crisis notice ──────────────────────────────────────────────
-          Above everything, on every page. Echo is not an emergency
-          service, and someone who arrives here in crisis needs to be told
-          that before they read a pricing column. */}
+      {/*
+        ## Do not put a phone number in this banner
+
+        It used to read "call 999 or 112" — Kenya's emergency numbers — on
+        every page of a platform whose clients are worldwide. In the US that
+        reaches nothing; 112 happens to work across the EU and 999 in the UK,
+        but that is luck, not design, and for a reader in India, Brazil or
+        Japan both are simply wrong.
+
+        `lib/constants.ts` spells out why this is the one mistake not to make
+        here: "Publishing an unverified emergency number is the specific
+        failure this rewrite exists to fix." A person reads this line while
+        deciding what to do next, and a wrong number is a dead end at the worst
+        possible moment.
+
+        So the banner routes to `/crisis`, which lists verified numbers per
+        region, and to Find A Helpline, which geolocates and is maintained by
+        people who do this full time. Neither claims to know where the reader
+        is.
+      */}
       <div className="border-b border-stone-200/70 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
           <p className="text-center text-sm leading-6 text-stone-600">
             Echo Health is not a crisis service. If you or someone else is in
-            immediate danger, call{" "}
-            <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">999</a>{" "}
-            or{" "}
-            <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">112</a>.{" "}
+            immediate danger, contact your local emergency number.{" "}
             <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
               See verified crisis lines
-            </Link>
+            </Link>{" "}
+            for your country, or find one at{" "}
+            <a
+              href={CRISIS_DIRECTORY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-brand-700 underline underline-offset-2"
+            >
+              findahelpline.com
+            </a>
             .
           </p>
         </div>

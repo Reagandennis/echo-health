@@ -235,14 +235,7 @@ export default function CouplesTherapyPage() {
                     individual therapy
                   </Link>{" "}
                   instead and tell your therapist what is happening. If you are in
-                  immediate danger, call{" "}
-                  <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                    999
-                  </a>{" "}
-                  or{" "}
-                  <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                    112
-                  </a>
+                  immediate danger, contact your local emergency number
                   , or see our{" "}
                   <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                     verified crisis lines
@@ -329,14 +322,7 @@ export default function CouplesTherapyPage() {
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-700">
               Echo is not a crisis service. If you or someone else is in
-              immediate danger, call{" "}
-              <a href="tel:999" className="font-semibold text-brand-700 underline underline-offset-2">
-                999
-              </a>{" "}
-              or{" "}
-              <a href="tel:112" className="font-semibold text-brand-700 underline underline-offset-2">
-                112
-              </a>
+              immediate danger, contact your local emergency number
               , or see our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 verified crisis lines

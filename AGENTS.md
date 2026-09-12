@@ -55,6 +55,23 @@ npm run dev
 
 `.env.local` (gitignored) points `APP_DATABASE_URL` / `DATABASE_URL` / `REDIS_URL` at the stack and overrides `.env`, which Next loads first. `npm run db:reset` destroys the volume and starts clean; `npm run db:psql` opens a shell; `npm run redis:cli` the same for Redis.
 
+### Signing in locally: `/dev-login`
+
+There are **no test accounts to hand out.** Authentication is Auth0 Universal Login — `lib/auth/client.ts` is three redirects, there is deliberately no `signIn(email, password)`, and accounts live in the Auth0 tenant rather than in Postgres. Seeing `/admin`, `/therapist` or `/dashboard` otherwise requires a tenant, an application, callback URLs, the post-login Action from `scripts/auth0-roles-action.js` deployed, and roles assigned in the dashboard.
+
+So `/dev-login` mints a synthetic session for one of three personas (`lib/auth/dev-session.ts`). Set `DEV_AUTH_ENABLED=true` in `.env.local` and run `npm run db:seed` so the portals have data.
+
+**It is an authentication bypass, gated twice and independently:**
+
+1. `NODE_ENV === "production"` → off. Next **inlines** `NODE_ENV`, so in a production build the check is a literal and every line below it is dead code the bundler drops. The capability is not in the artifact — verified: `/dev-login` and `/api/dev/login` both return **404** against a production build *with `DEV_AUTH_ENABLED=true` still set*, and a stale persona cookie redirects to `/auth/login` rather than granting anything.
+2. `DEV_AUTH_ENABLED === "true"` → an exact opt-in. Not truthy, not `"1"`.
+
+Both return **404** rather than 403 when disabled, so a probe cannot tell "disabled" from "not built".
+
+**It satisfies session *presence* only.** Role enforcement is untouched and still lives in each section's layout, so the personas behave exactly as real sessions with those labels: `client` and `therapist` are both refused at `/admin`; `admin` reaches `/therapist` because `app/therapist/layout.tsx` explicitly admits `therapist` *or* `admin`; everyone reaches `/dashboard` because that layout checks presence only.
+
+**The one risk the build cannot rule out** is `npm run dev` behind a public tunnel — and `cloudflared/` in this repo says that happens — with the flag set. `NODE_ENV` is `development` there, so guard 1 does not fire, and nothing in code can distinguish a tunnel from a laptop. Unset `DEV_AUTH_ENABLED` before exposing a dev server; every sign-in logs a warning saying so.
+
 ### ⚠️ The two Postgres roles are the whole security model
 
 `docker/postgres/init/01-roles.sql` creates them, and its comment is the long version. In short: `echo_admin` owns the tables and **has BYPASSRLS**; `echo_app` owns nothing and does not. Point the app at `echo_admin` and every policy in migration 0001 silently stops applying — every query returns every row and the UI looks identical.

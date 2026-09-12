@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth0 } from "./lib/auth0";
+import {
+  DEV_SESSION_COOKIE,
+  devAuthEnabled,
+  devUserFromCookie,
+} from "./lib/auth/dev-session";
 
 const PROTECTED_PREFIXES = ["/admin", "/therapist", "/dashboard"];
 
@@ -33,6 +38,25 @@ export async function proxy(request: NextRequest) {
   );
 
   if (isProtectedRoute) {
+    /*
+     * A local persona counts as a session.
+     *
+     * Without this the gate below redirects to `/auth/login`, which on a fresh
+     * clone cannot work — AUTH0_CLIENT_ID and friends are unset — so every
+     * portal route would bounce to a broken login even with a dev persona
+     * chosen. `devUserFromCookie` returns null unless both NODE_ENV is not
+     * production (inlined at build time, so this branch is dropped from a
+     * production bundle) and DEV_AUTH_ENABLED is exactly "true".
+     *
+     * This only satisfies the *presence* check. Role enforcement is unchanged
+     * and still happens in each section's layout, so a `client` persona
+     * reaching `/admin` is refused there exactly as a real client would be.
+     */
+    if (devAuthEnabled()) {
+      const persona = devUserFromCookie(request.cookies.get(DEV_SESSION_COOKIE)?.value);
+      if (persona) return authResponse;
+    }
+
     const session = await auth0.getSession(request);
 
     if (!session) {

@@ -1,5 +1,11 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { auth0 } from "@/lib/auth0";
+import {
+  DEV_SESSION_COOKIE,
+  devAuthEnabled,
+  devUserFromCookie,
+} from "@/lib/auth/dev-session";
 import { METADATA_CLAIM, ROLES_CLAIM } from "@/lib/auth/claims";
 
 // Claim names live in their own module so `lib/auth0.ts` can whitelist them in
@@ -82,6 +88,25 @@ export interface SessionUser {
  * here means "no valid session", never "the auth provider was unreachable".
  */
 export const getLoggedInUser = cache(async (): Promise<SessionUser | null> => {
+  /*
+   * Local personas, checked before Auth0.
+   *
+   * `devUserFromCookie` returns null unless BOTH `NODE_ENV !== "production"`
+   * and `DEV_AUTH_ENABLED === "true"`. The first is inlined by Next at build
+   * time, so in a production build this whole branch is dead code the bundler
+   * removes — the bypass is not in the artifact, not merely switched off in it.
+   * See `lib/auth/dev-session.ts` for the full reasoning.
+   *
+   * It comes first so that a dev session does not require Auth0 to be
+   * configured at all: `auth0.getSession()` below needs AUTH0_CLIENT_ID,
+   * AUTH0_CLIENT_SECRET and AUTH0_SECRET, and on a fresh clone none are set.
+   */
+  if (devAuthEnabled()) {
+    const cookieStore = await cookies();
+    const devUser = devUserFromCookie(cookieStore.get(DEV_SESSION_COOKIE)?.value);
+    if (devUser) return devUser;
+  }
+
   const session = await auth0.getSession();
   const user = session?.user;
 

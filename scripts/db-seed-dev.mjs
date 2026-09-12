@@ -149,7 +149,18 @@ try {
     const deleted = await sql`
       DELETE FROM therapists WHERE license_number = 'LOCAL-SEED' RETURNING id
     `;
-    console.log(`Removed ${deleted.length} seed therapist${deleted.length === 1 ? "" : "s"}.`);
+    /* Only the two persona profiles, matched by their exact synthetic ids —
+       never a broad `LIKE 'auth0|%'`, which would take real rows with it if
+       this were ever pointed somewhere it should not be. */
+    const profiles = await sql`
+      DELETE FROM profiles
+      WHERE user_id IN ('auth0|dev-client', 'auth0|dev-admin')
+      RETURNING id
+    `;
+    console.log(
+      `Removed ${deleted.length} seed therapist${deleted.length === 1 ? "" : "s"} ` +
+        `and ${profiles.length} persona profile${profiles.length === 1 ? "" : "s"}.`
+    );
   } else {
     /*
      * Seeded inside a transaction that carries the admin role, because
@@ -196,12 +207,59 @@ try {
         `;
       }
     });
+    /*
+     * Profiles for the personas in `lib/auth/dev-session.ts`.
+     *
+     * Without these the client portal signs in successfully and then shows an
+     * empty shell — `profiles` is the sole record of the therapist↔patient
+     * relationship, so no row means no assigned therapist, no sessions and no
+     * messages. That looks like a broken app rather than an unseeded one,
+     * which is the most confusing possible first impression.
+     *
+     * The client is linked to the first seeded therapist so the dashboard has
+     * someone to show. `user_id` is unique, so re-running updates.
+     */
+    const [firstTherapist] = await sql`
+      SELECT id FROM therapists WHERE user_id = 'auth0|seed-therapist-1' LIMIT 1
+    `;
+
+    const PROFILES = [
+      {
+        userId: "auth0|dev-client",
+        name: "Dev Client",
+        email: "dev-client@localhost.test",
+        goal: "Manage stress and sleep better",
+        therapistId: firstTherapist?.id ?? null,
+      },
+      {
+        userId: "auth0|dev-admin",
+        name: "Dev Admin",
+        email: "dev-admin@localhost.test",
+        goal: null,
+        therapistId: null,
+      },
+    ];
+
+    for (const profile of PROFILES) {
+      await sql`
+        INSERT INTO profiles (user_id, name, email, goal, therapist_id)
+        VALUES (${profile.userId}, ${profile.name}, ${profile.email},
+                ${profile.goal}, ${profile.therapistId})
+        ON CONFLICT (user_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          goal = EXCLUDED.goal,
+          therapist_id = EXCLUDED.therapist_id
+      `;
+    }
+
     const [{ count }] = await sql`
       SELECT count(*)::int AS count FROM therapists
       WHERE kyc_status = 'verified' AND onboarding_complete = true
     `;
     console.log(
-      `Seeded ${THERAPISTS.length} therapists. ${count} now pass the public visibility gate.\n` +
+      `Seeded ${THERAPISTS.length} therapists (${count} pass the public visibility gate) ` +
+        `and ${PROFILES.length} dev-persona profiles.\n` +
         `\n  These are NOT real clinicians. They exist only in this local database.\n` +
         `  Remove them with: npm run db:seed -- --clear\n`
     );

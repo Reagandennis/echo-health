@@ -53,16 +53,38 @@ export default function IntakeQuiz() {
     posthog.capture(ANALYTICS_EVENTS.INTAKE_STARTED);
   }, []);
 
-  /* Restore a half-finished quiz. Someone who leaves to check a crisis line,
-     or who signs in and comes back, should not start over. */
+  /*
+   * Restore a half-finished quiz, and honour a pre-seeded first answer.
+   *
+   * `?for=self|couple|teen` comes from the home page's three hero cards. The
+   * card IS the first question, so arriving with it already answered should
+   * skip question one rather than ask it again — which is the whole reason the
+   * hero is three cards instead of one button.
+   *
+   * Read from `window.location.search` rather than `useSearchParams`, matching
+   * the pattern in `app/(auth)/signup/page.tsx`: `useSearchParams` would force
+   * this component behind a Suspense boundary, and the value is only ever
+   * needed in the browser.
+   */
   useEffect(() => {
+    let restored: Answers = {};
     try {
       const saved = sessionStorage.getItem(INTAKE_STORAGE_KEY);
-      if (saved) setAnswers(JSON.parse(saved) as Answers);
+      if (saved) restored = JSON.parse(saved) as Answers;
     } catch {
       /* Private mode, or storage disabled. Starting fresh is a fine outcome —
          this is a convenience, never the source of truth. */
     }
+
+    const seed = new URLSearchParams(window.location.search).get("for");
+    /* Validated against the real option values: an unknown `?for=` must fall
+       through to asking the question, never seed a fact nothing can read. */
+    if (seed === "self" || seed === "couple" || seed === "teen") {
+      restored = { ...restored, who: [seed] };
+      setIndex(1);
+    }
+
+    if (Object.keys(restored).length > 0) setAnswers(restored);
   }, []);
 
   const persist = useCallback((next: Answers) => {

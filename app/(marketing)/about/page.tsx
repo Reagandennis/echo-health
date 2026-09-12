@@ -1,7 +1,7 @@
-import { ArrowLeft, Target, Heart, Shield, Users } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import { Target, Heart, Shield, Users } from "lucide-react";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
+import { CheckList } from "@/app/components/marketing/sections";
+import { initialsOf } from "@/app/components/portal/Avatar";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
@@ -34,151 +34,141 @@ const values = [
   },
 ];
 
+/**
+ * The leadership list carries names and roles only.
+ *
+ * It used to carry a stock Unsplash portrait per person — including one
+ * captioned "Reagan Enoch, Co-Founder & CTO", which put a stranger's face
+ * under a real, named individual. A photograph is an assertion about who
+ * someone is, so the safe version of a headshot you do not have is not a
+ * different person's headshot; it is no photograph at all. Initials, following
+ * the `portal/Avatar` pattern, say exactly as much as we can back.
+ */
 const team = [
-  {
-    name: "Dr. Barbara Were",
-    role: "Chief Medical Officer",
-    image: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&q=80&fit=crop",
-  },
-  {
-    name: "Reagan Enoch",
-    role: "Co-Founder & CTO",
-    image: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=80&fit=crop",
-  },
-  {
-    name: "Elena Rodriguez",
-    role: "VP of Product",
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800&q=80&fit=crop",
-  },
-  {
-    name: "David Kim",
-    role: "Head of Engineering",
-    image: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=800&q=80&fit=crop",
-  },
+  { name: "Dr. Barbara Were", role: "Chief Medical Officer" },
+  { name: "Reagan Enoch", role: "Co-Founder & CTO" },
+  { name: "Elena Rodriguez", role: "VP of Product" },
+  { name: "David Kim", role: "Head of Engineering" },
+];
+
+/* Statements the product actually enforces, so the panel beside the story
+   cannot quietly drift into marketing. Each one is checked somewhere in the
+   codebase: licence review gates a therapist's first client, bundles are
+   one-time purchases with non-expiring credits, and the clinicians are
+   registered in Kenya with prices settled in KES. */
+const commitments = [
+  "Every therapist's licence and ID is reviewed by an administrator before they can see a single client.",
+  "Sessions are bought once. Nothing recurs, nothing auto-renews, and session credits do not expire.",
+  "Video sessions are encrypted between participants; notes, messages and journals sit behind per-record access controls.",
+  "Our clinicians are registered in Kenya and sessions are priced in Kenyan shillings.",
 ];
 
 export default function AboutPage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
-      <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
-          >
-            <ArrowLeft size={16} />
-            Back to Home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/about", label: "About" }]} />
 
-      <main className="flex-1">
-        {/* Hero */}
-        <section className="bg-teal-800 text-white px-6 py-24 sm:py-32 overflow-hidden relative">
-          <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-10" />
-          <div className="mx-auto max-w-4xl text-center relative z-10">
-            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight mb-8">
-              We're on a mission to make mental healthcare <span className="text-teal-300">universal</span>.
-            </h1>
-            <p className="text-lg sm:text-xl text-teal-100/90 leading-relaxed max-w-3xl mx-auto mb-10">
-              Echo Health was founded on a simple premise: finding a great therapist shouldn't be harder than the things you're seeking therapy for.
+      {/* Hero */}
+      <section className="bg-teal-800 text-white px-6 py-24 sm:py-32 overflow-hidden relative">
+        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-10" />
+        <div className="mx-auto max-w-4xl text-center relative z-10">
+          <h1 className="text-4xl sm:text-6xl font-bold tracking-tight mb-8">
+            We&apos;re on a mission to make mental healthcare <span className="text-teal-300">universal</span>.
+          </h1>
+          <p className="text-lg sm:text-xl text-teal-100/90 leading-relaxed max-w-3xl mx-auto mb-10">
+            Echo Health was founded on a simple premise: finding a great therapist shouldn&apos;t be harder than the things you&apos;re seeking therapy for.
+          </p>
+        </div>
+      </section>
+
+      {/* The Story */}
+      <section className="px-6 py-24 bg-white">
+        <div className="mx-auto max-w-4xl grid md:grid-cols-2 gap-16 items-center">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 block">Our Story</span>
+            <h2 className="text-3xl font-bold text-slate-800 mb-6 leading-tight">
+              Born out of frustration, built with care.
+            </h2>
+            <p className="text-slate-600 leading-relaxed mb-4">
+              In 2021, our founders spent months navigating broken directories, unreturned phone calls, and out-of-network bills just to find a therapist who was taking new patients.
+            </p>
+            <p className="text-slate-600 leading-relaxed">
+              They realized the system wasn&apos;t just broken; it was actively discouraging people from getting help. Echo Health was built to be the antidote—a seamless, modern platform that connects you with compassionate care in days, not months.
             </p>
           </div>
-        </section>
-
-        {/* The Story */}
-        <section className="px-6 py-24 bg-white">
-          <div className="mx-auto max-w-4xl grid md:grid-cols-2 gap-16 items-center">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 block">Our Story</span>
-              <h2 className="text-3xl font-bold text-slate-800 mb-6 leading-tight">
-                Born out of frustration, built with care.
-              </h2>
-              <p className="text-slate-600 leading-relaxed mb-4">
-                In 2021, our founders spent months navigating broken directories, unreturned phone calls, and out-of-network bills just to find a therapist who was taking new patients.
-              </p>
-              <p className="text-slate-600 leading-relaxed">
-                They realized the system wasn't just broken; it was actively discouraging people from getting help. Echo Health was built to be the antidote—a seamless, modern platform that connects you with compassionate care in days, not months.
-              </p>
-            </div>
-            <div className="relative h-[400px] rounded-3xl overflow-hidden bg-cream">
-              <Image 
-                src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&q=80&fit=crop" 
-                alt="Team collaborating"
-                fill
-                className="object-cover"
-              />
-            </div>
+          {/* This was a stock photograph captioned "Team collaborating" — a
+              picture of people who do not work here, standing in for the
+              company. A panel of commitments we can actually point at in the
+              product is both honest and more use to a reader. */}
+          <div className="rounded-3xl bg-brand-gradient p-8 sm:p-10 text-white">
+            <h3 className="font-display text-2xl tracking-tight mb-6">What that turned into</h3>
+            <CheckList items={commitments} onDark />
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Values */}
-        <section className="px-6 py-24 bg-cream">
-          <div className="mx-auto max-w-6xl">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-slate-800">Our Core Values</h2>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              {values.map((v) => (
-                <div key={v.title} className="bg-white rounded-3xl p-8 border border-brand/5 shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center mb-6">
-                    <v.icon className="w-6 h-6 text-brand" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-800 mb-3">{v.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{v.description}</p>
+      {/* Values */}
+      <section className="px-6 py-24 bg-cream">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-800">Our Core Values</h2>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {values.map((v) => (
+              <div key={v.title} className="bg-white rounded-3xl p-8 border border-brand/5 shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center mb-6">
+                  <v.icon className="w-6 h-6 text-brand" />
                 </div>
-              ))}
-            </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3">{v.title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{v.description}</p>
+              </div>
+            ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Team */}
-        <section className="px-6 py-24 bg-white">
-          <div className="mx-auto max-w-6xl">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-slate-800 mb-4">Meet the Leadership</h2>
-              <p className="text-slate-500 max-w-2xl mx-auto">
-                We're a team of clinicians, engineers, and designers dedicated to building the future of mental healthcare.
-              </p>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              {team.map((member) => (
-                <div key={member.name} className="group">
-                  <div className="relative h-72 rounded-3xl overflow-hidden mb-5 bg-cream">
-                    <Image 
-                      src={member.image} 
-                      alt={member.name}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800">{member.name}</h3>
-                  <p className="text-brand text-sm">{member.role}</p>
-                </div>
-              ))}
-            </div>
+      {/* Team */}
+      <section className="px-6 py-24 bg-white">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-800 mb-4">Meet the Leadership</h2>
+            <p className="text-slate-500 max-w-2xl mx-auto">
+              We&apos;re a team of clinicians, engineers, and designers dedicated to building the future of mental healthcare.
+            </p>
           </div>
-        </section>
+          <ul className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {team.map((member) => (
+              <li key={member.name} className="flex flex-col items-center text-center">
+                <span
+                  aria-hidden="true"
+                  className="mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-brand-100 text-2xl font-semibold text-brand-800 ring-1 ring-inset ring-brand-200"
+                >
+                  {initialsOf(member.name)}
+                </span>
+                <h3 className="text-lg font-bold text-slate-800">{member.name}</h3>
+                <p className="text-brand text-sm">{member.role}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
-        {/* CTA */}
-        <section className="px-6 py-20 bg-teal-800 text-center">
-          <div className="mx-auto max-w-3xl">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-              Ready to join us on this journey?
-            </h2>
-            <div className="flex justify-center gap-4">
-              <a href="/careers" className="rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-teal-800 shadow-md hover:bg-teal-50 transition-colors">
-                View Open Roles
-              </a>
-              <a href="/signup" className="rounded-full border border-teal-300 bg-transparent px-8 py-3.5 text-sm font-semibold text-white hover:bg-teal-700 transition-colors">
-                Find a Therapist
-              </a>
-            </div>
+      {/* CTA */}
+      <section className="px-6 py-20 bg-teal-800 text-center">
+        <div className="mx-auto max-w-3xl">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+            Ready to join us on this journey?
+          </h2>
+          <div className="flex flex-wrap justify-center gap-4">
+            <a href="/careers" className="rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-teal-800 shadow-md hover:bg-teal-50 transition-colors">
+              View Open Roles
+            </a>
+            <a href="/get-started" className="rounded-full border border-teal-300 bg-transparent px-8 py-3.5 text-sm font-semibold text-white hover:bg-teal-700 transition-colors">
+              Find a Therapist
+            </a>
           </div>
-        </section>
-      </main>
-      
-      <Footer />
-    </div>
+        </div>
+      </section>
+    </>
   );
 }

@@ -537,8 +537,15 @@ export default function TherapistOnboardingPage() {
                 {i < step ? <CheckCircle size={14} /> : i + 1}
               </div>
               {i < STEPS.length - 1 && (
+                /*
+                 * Narrowed from `w-16 sm:w-24` when Jurisdictions made this a
+                 * FOUR-step wizard. At 360px the container gives 328px, and
+                 * four 32px circles plus three 64px connectors (+8px margins)
+                 * came to 344px — a horizontally scrolling progress bar on the
+                 * narrowest phones. 40px keeps it at 272px.
+                 */
                 <div
-                  className={`h-0.5 w-16 sm:w-24 mx-1 rounded-full transition-colors ${i < step ? "bg-brand" : "bg-stone-200"}`}
+                  className={`h-0.5 w-10 sm:w-20 mx-1 rounded-full transition-colors ${i < step ? "bg-brand" : "bg-stone-200"}`}
                 />
               )}
             </div>

@@ -86,6 +86,19 @@ Verified working on the local stack: with `app.user_id` unset, `echo_app` sees *
 
 `scripts/db-migrate.mjs` sidesteps it entirely by using **drizzle-orm's runtime migrator**, a separate code path on a current version (0.45.2). It reads the same `meta/_journal.json`, splits on the same `--> statement-breakpoint`, and writes byte-compatible `drizzle.__drizzle_migrations` rows — so whenever drizzle-kit is fixed it will see these as already applied rather than re-running them. Migrations run as `echo_admin`, which is also what makes the default-privileges grant apply.
 
+#### ⚠️ A new `.sql` file does nothing until it is in `meta/_journal.json`
+
+The migrator applies the journal, **not the directory**. Because `db:generate` is broken (above), a hand-written migration has to be added to `meta/_journal.json` by hand as well — `{ "idx", "version": "7", "when", "tag": "<filename without .sql>", "breakpoints": true }`, appended in order.
+
+Skip that and the run reports success while doing nothing. Worse, it reports a *plausible* success: the script's closing line counts the rows in `drizzle.__drizzle_migrations`, so adding file 0019 and running `db:apply` printed `Done. 19 migrations recorded as applied.` — a number that looks like it includes the new one and is in fact the old total. Migration 0019 was then "verified" against a database that had never run it, and the security cases written to prove it passed for the wrong reason on the mutations and failed on the fixtures.
+
+**Check the effect, never the exit code.** After applying anything, ask Postgres directly for the thing the migration was supposed to change:
+
+```bash
+docker exec echo-postgres psql -U echo_admin -d echo -tA -c \
+  "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='therapist_licences_unique'"
+```
+
 ### `npm run db:seed` writes people who do not exist
 
 It therefore **refuses to run against any host that is not loopback** — not a warning, an exit. Seed rows carry `license_number = 'LOCAL-SEED'` (never exposed publicly, since `lib/directory.ts` selects columns explicitly) so `--clear` removes exactly those. It seeds inside a transaction carrying `app.user_roles = 'admin'` because migration 0015's trigger refuses a therapist row created already `verified` — that is the admin-review path, not a workaround, and `echo_admin`'s BYPASSRLS skips policies but **not triggers**.

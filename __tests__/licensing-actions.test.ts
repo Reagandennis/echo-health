@@ -10,9 +10,10 @@
  * or any review column, and `check_violation` on a US or Canadian licence with
  * no subdivision. That is enforced in Postgres, and this suite mocks
  * `@/lib/db/session` — so every policy and the whole trigger could be dropped
- * and these tests would still pass. `scripts/verify-therapist-licences.ts` is
- * the file that checks the guard itself, for the same reason
- * `verify-risk-pipeline.ts` exists.
+ * and these tests would still pass. `scripts/verify-kyc-security.ts` is the
+ * file that checks the guard itself against a real database, for the same
+ * reason `verify-risk-pipeline.ts` exists — it carries the licence cases
+ * alongside the credentialing ones, because both guard the same approval.
  *
  * What IS checkable here is the thing the guard turns into an untranslated
  * Postgres error: whether this application code ever sends a column the

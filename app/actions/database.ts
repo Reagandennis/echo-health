@@ -49,6 +49,7 @@ import {
   riskAlerts,
   therapySessions,
   therapistAvailability,
+  therapistLicences,
   therapists,
   type GoalMilestone,
 } from "@/lib/db/schema";
@@ -829,6 +830,33 @@ export async function submitKycForReviewAction(): Promise<{
     if (missing.length > 0) {
       throw new Error(
         `Still required: ${missing.map(kycDocumentLabel).join(", ")}`
+      );
+    }
+
+    /*
+     * At least one jurisdiction, checked HERE and not only in the wizard.
+     *
+     * The onboarding flow calls `submitLicenceForReviewAction` first, which
+     * refuses a therapist with no licences — but this is a server action, which
+     * means it is an HTTP endpoint any authenticated therapist can call
+     * directly. Without this, a crafted call reaches `pending` with nothing on
+     * file about where the clinician may practise, an admin approves what looks
+     * like a complete application, and the result is a verified therapist
+     * visible to clients in thirteen countries with no jurisdiction recorded —
+     * exactly the state migration 0018 exists to end.
+     *
+     * Deliberately a presence check and not a status check: a licence still
+     * `incomplete` is fine, because the reviewer assesses both together. What
+     * must not happen is arriving at review with none at all.
+     */
+    const [licences] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(therapistLicences)
+      .where(eq(therapistLicences.therapistId, therapist.id));
+
+    if (!licences || licences.count === 0) {
+      throw new Error(
+        "Add at least one jurisdiction you are licensed in before submitting your application"
       );
     }
 

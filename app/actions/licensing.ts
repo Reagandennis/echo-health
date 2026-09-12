@@ -52,11 +52,18 @@ import { kycReviewEvents, notifications, therapistLicences, therapists } from "@
  *     raise inside a transaction rolls back the licence with it, so a form that
  *     sends the reviewer's conclusion is a form that cannot save anything.
  *
- *  4. The guard does NOT stop an applicant editing `licence_number` on a
- *     licence that has already been approved. It guards the verdict columns,
- *     not the evidence ones. `assertApplicantEditable` below is the ONLY thing
- *     standing between a clinician getting Kenya approved and then swapping in
- *     a different registration number under the same verified badge.
+ *  4. Migration 0019 extended the guard to the EVIDENCE columns —
+ *     `jurisdiction`, `subdivision`, `licence_number`, `regulator`,
+ *     `expires_at`, `document_id` and `submitted_at` are frozen once a licence
+ *     is `pending` or `verified`. Until then 0018 guarded only the verdict, and
+ *     `assertApplicantEditable` was the ONLY thing standing between a clinician
+ *     getting Kenya approved and swapping in a different registration number
+ *     under the same verified badge.
+ *
+ *     `assertApplicantEditable` is still here, and still worth having: RLS and
+ *     the trigger refuse the write with `insufficient_privilege`, which reaches
+ *     the user as a 500. This turns the same refusal into a sentence explaining
+ *     what to do instead. The database is the guarantee; this is the message.
  */
 
 /** The transaction handle, derived so this module never imports the bare `db`. */
@@ -122,15 +129,19 @@ async function requireOwnTherapist(tx: Tx, user: SessionUser) {
 /**
  * A licence the applicant may still change.
  *
- * THIS IS NOT ENFORCED BY THE DATABASE. `therapist_licences_guard` blocks the
- * verdict columns; `licence_number`, `regulator`, `expires_at`, `subdivision`
- * and even `jurisdiction` stay writable by the row's owner at any status. So
- * without this check a therapist could have Kenya approved, then edit the
- * registration number — and the verified badge, the reviewer's `verification`
- * and the `reviewed_at` trail would all still be sitting beside a number
- * nobody checked. Same shape as `deleteKycDocumentAction`: once a reviewer is
- * looking at it or has signed it off, the evidence stops being the applicant's
- * to move.
+ * As of migration 0019 this IS also enforced by the database:
+ * `therapist_licences_guard` freezes `licence_number`, `regulator`,
+ * `expires_at`, `subdivision`, `jurisdiction` and `document_id` once the row is
+ * `pending` or `verified`. Under 0018 it guarded only the verdict columns, and
+ * this function was the whole defence — a therapist could have Kenya approved,
+ * then edit the registration number, leaving the verified badge, the
+ * reviewer's `verification` and the `reviewed_at` trail sitting beside a number
+ * nobody checked.
+ *
+ * Keep both. The trigger is what makes the guarantee hold for a write path
+ * nobody has written yet; this is what makes the refusal readable. Same shape
+ * as `deleteKycDocumentAction`: once a reviewer is looking at it or has signed
+ * it off, the evidence stops being the applicant's to move.
  */
 function assertApplicantEditable(status: KycStatus): void {
   if (status === "pending") {

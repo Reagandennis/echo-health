@@ -134,6 +134,13 @@
       "when": 1784703000001,
       "tag": "0018_therapist_licences",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784703000002,
+      "tag": "0019_licence_guard_hardening",
+      "breakpoints": true
     }
   ]
 }

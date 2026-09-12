@@ -82,6 +82,40 @@ function be(tx: postgres.TransactionSql, user: string, roles: string) {
                    set_config('app.system_context', '', true)`;
 }
 
+/**
+ * Put a therapist into a known `kyc_status` as an admin, then hand the
+ * transaction back to whoever the caller wants to be next.
+ *
+ * ## Why several cases NEED this, and read as security failures without it
+ *
+ * The guard in migration 0015 raises on a *transition*, not on a value: it
+ * compares `NEW.kyc_status` to `OLD.kyc_status` and permits a write that
+ * changes nothing. That is correct — a no-op UPDATE grants nothing — but it
+ * means the negative cases below only prove anything when the row starts
+ * somewhere the attack would actually move it FROM.
+ *
+ * `db:seed` leaves every therapist `verified`. Against that fixture,
+ * "self-approve to verified" is a no-op the guard rightly allows, and this
+ * script reported `A THERAPIST CAN VERIFY THEMSELVES` — the most alarming line
+ * it can print — about a database where nothing of the kind was possible. The
+ * legitimate `incomplete -> pending` case failed at the same time, for the
+ * mirror-image reason.
+ *
+ * So the state is established explicitly rather than inherited. Everything is
+ * inside a rolled-back transaction, so this never touches the real row.
+ */
+async function fixtureStatus(
+  tx: postgres.TransactionSql,
+  therapistId: string,
+  status: "incomplete" | "pending" | "rejected" | "verified"
+) {
+  await be(tx, ADMIN_SETUP, "admin");
+  await tx`UPDATE therapists SET kyc_status = ${status}::kyc_status WHERE id = ${therapistId}`;
+}
+
+/* Declared out here because `fixtureStatus` needs it above `main`. */
+const ADMIN_SETUP = "auth0|security-check-admin";
+
 async function main() {
   console.log("\n=== Therapist credentialing — adversarial security check ===\n");
 
@@ -96,7 +130,7 @@ async function main() {
 
   const A = { id: therapists[0].id as string, user: therapists[0].user_id as string };
   const B = { id: therapists[1].id as string, user: therapists[1].user_id as string };
-  const ADMIN = "auth0|security-check-admin";
+  const ADMIN = ADMIN_SETUP;
 
   const doc = (therapistId: string) => ({
     therapist_id: therapistId,
@@ -113,6 +147,7 @@ async function main() {
   report(
     "owner CAN delete own document while incomplete",
     (await tryTx(async (tx) => {
+      await fixtureStatus(tx, A.id, "incomplete");
       await be(tx, A.user, "therapist");
       const [d] = await tx`INSERT INTO kyc_documents ${tx(doc(A.id))} RETURNING id`;
       const del = await tx`DELETE FROM kyc_documents WHERE id = ${d.id} RETURNING id`;
@@ -124,9 +159,15 @@ async function main() {
   report(
     "owner CANNOT delete a document while under review",
     (await tryTx(async (tx) => {
+      await fixtureStatus(tx, A.id, "incomplete");
       await be(tx, A.user, "therapist");
       const [d] = await tx`INSERT INTO kyc_documents ${tx(doc(A.id))} RETURNING id`;
-      await tx`UPDATE therapists SET kyc_status = 'pending' WHERE id = ${A.id}`;
+      /* Moved to `pending` as an admin, not as the therapist. A therapist can
+         only make that transition FROM incomplete/rejected, so doing it here as
+         A made this case's own setup fail against a seeded `verified` fixture —
+         and the failure was reported as the document policy being broken. */
+      await fixtureStatus(tx, A.id, "pending");
+      await be(tx, A.user, "therapist");
       const del = await tx`DELETE FROM kyc_documents WHERE id = ${d.id} RETURNING id`;
       if (del.length !== 0) throw new Error(`deleted ${del.length} rows`);
     })) === null,
@@ -192,6 +233,7 @@ async function main() {
     "therapist CANNOT self-approve their kyc_status",
     await (async () => {
       const r = await tryTx(async (tx) => {
+        await fixtureStatus(tx, A.id, "incomplete");
         await be(tx, A.user, "therapist");
         await tx`UPDATE therapists SET kyc_status = 'verified' WHERE id = ${A.id}`;
       });
@@ -259,6 +301,7 @@ async function main() {
   report(
     "therapist CAN still submit (incomplete -> pending)",
     (await tryTx(async (tx) => {
+      await fixtureStatus(tx, A.id, "incomplete");
       await be(tx, A.user, "therapist");
       const rows = await tx`UPDATE therapists SET kyc_status = 'pending', kyc_submitted_at = now()
                             WHERE id = ${A.id} RETURNING id`;
@@ -312,6 +355,207 @@ async function main() {
       `the audit trail is ${label.toLowerCase()}-able — it proves nothing`
     );
   }
+
+  // ── Per-jurisdiction licences (migrations 0018 and 0019) ───────────────────
+  //
+  // The 0018 guard covered the VERDICT columns and left the EVIDENCE ones
+  // open, so an approved licence could have its registration number or its
+  // country rewritten while keeping the reviewer's attestation. 0019 freezes
+  // them at `pending` and `verified`. These cases are the reason to believe
+  // that, and the reason to notice if a later migration undoes it.
+
+  /*
+   * The probe jurisdiction is NOT Kenya, and that is load-bearing.
+   *
+   * 0018's backfill gave every existing therapist a verified `kenya` licence,
+   * and 0019 made the uniqueness constraint NULLS NOT DISTINCT — so a fixture
+   * that inserts ('kenya', NULL) now collides with the real row. It did not
+   * before, which is the whole defect 0019 fixed: the first run of these cases
+   * happily created a second Kenya licence and every one of them failed on the
+   * setup rather than the policy.
+   */
+  const PROBE = "uganda";
+
+  const held = await sql`SELECT 1 FROM therapist_licences
+                         WHERE therapist_id = ${A.id} AND jurisdiction = ${PROBE}`;
+  if (held.length > 0) {
+    console.log(
+      `  SKIPPED licence cases — fixture therapist already holds a ${PROBE} licence, ` +
+        "so every insert below would collide with it rather than test anything."
+    );
+  }
+
+  /** A licence owned by A, left at `incomplete`, inside the caller's tx. */
+  async function licence(tx: postgres.TransactionSql, jurisdiction = PROBE) {
+    const [l] = await tx`
+      INSERT INTO therapist_licences (therapist_id, jurisdiction, regulator, licence_number)
+      VALUES (${A.id}, ${jurisdiction}, 'security-check regulator', 'PROBE-0001')
+      RETURNING id`;
+    return l.id as string;
+  }
+
+  /** Move a licence to a terminal state as an admin, then return to A. */
+  async function asReviewed(tx: postgres.TransactionSql, id: string, status: string) {
+    await be(tx, ADMIN, "admin");
+    await tx`UPDATE therapist_licences
+             SET status = ${status}::kyc_status, verification = 'named_regulator',
+                 reviewed_at = now(), reviewed_by = ${ADMIN}
+             WHERE id = ${id}`;
+    await be(tx, A.user, "therapist");
+  }
+
+  report(
+    "therapist CANNOT self-verify a licence in a jurisdiction nobody assessed",
+    await (async () => {
+      const r = await tryTx(async (tx) => {
+        await be(tx, A.user, "therapist");
+        await tx`INSERT INTO therapist_licences
+                   (therapist_id, jurisdiction, licence_number, status)
+                 VALUES (${A.id}, 'united-kingdom', 'HCPC-FAKE', 'verified')`;
+      });
+      return r !== null && /insufficient_privilege|must be ''incomplete''|must be 'incomplete'/i.test(r);
+    })(),
+    "a clinician can present as HCPC-registered to UK clients with no reviewer involved"
+  );
+
+  for (const [column, mutate] of [
+    ["licence_number", (tx: postgres.TransactionSql, id: string) =>
+      tx`UPDATE therapist_licences SET licence_number = 'KE-SWAPPED' WHERE id = ${id}`],
+    ["jurisdiction", (tx: postgres.TransactionSql, id: string) =>
+      tx`UPDATE therapist_licences SET jurisdiction = 'united-kingdom' WHERE id = ${id}`],
+    ["regulator", (tx: postgres.TransactionSql, id: string) =>
+      tx`UPDATE therapist_licences SET regulator = 'Invented Board' WHERE id = ${id}`],
+    ["expires_at", (tx: postgres.TransactionSql, id: string) =>
+      tx`UPDATE therapist_licences SET expires_at = '2099-01-01' WHERE id = ${id}`],
+  ] as const) {
+    for (const state of ["pending", "verified"] as const) {
+      report(
+        `therapist CANNOT change ${column} on a ${state} licence`,
+        await (async () => {
+          const r = await tryTx(async (tx) => {
+            await be(tx, A.user, "therapist");
+            const id = await licence(tx);
+            await asReviewed(tx, id, state);
+            await mutate(tx, id);
+          });
+          return r !== null && /insufficient_privilege|cannot be changed/i.test(r);
+        })(),
+        `the evidence behind a ${state} licence is still the applicant's to rewrite — ` +
+          "a reviewer's attestation can end up attached to a credential they never saw"
+      );
+    }
+  }
+
+  report(
+    "therapist CANNOT reassign a licence to another therapist",
+    await (async () => {
+      const r = await tryTx(async (tx) => {
+        await be(tx, A.user, "therapist");
+        const id = await licence(tx);
+        await tx`UPDATE therapist_licences SET therapist_id = ${B.id} WHERE id = ${id}`;
+      });
+      return r !== null && /insufficient_privilege|cannot be reassigned/i.test(r);
+    })(),
+    "a licence can be handed to another account, which is a credential transfer"
+  );
+
+  report(
+    "one licence per jurisdiction is actually enforced when subdivision is NULL",
+    await (async () => {
+      const r = await tryTx(async (tx) => {
+        await be(tx, A.user, "therapist");
+        await licence(tx);
+        await licence(tx);
+      });
+      /* Before 0019 this inserted both rows and returned null: the constraint
+         was NULLS DISTINCT, so two NULL subdivisions did not collide and the
+         table could hold a `verified` and a `rejected` row for one country. */
+      return r !== null && /duplicate key|therapist_licences_unique/i.test(r);
+    })(),
+    "two rows can exist for one jurisdiction, and nothing downstream can say which is authoritative"
+  );
+
+  report(
+    "a sub-national jurisdiction CANNOT be recorded without a state or province",
+    await (async () => {
+      const r = await tryTx(async (tx) => {
+        await be(tx, A.user, "therapist");
+        await tx`INSERT INTO therapist_licences (therapist_id, jurisdiction, licence_number)
+                 VALUES (${A.id}, 'united-states', 'US-0001')`;
+      });
+      return r !== null && /sub-nationally|check_violation/i.test(r);
+    })(),
+    "a therapist licensed in one US state can be presented as licensed countrywide"
+  );
+
+  // ── The legitimate licence flows must still work ───────────────────────────
+
+  report(
+    "therapist CAN correct the details of an incomplete licence",
+    (await tryTx(async (tx) => {
+      await be(tx, A.user, "therapist");
+      const id = await licence(tx);
+      const u = await tx`UPDATE therapist_licences SET licence_number = 'KE-0002'
+                         WHERE id = ${id} RETURNING id`;
+      if (u.length !== 1) throw new Error(`updated ${u.length} rows, expected 1`);
+    })) === null,
+    "an applicant cannot fix a typo before submitting — 0019 froze too much"
+  );
+
+  report(
+    "therapist CAN correct details after a rejection",
+    (await tryTx(async (tx) => {
+      await be(tx, A.user, "therapist");
+      const id = await licence(tx);
+      await asReviewed(tx, id, "rejected");
+      const u = await tx`UPDATE therapist_licences SET licence_number = 'KE-0003'
+                         WHERE id = ${id} RETURNING id`;
+      if (u.length !== 1) throw new Error(`updated ${u.length} rows, expected 1`);
+    })) === null,
+    "a rejected applicant cannot answer the rejection, which makes rejection permanent"
+  );
+
+  report(
+    "therapist CAN submit an incomplete licence for review",
+    (await tryTx(async (tx) => {
+      await be(tx, A.user, "therapist");
+      const id = await licence(tx);
+      const u = await tx`UPDATE therapist_licences
+                         SET status = 'pending', submitted_at = now(), review_note = NULL
+                         WHERE id = ${id} RETURNING id`;
+      if (u.length !== 1) throw new Error(`updated ${u.length} rows, expected 1`);
+    })) === null,
+    "the submit path is broken — no licence can ever reach a reviewer"
+  );
+
+  report(
+    "admin CAN verify a licence",
+    (await tryTx(async (tx) => {
+      await be(tx, A.user, "therapist");
+      const id = await licence(tx);
+      await be(tx, ADMIN, "admin");
+      const u = await tx`UPDATE therapist_licences
+                         SET status = 'verified', verification = 'named_regulator',
+                             reviewed_at = now(), reviewed_by = ${ADMIN}
+                         WHERE id = ${id} RETURNING id`;
+      if (u.length !== 1) throw new Error(`updated ${u.length} rows, expected 1`);
+    })) === null,
+    "reviewers cannot approve anything — 0019's freeze caught admins too"
+  );
+
+  report(
+    "admin CAN correct the evidence on a verified licence",
+    (await tryTx(async (tx) => {
+      await be(tx, A.user, "therapist");
+      const id = await licence(tx);
+      await asReviewed(tx, id, "verified");
+      await be(tx, ADMIN, "admin");
+      const u = await tx`UPDATE therapist_licences SET licence_number = 'KE-CORRECTED'
+                         WHERE id = ${id} RETURNING id`;
+      if (u.length !== 1) throw new Error(`updated ${u.length} rows, expected 1`);
+    })) === null,
+    "a genuine transcription error in an approved licence cannot be fixed by anyone"
+  );
 
   console.log(
     `\n  ${pass} passed, ${fail} failed` +

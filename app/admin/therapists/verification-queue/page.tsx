@@ -65,7 +65,7 @@ export default async function VerificationQueuePage() {
     <div>
       <AdminPageHeader
         title="Verification review queue"
-        description="Applications awaiting a credentialing decision, longest-waiting first."
+        description="Licences and applications awaiting a credentialing decision, longest-waiting first."
         breadcrumbs={[
           { label: "Therapists", href: "/admin/therapists" },
           { label: "Verification Queue" },
@@ -87,18 +87,22 @@ export default async function VerificationQueuePage() {
         before they gain access.
       </p>
 
-      {queue.length === 0 ? (
+      {queue.length === 0 && pendingLicences.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4">
             <CheckCircle className="w-8 h-8 text-emerald-500" />
           </div>
           <h3 className="text-base font-semibold text-stone-700 mb-1">All clear</h3>
           <p className="text-sm text-stone-400">
-            No applications are awaiting review.
+            No applications or licences are awaiting review.
           </p>
         </div>
       ) : (
         <div className="space-y-8">
+          <LicenceQueue licences={pendingLicences} />
+
+          {queue.length > 0 && (
+            <>
           <section>
             <div className="flex items-baseline gap-2 mb-3">
               <h2 className="text-sm font-bold text-stone-800">Awaiting review</h2>
@@ -140,9 +144,83 @@ export default async function VerificationQueuePage() {
               </div>
             </section>
           )}
+            </>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Licences awaiting a decision, grouped by clinician.
+ *
+ * First on the page, above the application queue, because this is the newer and
+ * more specific claim: an application says "we checked this person's identity
+ * and qualifications", a licence says "this person may lawfully practise where
+ * your client is". The second is the one a UK or US client is relying on, and
+ * the one that did not exist until migration 0018.
+ *
+ * Grouped rather than flat because a single clinician may claim several
+ * jurisdictions at once, and three separate cards under the same name reads as
+ * three applicants.
+ */
+function LicenceQueue({
+  licences,
+}: Readonly<{ licences: readonly PendingLicenceRow[] }>) {
+  if (licences.length === 0) return null;
+
+  /* A Map preserves insertion order, so the grouping keeps the query's
+     longest-waiting-first ordering instead of re-sorting by name. */
+  const byTherapist = new Map<string, PendingLicenceRow[]>();
+  for (const licence of licences) {
+    const existing = byTherapist.get(licence.therapistId);
+    if (existing) existing.push(licence);
+    else byTherapist.set(licence.therapistId, [licence]);
+  }
+
+  return (
+    <section>
+      <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+        <h2 className="text-sm font-bold text-stone-800">
+          Licences awaiting review
+        </h2>
+        <span className="text-xs text-stone-400">
+          {licences.length} licence{licences.length === 1 ? "" : "s"} ·{" "}
+          {byTherapist.size} clinician{byTherapist.size === 1 ? "" : "s"}
+        </span>
+      </div>
+      <p className="text-xs text-stone-400 mb-3 max-w-3xl">
+        Each licence is verified against its OWN jurisdiction&rsquo;s
+        requirements. An approved application does not approve a licence, and a
+        clinician verified in Kenya is not thereby licensed anywhere else — which
+        is the whole reason these are separate decisions.
+      </p>
+
+      <div className="space-y-6">
+        {[...byTherapist.entries()].map(([therapistId, rows]) => (
+          <div key={therapistId}>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              {/* The name links to the evidence, so there is always a path from
+                  a licence to the documents behind it. */}
+              <Link
+                href={`/admin/therapists/${therapistId}/credentials`}
+                className="text-sm font-bold text-stone-900 hover:text-teal-700 transition-colors"
+              >
+                {rows[0].therapistName}
+              </Link>
+              <span className="text-[11px] text-stone-400">application</span>
+              {kycBadge(rows[0].therapistKycStatus)}
+            </div>
+            <div className="space-y-4">
+              {rows.map((licence) => (
+                <LicenceReviewCard key={licence.id} licence={licence} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -170,8 +248,12 @@ function QueueCard({ t }: Readonly<{ t: VerificationQueueRow }>) {
               </Link>
               {kycBadge(t.kycStatus)}
             </div>
+            {/* "Licence (legacy)" because `therapists.license_number` carries
+                no jurisdiction — it predates migration 0018, when every
+                clinician was Kenyan. The jurisdictions that matter are on the
+                credentials screen. */}
             <p className="text-xs text-stone-500">
-              {t.experience} years experience · Licence:{" "}
+              {t.experience} years experience · Licence (legacy):{" "}
               {t.licenseNumber ?? "not provided"}
             </p>
             <div className="flex flex-wrap gap-1 mt-2">

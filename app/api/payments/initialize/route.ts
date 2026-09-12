@@ -46,6 +46,42 @@ import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
  * price: the bands only ever reduce, and an untrusted or unreadable header
  * falls through to `standard`.
  */
+/**
+ * Price points already reported. ONE LINE PER PROCESS per plan/tier/amount.
+ *
+ * The condition below is true of every discounted band and of every 50%
+ * promotion, so logging it per request would print the same accepted fact
+ * thousands of times a day — and a log nobody reads is worse than no log, for
+ * the same reason `risk_alerts` does not persist `moderate` results. Deduped,
+ * it is what it should be: a line that appears once after a deploy or a price
+ * change, naming the number.
+ */
+const marginNoted = new Set<string>();
+
+/**
+ * Note, once, that a charge clears the platform less than it accrues to the
+ * clinician.
+ *
+ * This is a deliberate, documented position at the discounted tiers — see the
+ * table in `lib/pricing.ts` — not an error, so nothing is blocked or failed.
+ * It is recorded at all because the alternative is discovering the condition
+ * from a quarterly review instead of from the deploy that introduced it.
+ */
+function noteIfPlatformClearsLess(plan: string, tier: string, chargeKes: number): void {
+  const margin = platformMarginKes(plan, chargeKes);
+  if (!margin?.platformClearsLess) return;
+
+  const key = `${plan}:${tier}:${chargeKes}`;
+  if (marginNoted.has(key)) return;
+  marginNoted.add(key);
+
+  console.warn(
+    `[payments] ${plan} at ${chargeKes} ${PLAN_CURRENCY} (tier=${tier}) clears ` +
+      `${margin.platformKes} to the platform against ${margin.therapistKes} accrued to ` +
+      `the therapist, per session. Deliberate — see THERAPIST_PAID_ON_LIST_PRICE.`
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getLoggedInUser();
@@ -175,20 +211,7 @@ export async function POST(req: NextRequest) {
      */
     assertPricingConfigured();
 
-    /*
-     * A charge that clears the platform less than it accrues to the clinician
-     * is a deliberate, documented position at the discounted tiers — not a bug.
-     * It is logged anyway, because the alternative is discovering the condition
-     * from a quarterly review rather than from the line that caused it.
-     */
-    const margin = platformMarginKes(plan, price);
-    if (margin?.platformClearsLess) {
-      console.warn(
-        `[payments] ${plan} at ${price} ${PLAN_CURRENCY} (tier=${market.tier}) clears ` +
-          `${margin.platformKes} to the platform against ${margin.therapistKes} accrued ` +
-          `to the therapist, per session. See THERAPIST_PAID_ON_LIST_PRICE.`
-      );
-    }
+    noteIfPlatformClearsLess(plan, market.tier, price);
 
     if (!user.email) {
       return NextResponse.json(
@@ -203,6 +226,15 @@ export async function POST(req: NextRequest) {
     // Recorded BEFORE redirecting. If the user abandons checkout, or the webhook
     // arrives before the callback, there is already a row to reconcile against —
     // and the UNIQUE reference makes duplicate webhook delivery a no-op.
+    //
+    // `amountMinor` is the BANDED amount, which is what makes the webhook's
+    // equality check (`verified.amount !== existing.amountMinor` → recorded as
+    // failed) pass for a regional purchase. There is deliberately no `tier`
+    // column: adding one needs a custom migration plus a hand-edited schema
+    // (see the snapshot warning in AGENTS.md), and nothing needs it — the
+    // amount is on the row, the band is on the analytics event, and neither
+    // payouts nor entitlements read a band. If reconciliation ever wants the
+    // band per row, that is the moment to add the column, not before.
     await withUser(user, async (tx) => {
       await tx.insert(payments).values({
         reference,

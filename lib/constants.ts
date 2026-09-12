@@ -229,6 +229,13 @@ export function therapistEarnings(sessionAmount: number): number {
  * Clamped because a negative or >100 value in the database would otherwise
  * produce a negative charge.
  *
+ * A non-finite `percent` is treated as **no discount at all**, not as zero-ish.
+ * `Math.min(100, Math.max(0, NaN))` is `NaN`, so without this line a NaN
+ * propagates through the charge into `toMinorUnits` and reaches Paystack as
+ * `amount: NaN` — the failure being that it is not a smaller price, it is not a
+ * price. Failing towards the full price is the recoverable direction: an
+ * unapplied discount is a support ticket, a NaN is a broken checkout.
+ *
  * Callers pass the **list** price, not a regionally-banded one: discounts do
  * not compound. `amountToChargeKes()` in `lib/pricing.ts` takes the lower of
  * this result and the band, and explains why stacking them loses money.
@@ -237,7 +244,7 @@ export function applyPromoDiscount(
   price: number,
   percent: number = PROMO_DISCOUNT_PERCENT
 ): number {
-  const safe = Math.min(100, Math.max(0, percent));
+  const safe = Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
   return Math.round(price * (1 - safe / 100));
 }
 

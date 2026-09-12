@@ -48,7 +48,37 @@ import { describeRegionalBands } from "@/lib/pricing";
  * inventing those is drafting a legal position rather than describing a
  * product.
  *
- * ## Still needs a Kenyan commercial lawyer
+ * ## ⚠️ The two-practitioner split, and the limit of what this document does
+ *
+ * §2, §3 and §7 now distinguish **licensed therapists** from **wellness
+ * coaches**, because Echo works with practitioners worldwide and cannot
+ * lawfully offer therapy in every market it has clients in.
+ *
+ * That structure is a real legal distinction — coaching is unregulated in most
+ * places, therapy is not — but **it only protects Echo if the product actually
+ * behaves the way these sections say it does.** The document is not the
+ * control; the code is. Specifically, all three of these must stay true:
+ *
+ *   1. A coach is never titled "therapist" anywhere — directory, profile,
+ *      booking, email, marketing. `displayTitle()` in `lib/practitioners.ts`
+ *      is the single place that decides, so that a page cannot hardcode the
+ *      wrong noun.
+ *   2. A coach never takes a client with a clinical presentation.
+ *      `requiresLicensedPractitioner()` is that gate, and it fails towards the
+ *      clinician: an intake answer nobody has classified routes to a licensed
+ *      therapist rather than defaulting to coaching.
+ *   3. Marketing for a coaching-only market does not describe therapy.
+ *      `offeringFor()` is what the country pages must ask.
+ *
+ * If any of those stops holding, this document stops being a defence and
+ * becomes evidence that the mislabelling was deliberate. A disclaimer does not
+ * cure practising a regulated activity without registration — in several
+ * jurisdictions that is criminal rather than contractual, and the noun on the
+ * contract does not determine the legal character of what was delivered.
+ * **Withdraw the coaching route in a market rather than paper over a gap in
+ * it.**
+ *
+ * ## Still needs a Kenyan commercial lawyer — and now local advice too
  *
  *   • Confirmation of the governing-law and jurisdiction wording in §12, and
  *     whether a consumer in the EU/UK retains a right to their local forum.
@@ -59,6 +89,16 @@ import { describeRegionalBands } from "@/lib/pricing";
  *   • Whether the 13–17 consent model in §4 satisfies Kenyan law on minors.
  *   • An IP / user-content licence clause, which is absent.
  *   • Confirmation that `legalEntityName` is the contracting entity.
+ *   • **Per-market advice on the coaching route.** Whether non-clinical
+ *     coaching is genuinely unregulated in each market, what a coach may not
+ *     say without straying into regulated activity, and whether Echo
+ *     contracting from Kenya changes the answer. Kenyan counsel cannot advise
+ *     on German or Californian scope-of-practice law.
+ *   • Whether §3's promise — that we refuse the sale rather than sell coaching
+ *     to someone with a clinical need — creates a duty we should be explicit
+ *     about discharging.
+ *   • Whether the coaches themselves need their own contract terms; these are
+ *     client-facing and say nothing about the practitioner relationship.
  *   • **Country-based pricing in §5**, which is new and is the item most
  *     likely to need redrafting rather than review. Three things to put to
  *     counsel: whether differential pricing by country needs a disclosure
@@ -111,30 +151,48 @@ By using Echo you accept that it is not a substitute for emergency care, for inp
   {
     id: "what-it-is",
     title: "2. What the service is, and what it is not",
-    content: `Echo Health is a platform that connects you with an independently licensed mental-health practitioner for therapy delivered by video, phone or written message. We provide the platform, the matching, the scheduling and the payment rail. **Your therapist provides the clinical care**, in their own professional capacity, under their own licence and their own professional indemnity cover.
+    content: `Echo Health is a platform. We provide the matching, the scheduling, the video and messaging, and the payment rail. **The practitioner provides the service itself**, in their own professional capacity, under their own qualifications and their own insurance. We are not a medical provider and we do not supervise clinical decisions.
 
-**What we cannot do.** Plainly, because each of these sends a proportion of people to the wrong service:
+**We work with practitioners worldwide, and there are two kinds.** Which one is available to you depends on where you are, and you will be told which before you pay:
 
-- **We cannot prescribe or manage medication.** Not anywhere, including in Kenya.
-- **We cannot provide a formal diagnosis**, or a letter, report or assessment that an insurer, employer, school, immigration authority or court will accept.
-- **We cannot fulfil court-ordered or mandated therapy.**
-- **We cannot offer the therapy your local health system or insurance will reimburse**, because your therapist is not registered in your country — see section 3.
-- **We do not provide inpatient, emergency or psychiatric care.**
+- **Licensed therapists.** Practitioners holding a current licence or registration to provide therapy in a named jurisdiction. This is therapy.
+- **Wellness coaches.** Practitioners providing structured, **non-clinical** support — goals, habits, stress, life transitions. This is **not** therapy, is not treatment, and is not delivered by a clinician.
+
+Section 3 explains which you get and why. **The difference is real, not a matter of wording**, and we will never describe a coach to you as a therapist.
+
+**What nobody on this platform can do.** Plainly, because each of these sends a proportion of people to the wrong service:
+
+- **Prescribe or manage medication.** No practitioner on Echo, of either kind, anywhere.
+- **Provide a formal diagnosis**, or a letter, report or assessment for an insurer, employer, school, immigration authority or court.
+- **Fulfil court-ordered or mandated therapy.**
+- **Provide the care your local health system or insurance will reimburse**, unless your practitioner is licensed where you are.
+- **Provide inpatient, emergency or psychiatric care.**
 
 If you need any of those, a locally registered practitioner is the right choice and we would rather tell you now.`,
   },
   {
     id: "licensing",
-    title: "3. Where your therapist is licensed",
-    content: `**Read this before you pay if you are outside Kenya, which most of our clients are.**
+    title: "3. Who you work with, and what they are qualified to do",
+    content: `**Read this before you pay. It is the most important section in this document.**
 
-Echo's practitioners hold current licences to practise in **Kenya**. We verify those credentials before a profile appears in our directory. They are qualified clinicians.
+Echo works with practitioners in a number of countries. Whether you are offered **therapy** or **wellness coaching** depends on whether we have a practitioner licensed to provide therapy where you are.
 
-They are **not** registered with a regulator in your country unless you are also in Kenya. For ordinary talking therapy that changes nothing about the quality of the work. It matters in specific situations, and those are the ones in section 2.
+**If we have a licensed therapist for your jurisdiction**, you are offered therapy. Their licence is verified against the relevant regulator before their profile appears, we record which jurisdiction it covers, and a complaint about their professional conduct can go to that regulator as well as to us.
 
-It also means that a complaint about your therapist's professional conduct goes to their **Kenyan** regulator and to us — not to a professional body where you live. Section 11 explains how to raise one.
+**If we do not, you are offered wellness coaching instead.** Not therapy with a disclaimer attached — a different service, with a different scope:
 
-**Sessions are scheduled in East Africa Time (GMT+3).** Depending where you are, the overlap with your therapist's working hours may be narrow. The [country pages](/online-therapy) set out the actual time difference and which parts of your day are realistic. If none of them work for you, this is not the right service, and you should establish that before buying.`,
+- A coach supports goals, habits, stress, motivation and life transitions.
+- A coach does **not** assess, diagnose or treat any mental-health condition, and is not a clinician.
+- A coach will **not** work with you if you are at risk of harming yourself or anyone else. Our intake asks about this, and it routes to a licensed therapist rather than a coach.
+- A coach is **never** described by us as a therapist, psychotherapist, counsellor or psychologist, and may not describe themselves that way on this platform.
+
+**Why it works this way.** In many countries "therapist", "psychotherapist" and "psychologist" are protected titles, and providing regulated treatment without local registration is unlawful — in some places a criminal matter. Offering coaching where we cannot lawfully offer therapy is the honest option. Offering therapy and calling it coaching would not be, and we are not doing that.
+
+**We are working towards locally licensed therapists in more countries.** As that happens, those markets move from coaching to therapy and the change is reflected here and on the [country pages](/online-therapy). Until it does, what is on offer in your country is what section 3 says it is.
+
+**If your intake indicates a clinical need and we have no licensed therapist for your jurisdiction, we will tell you so and not sell you coaching instead.** You will be pointed at local options. That is a sale we are choosing not to make.
+
+**Sessions are scheduled in East Africa Time (GMT+3)** unless your practitioner's profile says otherwise. Depending where you are, the overlap may be narrow — the [country pages](/online-therapy) give the actual time difference and which parts of your day are realistic. If none work for you, establish that before buying.`,
   },
   {
     id: "eligibility",
@@ -199,16 +257,25 @@ Where we offer one it is worth ${PROMO_DISCOUNT_PERCENT}% off a plan, applied be
   },
   {
     id: "your-therapist",
-    title: "7. The therapeutic relationship",
-    content: `Your therapist exercises independent professional judgement. They decide how to work with you, whether they are the right clinician for what you need, and — within the limits they will explain — what stays confidential.
+    title: "7. Your relationship with your practitioner",
+    content: `**If you are working with a licensed therapist**, they exercise independent professional judgement: how to work with you, whether they are the right clinician for what you need, and — within the limits they will explain — what stays confidential.
 
-**Confidentiality and its limits.** What you discuss is confidential. Your therapist will explain the exceptions at the outset; broadly, they arise where there is a serious and imminent risk to your safety or someone else's, or where the law requires disclosure. That judgement belongs to your clinician, not to our software.
-
-**Automated safety scanning.** Messages you send are checked against a fixed word list, and a high-risk result files an internal safety alert. It is crude, produces frequent false positives, and is described in full in section 3 of the [privacy policy](/privacy). It is not a monitoring service and it does not make Echo an emergency service — see section 1.
+**Confidentiality and its limits.** What you discuss is confidential. Your therapist will explain the exceptions at the outset; broadly they arise where there is a serious and imminent risk to your safety or someone else's, or where the law requires disclosure. That judgement belongs to your clinician, not to our software.
 
 **Clinical notes** are your therapist's professional record. You do not have access to them through the platform.
 
-**No guarantee of outcome.** Therapy helps a great many people and we believe in it, but nobody can promise a particular result, and we do not. What we commit to is that your therapist is licensed, credential-checked, and that switching is free if the fit is wrong.`,
+**If you are working with a wellness coach**, the relationship is different in ways that matter:
+
+- It is **not** a clinical relationship and your coach is **not** your clinician.
+- There are no clinical notes, because a coach does not keep a clinical record.
+- Your coach cannot assess or treat a mental-health condition, and if what you bring turns out to need one, their job is to tell you so and stop — not to continue outside their competence.
+- Coaching conversations are treated as confidential on the same basis, and the same safety limits apply.
+
+**If coaching turns out to be the wrong fit**, tell us. Where we have a licensed therapist for your jurisdiction we will move you and carry your unused credits across. Where we do not, we will say so plainly and refund you rather than keep you in a service that cannot help — see section 5.
+
+**Automated safety scanning.** Messages you send are checked against a fixed word list, and a high-risk result files an internal safety alert. It is crude, produces frequent false positives, and is described in full in section 3 of the [privacy policy](/privacy). It is not a monitoring service and it does not make Echo an emergency service — see section 1.
+
+**No guarantee of outcome.** Therapy and coaching both help a great many people and we believe in them, but nobody can promise a particular result and we do not. What we commit to is that a practitioner presented to you as licensed is licensed, that a coach is never presented as a therapist, and that switching is free if the fit is wrong.`,
   },
   {
     id: "termination",

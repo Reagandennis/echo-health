@@ -24,6 +24,7 @@ import {
   type Market,
 } from "@/lib/markets";
 import { CRISIS_DIRECTORY_URL, formatKes as money, PLAN_PRICES } from "@/lib/constants";
+import { priceTier, tierForCountry } from "@/lib/pricing";
 import { pageMetadata, siteUrl } from "@/lib/seo";
 
 /**
@@ -150,7 +151,7 @@ export default async function CountryPage({ params }: Props) {
             <Fact
               icon={CreditCard}
               term="What you pay"
-              detail={`Charged in Kenyan shillings — from ${money(PLAN_PRICES.individual)}. Your bank converts from ${market.currency}.`}
+              detail={priceFact(market)}
             />
             <Fact
               icon={Video}
@@ -381,6 +382,38 @@ export default async function CountryPage({ params }: Props) {
 }
 
 /* ── Pieces ──────────────────────────────────────────────────────────────── */
+
+/**
+ * "What you pay", for one market.
+ *
+ * This used to read "from ${PLAN_PRICES.individual}" on all thirteen pages.
+ * Regional bands (`lib/pricing.ts`) made that stale in the worst direction for
+ * five of them: a reader in Kampala was told a session starts at KES 2,000 when
+ * they would actually be charged KES 1,100, so the one page written to tell
+ * them what is specific to their country was overstating the price.
+ *
+ * The band is resolvable here without reading a request, because the country IS
+ * the route — these thirteen pages are prebuilt by `generateStaticParams`. That
+ * is also why the lower figure is stated as a **condition** ("if you are paying
+ * from Uganda") rather than as the price: the charged amount comes from where
+ * the payment is made, not from which page was read, and someone browsing the
+ * Uganda page from Nairobi pays the standard price. Stating it unconditionally
+ * would be the one thing regional pricing must never do — advertise a figure
+ * below what the card is debited.
+ */
+function priceFact(market: Market): string {
+  const banded = priceTier(tierForCountry(market.iso)).prices.individual ?? PLAN_PRICES.individual;
+  const converts = `Your bank converts from ${market.currency}.`;
+
+  if (banded >= PLAN_PRICES.individual) {
+    return `Charged in Kenyan shillings — from ${money(PLAN_PRICES.individual)}. ${converts}`;
+  }
+
+  return (
+    `Charged in Kenyan shillings — from ${money(banded)} paying from ${market.country}, ` +
+    `against ${money(PLAN_PRICES.individual)} standard. ${converts}`
+  );
+}
 
 function Fact({
   icon: Icon,

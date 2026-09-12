@@ -26,6 +26,11 @@ import {
   submitKycForReviewAction,
 } from "@/app/actions/database";
 import {
+  listMyLicencesAction,
+  submitLicenceForReviewAction,
+  type MyLicence,
+} from "@/app/actions/licensing";
+import {
   KYC_STATUS_COPY,
   canSubmitForReview,
   kycDocumentLabel,
@@ -33,6 +38,8 @@ import {
   type KycStatus,
 } from "@/lib/kyc";
 import KycDocumentUploader, { type KycDocumentView } from "./KycDocumentUploader";
+import JurisdictionStep from "./JurisdictionStep";
+import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 import { capture, captureException } from "@/lib/analytics/client";
 
 const SPECIALTIES = [
@@ -42,7 +49,18 @@ const SPECIALTIES = [
   "LGBTQ+ Affirming", "Career & Life Transitions", "Relationship Issues",
 ];
 
-const STEPS = ["Profile", "Specialties", "Documents"];
+/**
+ * `Jurisdictions` sits AFTER `Specialties` for the same reason `Documents` does:
+ * `therapist_licences.therapist_id` is NOT NULL and
+ * `therapist_licences_insert` is `app_owns_therapist(therapist_id)`, so there
+ * is no row to attach a licence to until the profile save has created one.
+ * Moving it earlier makes every licence write fail closed.
+ */
+const STEPS = ["Profile", "Specialties", "Jurisdictions", "Documents"];
+
+/** Index of the documents step — read in several places, so it is named once. */
+const DOCUMENTS_STEP = 3;
+const JURISDICTIONS_STEP = 2;
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
@@ -142,6 +160,7 @@ export default function TherapistOnboardingPage() {
   const [status, setStatus] = useState<KycStatus | null | undefined>(undefined);
   const [loadFailed, setLoadFailed] = useState(false);
   const [documents, setDocuments] = useState<KycDocumentView[]>([]);
+  const [licences, setLicences] = useState<MyLicence[]>([]);
   const [reviewNote, setReviewNote] = useState<string | null>(null);
 
   // Step 0 — Profile
@@ -160,18 +179,33 @@ export default function TherapistOnboardingPage() {
     setDocuments(await listMyKycDocumentsAction());
   }, []);
 
+  const refreshLicences = useCallback(async () => {
+    setLicences(await listMyLicencesAction());
+  }, []);
+
   // Every setState here sits AFTER the first await, deliberately. A synchronous
   // setState in a function invoked from an effect body triggers a cascading
   // render, which `react-hooks/set-state-in-effect` rejects.
   const load = useCallback(async () => {
     try {
-      const snapshot = await getMyKycStatusAction();
+      /*
+       * Both reads issued together. They are independent — one transaction each
+       * either way — and sequencing them would put two RLS setup round-trips
+       * (~230ms each against the Azure instance, per `lib/db/session.ts`) in
+       * series before the wizard renders anything.
+       */
+      const [snapshot, myLicences] = await Promise.all([
+        getMyKycStatusAction(),
+        listMyLicencesAction(),
+      ]);
       setLoadFailed(false);
+      setLicences(myLicences);
       if (!snapshot) {
         // No therapist row yet — a genuine first-time applicant walks the whole
-        // wizard, because `kyc_documents.therapist_id` is NOT NULL and its RLS
-        // insert policy is `app_owns_therapist(...)`. The profile MUST exist
-        // before any document upload can succeed.
+        // wizard, because `kyc_documents.therapist_id` and
+        // `therapist_licences.therapist_id` are both NOT NULL and both RLS
+        // insert policies are `app_owns_therapist(...)`. The profile MUST exist
+        // before any document upload or licence can succeed.
         setStatus(null);
         setDocuments([]);
         setReviewNote(null);
@@ -180,11 +214,11 @@ export default function TherapistOnboardingPage() {
       setStatus(snapshot.kycStatus);
       setDocuments(snapshot.documents);
       setReviewNote(snapshot.kycReviewNote);
-      // A returning applicant already has a profile. Drop them straight on the
-      // documents step: the profile fields cannot be prefilled from this
+      // A returning applicant already has a profile. Drop them on the
+      // jurisdictions step: the profile fields cannot be prefilled from this
       // snapshot, so walking them back through an empty bio box would overwrite
       // the bio they already wrote with nothing.
-      setStep(2);
+      setStep(JURISDICTIONS_STEP);
     } catch (err) {
       console.error("failed to load KYC status", err);
       setLoadFailed(true);
@@ -257,8 +291,9 @@ export default function TherapistOnboardingPage() {
         ...(avatarUrl ? { avatarUrl } : {}),
       });
 
-      await refreshDocuments();
-      setStep(2);
+      // The therapist row now exists, so licences and documents can be written.
+      await Promise.all([refreshDocuments(), refreshLicences()]);
+      setStep(JURISDICTIONS_STEP);
     } catch (err: unknown) {
       captureException(err);
       setError(err instanceof Error ? err.message : "Failed to save profile.");
@@ -271,12 +306,33 @@ export default function TherapistOnboardingPage() {
     setSubmitting(true);
     setError(null);
     try {
+      /*
+       * LICENCES FIRST, and deliberately not in parallel.
+       *
+       * `submitLicenceForReviewAction()` with no argument moves every
+       * `incomplete`/`rejected` licence to `pending` in one transaction, and
+       * REFUSES when the therapist has claimed no jurisdiction at all. That
+       * refusal is the server-side gate on "a clinician listed to clients in
+       * thirteen countries with nothing on file about where they may practise"
+       * — the exact state this feature exists to end — so it has to run before
+       * the application is handed to the queue, not alongside it.
+       *
+       * `submitKycForReviewAction` does NOT check for a licence itself, so a
+       * caller invoking it directly still bypasses this. Moving the check into
+       * that action is the follow-up; it is left alone here because it is
+       * shared with surfaces this change does not cover.
+       */
+      await submitLicenceForReviewAction();
       await submitKycForReviewAction();
 
-      capture("therapist_kyc_submitted", {
+      capture(ANALYTICS_EVENTS.THERAPIST_KYC_SUBMITTED, {
         document_count: documents.length,
         document_types: documents.map((d) => d.docType),
         specialties: selectedSpecialties,
+        /* Count and slugs only. `therapist_licence_submitted` is captured
+           server-side per licence with the jurisdiction — never the number. */
+        jurisdiction_count: licences.length,
+        jurisdictions: licences.map((l) => l.jurisdiction),
       });
 
       // Navigation happens ONLY after the action resolves. The previous flow
@@ -309,7 +365,14 @@ export default function TherapistOnboardingPage() {
     .filter((d) => d.reviewStatus !== "rejected")
     .map((d) => d.docType);
   const missing = missingRequiredTypes(providedTypes);
-  const canSubmit = missing.length === 0;
+  /*
+   * A jurisdiction is as required as the documents. Not a courtesy either:
+   * `submitLicenceForReviewAction()` refuses an applicant with none, and
+   * `handleSubmitForReview` calls it first — so this disabled button and the
+   * server agree rather than the button being the only thing enforcing it.
+   */
+  const hasJurisdiction = licences.length > 0;
+  const canSubmit = missing.length === 0 && hasJurisdiction;
 
   const editable =
     status === null || (status !== undefined && canSubmitForReview(status));
@@ -400,6 +463,29 @@ export default function TherapistOnboardingPage() {
             )}
           </KycStatusPanel>
 
+          {/*
+            The jurisdictions panel is rendered in the read-only end states
+            too, and is EDITABLE for a verified clinician.
+
+            That is the point of the feature rather than an oversight: a
+            therapist verified in Kenya who later qualifies to practise in the
+            UK needs somewhere to claim it, and locking the whole screen after
+            approval would leave "add a second jurisdiction" with no home in the
+            product. Each individual licence is still locked by its own status —
+            `upsertTherapistLicenceAction` refuses an edit to a `verified` or
+            `pending` one — so this widens what can be ADDED, never what can be
+            rewritten. While the application itself is `pending` it stays
+            read-only: a reviewer may be part-way through these exact claims.
+          */}
+          <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+            <JurisdictionStep
+              licences={licences}
+              onChanged={refreshLicences}
+              onError={setError}
+              editable={status === "verified"}
+            />
+          </div>
+
           <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
             <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider">
               Documents on file
@@ -416,6 +502,12 @@ export default function TherapistOnboardingPage() {
               onError={setError}
             />
           </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              {error}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -465,7 +557,7 @@ export default function TherapistOnboardingPage() {
           form. Requirement 3: they need to know why before they start changing
           things, not after.
         */}
-        {status === "rejected" && step === 2 && (
+        {status === "rejected" && step === DOCUMENTS_STEP && (
           <KycStatusPanel status="rejected">
             {reviewNote && (
               <div className="mt-3 rounded-xl bg-white/70 border border-red-200 px-4 py-3">
@@ -611,8 +703,13 @@ export default function TherapistOnboardingPage() {
                   placeholder="e.g. LPC-12345"
                   className="w-full rounded-xl border border-stone-200 px-4 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
                 />
+                {/* The pre-0018 single, jurisdiction-less licence column. Kept
+                    because `therapists.license_number` is still written and
+                    read; the per-jurisdiction detail is collected on the next
+                    step, which is what a reviewer actually checks. */}
                 <p className="text-xs text-stone-400 mt-1.5">
-                  We check this against your regulator&apos;s public register.
+                  Your main registration number. You&apos;ll tell us where each
+                  of your licences was issued on the next step.
                 </p>
               </div>
               {error && (
@@ -646,8 +743,52 @@ export default function TherapistOnboardingPage() {
             </div>
           )}
 
-          {/* Step 2 — Documents */}
-          {step === 2 && (
+          {/* Step 2 — Jurisdictions */}
+          {step === JURISDICTIONS_STEP && (
+            <div className="space-y-6">
+              <JurisdictionStep
+                licences={licences}
+                onChanged={refreshLicences}
+                onError={setError}
+                editable={editable}
+              />
+
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  {error}
+                </p>
+              )}
+
+              <div className="flex gap-3">
+                {showProfileSteps && (
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors"
+                  >
+                    <ArrowLeft size={14} /> Back
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setStep(DOCUMENTS_STEP);
+                  }}
+                  disabled={!hasJurisdiction}
+                  title={
+                    hasJurisdiction
+                      ? undefined
+                      : "Add at least one jurisdiction you are licensed in"
+                  }
+                  className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-brand/90 transition-colors"
+                >
+                  Continue <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Documents */}
+          {step === DOCUMENTS_STEP && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
@@ -683,6 +824,24 @@ export default function TherapistOnboardingPage() {
                     Still needed before you can submit
                   </p>
                   <ul className="mt-1.5 space-y-1">
+                    {/* The jurisdiction gap is named in the same list as the
+                        documents, because to the applicant they are the same
+                        question: what is still stopping me submitting. */}
+                    {!hasJurisdiction && (
+                      <li className="text-sm text-amber-700 flex items-start gap-2">
+                        <span className="w-1 h-1 rounded-full bg-amber-500 shrink-0 mt-2" />
+                        <span>
+                          At least one jurisdiction you are licensed in —{" "}
+                          <button
+                            type="button"
+                            onClick={() => setStep(JURISDICTIONS_STEP)}
+                            className="underline underline-offset-2 font-semibold"
+                          >
+                            add one
+                          </button>
+                        </span>
+                      </li>
+                    )}
                     {missing.map((t) => (
                       <li key={t} className="text-sm text-amber-700 flex items-center gap-2">
                         <span className="w-1 h-1 rounded-full bg-amber-500 shrink-0" />
@@ -699,22 +858,26 @@ export default function TherapistOnboardingPage() {
               </div>
 
               <div className="flex gap-3">
-                {showProfileSteps && (
-                  <button
-                    onClick={() => setStep(1)}
-                    disabled={submitting}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-40"
-                  >
-                    <ArrowLeft size={14} /> Back
-                  </button>
-                )}
+                {/* Back always goes to Jurisdictions, whether or not the profile
+                    steps are in play — it is the step immediately before this
+                    one and the one an applicant most often returns to. */}
+                <button
+                  onClick={() => setStep(JURISDICTIONS_STEP)}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl border border-stone-200 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-40"
+                >
+                  <ArrowLeft size={14} /> Back
+                </button>
                 <button
                   onClick={handleSubmitForReview}
                   disabled={!canSubmit || submitting}
                   title={
                     canSubmit
                       ? undefined
-                      : `Still needed: ${missing.map(kycDocumentLabel).join(", ")}`
+                      : `Still needed: ${[
+                          ...(hasJurisdiction ? [] : ["a jurisdiction you are licensed in"]),
+                          ...missing.map(kycDocumentLabel),
+                        ].join(", ")}`
                   }
                   className="flex-1 flex items-center justify-center gap-2 bg-brand text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-brand/90 transition-colors"
                 >

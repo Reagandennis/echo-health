@@ -4,13 +4,16 @@ import AdminPageHeader from "../../_components/AdminPageHeader";
 import { Save, Plus } from "lucide-react";
 import { listPromos } from "../../_lib/queries";
 import { PLAN_PRICES, PLAN_LABELS, PLAN_SESSIONS, PLAN_CURRENCY, PLAN_PRICES_CONFIGURED, THERAPIST_REVENUE_SHARE } from "@/lib/constants";
+import { describeRegionalBands } from "@/lib/pricing";
 
 /**
  * The commission slider and the three subscription tiers below are static UI —
  * neither is stored anywhere, and the "Save All Changes" button has no handler.
- * `lib/constants.ts` is the real source of truth for plans. The promo table IS
- * live data.
+ * `lib/constants.ts` is the real source of truth for plans, and
+ * `lib/pricing.ts` for the regional bands charged on top of them. The promo
+ * table IS live data.
  */
+const REGIONAL_SUMMARY = describeRegionalBands();
 export default async function PricingConfigPage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
@@ -69,10 +72,17 @@ export default async function PricingConfigPage() {
             <a href="/admin/billing/plans" className="text-xs font-semibold text-teal-600 hover:text-teal-700">Edit Plans →</a>
           </div>
           <div className="space-y-3">
-            {/* Reads PLAN_PRICES — the same values the payment routes charge.
-                These were hardcoded as Basic/Growth/Premium at $39/$79/$149:
-                plan names and prices that existed nowhere else in the system, so
-                an admin was reading fiction on an operations screen. */}
+            {/* Reads PLAN_PRICES — the PUBLISHED prices, and the most any
+                customer is charged. These were hardcoded as
+                Basic/Growth/Premium at $39/$79/$149: plan names and prices that
+                existed nowhere else in the system, so an admin was reading
+                fiction on an operations screen.
+
+                It is no longer the whole retail picture, which is why the line
+                under the list says so: `lib/pricing.ts` charges some countries
+                a lower KES amount, and an operations screen headed "active
+                retail pricing" that implied one price per plan would be a
+                quieter version of the same fiction. */}
             {(["individual", "plus", "couples"] as const).map((key) => (
               <div key={key} className="flex justify-between items-center p-3 bg-stone-50 rounded-xl border border-stone-100">
                 <div>
@@ -99,6 +109,11 @@ export default async function PricingConfigPage() {
               </div>
             ))}
           </div>
+          <p className="mt-4 text-[11px] leading-relaxed text-stone-500">
+            Standard prices — the most any customer pays. Regional bands charge
+            less in some countries: {REGIONAL_SUMMARY} for a single session.
+            Set in <code className="font-mono">lib/pricing.ts</code>.
+          </p>
         </div>
       </div>
 

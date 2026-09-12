@@ -184,7 +184,11 @@ export function marketsInTier(id: PriceTierId): readonly Market[] {
  * would be wrong for two of them.
  */
 export function describeRegionalBands(plan: string = "individual"): string {
-  const list = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
+  /* `en-GB`, not `en`: the bare locale inserts an Oxford comma ("Uganda,
+     Tanzania, and Rwanda") and the rest of the site's copy does not use one.
+     Note this is the opposite of the choice `formatKes` makes for the CURRENCY
+     — there, `en` is required to render the ISO code rather than "Ksh". */
+  const list = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
 
   const phrases = PRICE_TIERS.filter((t) => t.countries.length > 0).map((tier) => {
     const kes = tier.prices[plan] ?? PLAN_PRICES[plan] ?? 0;
@@ -232,11 +236,17 @@ export interface ResolvedMarket {
 const COUNTRY_HEADERS = ["cf-ipcountry", "x-vercel-ip-country"] as const;
 
 /**
- * Values that are syntactically a country and semantically not one.
- * Cloudflare sends `XX` when it cannot geolocate the address and `T1` for
- * traffic arriving over Tor.
+ * Values a geo provider sends that are not countries.
+ *
+ * `XX` (could not geolocate) and `T1` (arrived over Tor) are Cloudflare's own;
+ * `ZZ`, `A1`, `A2` and `O1` are pseudo-codes other providers emit for
+ * anonymising proxies and satellite ranges. `XX` and `ZZ` are the ones that
+ * matter, because they are the only two that would otherwise pass the
+ * two-letter format test below and be treated as a resolved country. The rest
+ * are listed because the rule being expressed is "this is not a country", not
+ * "this is not two letters" — a provider could tidy `A1` into `AA` tomorrow.
  */
-const NON_COUNTRIES = new Set(["XX", "T1", "ZZ", "A1", "A2", "O1"]);
+const NON_COUNTRIES = new Set(["XX", "ZZ", "T1", "A1", "A2", "O1"]);
 
 /**
  * ⚠️ HOW SPOOFABLE IS THIS? Honestly: it depends entirely on deployment, and

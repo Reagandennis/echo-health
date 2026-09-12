@@ -55,6 +55,14 @@ import { pageMetadata, legalEntityName } from "@/lib/seo";
  *   • Whether the risk scanner's automated processing needs a DPIA.
  *   • Children's-data consent mechanics for the 13–17 route.
  *   • Confirmation that `legalEntityName` is the registered controller.
+ *   • **Practitioners are now worldwide**, which makes Echo a controller
+ *     receiving identity and credential documents from data subjects in a
+ *     dozen jurisdictions. §10 and §11 describe that accurately; whether the
+ *     DPA's transfer rules and each practitioner's local law are satisfied by
+ *     the current arrangement is a question for counsel, not for this file.
+ *   • Whether a wellness coach's working notes are health data. §1 says they
+ *     are narrower than clinical notes, which is true of their *content* and
+ *     may not be true of their *classification*.
  *   • **The country signal now used to price a payment** (§1, and Cloudflare in
  *     §5). It is an IP-derived inference that determines what someone is
  *     charged, which is a stronger use than the currency guess beside it: it
@@ -78,7 +86,7 @@ const INTRO = [
 
   `**Who we are.**\n${legalEntityName}, operating as Echo Health, is the data controller. We are established in Kenya and this policy is governed by Kenyan law, principally the **Data Protection Act 2019**, administered by the Office of the Data Protection Commissioner (ODPC). If you are in the EU or EEA, the GDPR may also apply to your use of the service.`,
 
-  `Our clinicians are licensed in Kenya and our clients are worldwide, so most people reading this are outside Kenya. [What that means for you](/online-therapy) is set out on the country pages; what it means for your data is in sections 4 and 11.`,
+  `Our practitioners are in a number of countries and our clients are worldwide. Depending where you are you may be working with a **licensed therapist** or with a **wellness coach**, which are different services — the [terms](/terms) explain which you get and why. It matters here because a coach keeps no clinical record, so section 1 collects less about you.`,
 ];
 
 const SECTIONS: readonly LegalSection[] = [
@@ -94,8 +102,10 @@ The answers you give in the intake questionnaire: who therapy is for, your age b
 **What you write in the product.**
 Messages to your therapist, journal entries, mood logs, goals, and feedback you leave after a session. This is the most sensitive category of information we hold and it is treated accordingly throughout this policy.
 
-**What your therapist writes.**
-Clinical notes about your sessions. These are your therapist's professional record. You cannot read them, and neither can any other client or our support staff — see section 10.
+**What your practitioner writes.**
+If you are working with a **licensed therapist**, clinical notes about your sessions. These are their professional record; you cannot read them, and neither can any other client or our support staff — see section 10.
+
+If you are working with a **wellness coach**, there are **no clinical notes**, because a coach does not keep a clinical record and is not your clinician. They may keep working notes on goals and progress, which are far narrower in scope, and the [terms](/terms) §7 sets out the difference.
 
 **Sessions and bookings.**
 When a session is scheduled, whether it happened, its duration, and which therapist it was with. Video and audio are **never recorded**: the call runs peer-to-peer between the two browsers and our signalling service relays only call setup, never media.
@@ -243,14 +253,18 @@ Analytics is processed in the United States. See section 11.`,
   },
   {
     id: "clinicians",
-    title: "10. If you are a therapist",
-    content: `We process your professional and identity information in order to verify that you are who you say you are and licensed to practise: your name, contact details, licence or registration details, identity documents, and the profile and biography you publish.
+    title: "10. If you are a practitioner",
+    content: `We process your professional and identity information in order to verify that you are who you say you are and qualified to do what you are offering: your name, contact details, and — for a licensed therapist — your licence or registration details for **each jurisdiction** you practise in, with the documents that evidence them.
 
-**Your verified profile is public.** Name, biography, years in practice and areas of focus appear in our public directory, which anyone can browse without an account. Your licence number, your identity documents and the internal notes from your credential review are **not** public and are never sent to a client's browser.
+**Which jurisdictions you are licensed in is public.** Your name, biography, years of experience, areas of focus and the jurisdictions we have verified appear in our public directory, which anyone can browse without an account. Your licence numbers, your identity documents and the internal notes from your credential review are **not** public and are never sent to a client's browser.
 
-**Your clinical notes are yours.** Readable by you and by administrators for audit purposes. Never by the client they concern, and never by another clinician.
+**We record and publish what you actually are.** If you are on the platform as a wellness coach, that is how you are described to every client, in every surface, and you may not describe yourself as a therapist, psychotherapist, counsellor or psychologist here. That is not a presentational preference — in many jurisdictions those are protected titles, and it protects you as much as it protects the client.
 
-Your earnings records are retained for accounting purposes and, once an amount has been recorded as owed, it is not rewritten by later changes to our fee structure.`,
+**Your credential review is recorded.** Who reviewed a licence, when, against which body, and the outcome. On a rejection you are told why. These records are retained as evidence that your credentials were checked, which is the point of checking them — see section 7.
+
+**Clinical notes belong to the clinician who wrote them.** Readable by you and by administrators for audit purposes. Never by the client they concern, and never by another practitioner. Coaches do not have access to this at all, because coaches do not keep clinical records.
+
+Your earnings records are retained for accounting purposes and, once an amount has been recorded as owed, it is not rewritten by later changes to our fee structure — including the regional pricing in the [terms](/terms) §5, which does not alter what you are paid.`,
   },
   {
     id: "transfers",

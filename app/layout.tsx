@@ -10,20 +10,50 @@ const geistSans = Geist({
   display: "swap",
 });
 
+/**
+ * `preload: false` is the whole point of this block.
+ *
+ * `next/font` preloads any family with a `subsets` option, on every route it
+ * is declared for — and this one is declared in the root layout, so a 22.6 KB
+ * monospace file was being fetched with `<link rel="preload">` ahead of the
+ * LCP on every page of the site.
+ *
+ * Outside the admin portal, `font-mono` is used in exactly two places:
+ * `app/error.tsx` and `app/global-error.tsx`, both rendering an error digest.
+ * Preloading a font for a screen almost nobody sees, on every screen everybody
+ * sees, is the wrong trade. It still loads when something actually asks for
+ * it; it just no longer competes at first paint.
+ */
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
+  preload: false,
 });
 
-// Display serif for marketing headlines and greetings (`font-display`). The
-// soft axis keeps it warm rather than editorial; UI text stays in Geist.
+/**
+ * Display serif for marketing headlines (`font-display`). UI text stays in Geist.
+ *
+ * ## Why there is no italic here any more
+ *
+ * `style: ["normal", "italic"]` pulled a second variable font file of 145.8 KB
+ * — the largest single asset on the site — and preloaded it on every one of
+ * the ~100 routes. It existed for one two-word `<em>` in the home page hero.
+ * Every other `italic` in the codebase renders in Geist on a portal screen,
+ * which this family never touches.
+ *
+ * Dropping it removes 145.8 KB per route. If a marketing headline genuinely
+ * needs a true italic later, load it as a separate `Fraunces` instance scoped
+ * to that page rather than reinstating it in the root layout.
+ *
+ * `axes` went with it: nothing in the CSS reads `font-variation-settings`, so
+ * the SOFT and opsz axes were enlarging the variable table for a variation
+ * that was never applied.
+ */
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   display: "swap",
-  style: ["normal", "italic"],
-  axes: ["SOFT", "opsz"],
 });
 
 export const metadata: Metadata = {

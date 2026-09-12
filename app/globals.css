@@ -23,7 +23,21 @@
  * and failed both — on every primary button in the app.
  */
 :root {
-  --background: #ffffff;
+  /*
+   * The page ground is a warm off-white, not #fff.
+   *
+   * This is the single change that most moves the product away from reading as
+   * clinical software. Pure white plus a cool grey is the palette of a patient
+   * portal; a warm ground with green-tinted neutrals on top of it is the
+   * palette of somewhere you would talk to a person. The value is deliberately
+   * a long way from a cream — at this chroma it registers as "not glaring"
+   * rather than as "beige".
+   *
+   * Cards and panels still paint pure white (`--surface`), so the hierarchy is
+   * carried by the card sitting ON the ground rather than by a border.
+   */
+  --background: oklch(99.1% 0.006 95);
+  --surface: #ffffff;
   --foreground: oklch(21.6% 0.01 202);
 
   /* Brand — the logo's teal. 500 is the logo colour itself; 600+ is text-safe. */
@@ -60,6 +74,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -211,5 +226,59 @@
     radial-gradient(50% 60% at 10% 0%, oklch(93% 0.07 150 / 0.55), transparent 70%),
     radial-gradient(45% 55% at 90% 5%, oklch(92% 0.06 205 / 0.6), transparent 70%),
     radial-gradient(80% 70% at 50% -10%, oklch(96.5% 0.035 180), transparent 75%);
+  background-repeat: no-repeat;
+}
+
+/* ── Section transitions ──────────────────────────────────────────────── */
+
+/**
+ * The curved section edge.
+ *
+ * Put it on a section whose background differs from the one BELOW it: the
+ * pseudo-element paints a band in the next section's colour and masks an
+ * ellipse out of it, so the boundary between the two reads as an arc rather
+ * than a ruled line. Set `--curve-to` to the colour of the following section.
+ *
+ * An `::after` with a mask rather than an SVG or a PNG because it costs no
+ * request, scales to any width without distortion, and inherits whatever the
+ * two adjacent backgrounds happen to be. The equivalent image asset would be
+ * a fixed-width raster that has to be re-cut every time a section colour
+ * changes, and a second one for phones.
+ */
+@utility curve-down {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 3rem;
+    background: var(--curve-to, var(--background));
+    /* An ellipse wider than the element, so the arc is shallow rather than a
+       semicircle — at 150% the curvature reads as a gentle lift. */
+    mask-image: radial-gradient(150% 100% at 50% 100%, transparent 99.5%, #000 100%);
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    pointer-events: none;
+  }
+
+  @media (width >= 48rem) {
+    &::after {
+      height: 4.5rem;
+    }
+  }
+}
+
+/**
+ * Hero ground — the warm page colour with the logo's two outer hues washed
+ * across the top. Quieter than `bg-aurora`, which stays available for pages
+ * that want the full wash.
+ */
+@utility bg-hero-soft {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60% 55% at 12% -5%, oklch(94% 0.055 150 / 0.45), transparent 70%),
+    radial-gradient(55% 50% at 88% 0%, oklch(93.5% 0.05 205 / 0.5), transparent 70%);
   background-repeat: no-repeat;
 }

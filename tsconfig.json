@@ -30,5 +30,19 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // `drizzle.config.ts` is tooling, not application code: the drizzle-kit CLI
+  // reads it and transpiles it itself. Next has no reason to type check it —
+  // and because `include` globs every .ts file, it was doing so and failing the
+  // production build outright:
+  //
+  //   drizzle.config.ts(26,3): 'dialect' does not exist in type 'Config'
+  //
+  // The underlying mismatch is real and is NOT fixed by this line: the config
+  // is written against the drizzle-kit 0.21+ API (`dialect: "postgresql"`)
+  // while package.json pins `^0.18.1`, which still expects `driver: "pg"`.
+  // So `db:generate` and `db:migrate` are broken too. Fixing that properly
+  // means bumping drizzle-kit, which touches the migration tooling AGENTS.md
+  // warns about at length — left as its own decision rather than smuggled into
+  // a front-end change.
+  "exclude": ["node_modules", "drizzle.config.ts"]
 }

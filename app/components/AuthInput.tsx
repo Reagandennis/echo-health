@@ -37,25 +37,29 @@ export default function AuthInput({
           </span>
         )}
         {/* The border was `cream` — mint on white at 1.1:1, so an empty field
-            had no visible edge. stone-300 is the lightest that reads as one. */}
+            had no visible edge. stone-300 is the lightest that reads as one.
+
+            `min-h-11` is the 44px touch target, not a style preference: these
+            fields are now real credential inputs on a phone rather than a
+            button that hands off to a hosted login page. */}
         <input
           id={id}
           name={id}
           type={inputType}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className={`w-full rounded-xl border bg-white py-2.5 text-sm text-stone-900 placeholder:text-stone-400 shadow-xs outline-none transition
+          className={`min-h-11 w-full rounded-xl border bg-white py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-xs outline-none transition
             focus:ring-4
             ${error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/15" : "border-stone-300 focus:border-brand-500 focus:ring-brand-500/15"}
             ${Icon ? "pl-10" : "pl-3.5"}
-            ${isPassword ? "pr-10" : "pr-3.5"}`}
+            ${isPassword ? "pr-12" : "pr-3.5"}`}
           {...props}
         />
         {isPassword && (
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-stone-400 hover:text-stone-700 transition-colors"
+            className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-stone-400 transition-colors hover:text-stone-700"
             aria-label={visible ? "Hide password" : "Show password"}
           >
             {visible ? (

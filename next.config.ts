@@ -80,6 +80,30 @@ const nextConfig: NextConfig = {
      */
     const videoOrigin = "https://video.echopsychology.com";
     const videoWsOrigin = "wss://video.echopsychology.com";
+
+    /*
+     * Supabase must be in `connect-src`, and the reason this is easy to miss
+     * is that the CSP below is still Report-Only: today an omission changes
+     * nothing, and the day it is enforced every auth call fails **silently**
+     * in the browser. Sign-in, sign-up, password reset and the session refresh
+     * all go from the client straight to this origin.
+     *
+     * Derived from the configured URL rather than hardcoded, so a project
+     * change cannot leave a stale host in the policy. `wss:` is there for
+     * Realtime — nothing uses it yet, but the day something does, its failure
+     * would look identical to this one.
+     */
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseOrigins = supabaseUrl
+      ? (() => {
+          try {
+            const { host } = new URL(supabaseUrl);
+            return [`https://${host}`, `wss://${host}`];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
     const cspDirectives = [
       "default-src 'self'",
       // 'unsafe-inline' is currently required by Next.js for hydration. Tighten
@@ -89,7 +113,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      `connect-src 'self' ${videoOrigin} ${videoWsOrigin}`,
+      [`connect-src 'self'`, videoOrigin, videoWsOrigin, ...supabaseOrigins].join(" "),
       "media-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",

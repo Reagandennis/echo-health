@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { requirementFor, requiresSubdivision } from "./licensing";
+
 // Reusable primitives
 export const userIdSchema = z.string().min(1).max(128);
 export const emailSchema = z.string().email().max(254);
@@ -111,6 +113,210 @@ export const kycReviewSchema = z.discriminatedUnion("action", [
 ]);
 
 export type KycReviewPayload = z.infer<typeof kycReviewSchema>;
+
+/* ── Therapist licences, one per jurisdiction (migration 0018) ───────────────
+ *
+ * These schemas guard `app/actions/licensing.ts`. They are the FIRST of three
+ * layers, and the only one that can explain itself to the applicant:
+ *
+ *   1. here — the payload is the wrong shape, said in a sentence a form can show;
+ *   2. the application checks in `app/actions/licensing.ts` — "Forbidden", loudly;
+ *   3. `therapist_licences_guard` — the trigger, which raises rather than
+ *      returning zero rows, and is the layer that cannot be bypassed.
+ *
+ * Layer 3 is the one that matters and the reason layers 1 and 2 exist: a
+ * database exception surfaces to the applicant as an untranslated Postgres
+ * message, so anything the guard will refuse should have been refused here with
+ * words instead.
+ */
+
+/**
+ * Mirrors the `licence_verification` enum.
+ *
+ * Declared rather than imported from `lib/db/schema.ts` on purpose — the same
+ * discipline as `lib/kyc.ts` mirroring `kyc_status`. Importing the schema would
+ * pull `drizzle-orm/pg-core` into the bundle of anything that validates a
+ * payload, and these values are a contract with the database, not a detail of
+ * the ORM.
+ */
+export type LicenceVerification = "named_regulator" | "sub_national" | "case_by_case";
+
+export const licenceVerificationSchema = z.enum([
+  "named_regulator",
+  "sub_national",
+  "case_by_case",
+]);
+
+/**
+ * A jurisdiction Echo actually has requirements for.
+ *
+ * `therapist_licences.jurisdiction` is plain `text` — deliberately, so adding a
+ * market is not a schema change — which means NOTHING in the database refuses a
+ * licence filed against `atlantis`. Every claim made about a licence
+ * (`applicantGuidance`, `reviewerGuidance`, `canListInJurisdiction`) is looked
+ * up by this slug in `lib/licensing.ts`, so an unrecognised one produces a row
+ * a reviewer has no instructions for and the directory cannot describe. The
+ * schema is the only point guaranteed to run before the insert.
+ */
+const jurisdictionSlugSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((slug) => Boolean(requirementFor(slug)), {
+    message:
+      "not a jurisdiction Echo has licensing requirements for — see lib/licensing.ts",
+  });
+
+/** Matches `varchar(128)` on `therapist_licences.licence_number`. */
+const licenceNumberSchema = z.string().trim().min(1).max(128);
+
+/**
+ * The state or province. `text` in the database, capped here because it is
+ * rendered in the directory and a 4 kB "state" is a layout bug, not a licence.
+ */
+const subdivisionSchema = z.string().trim().min(1).max(120);
+
+/** Free text by design — see the column comment; Echo does not know which body
+ *  is authoritative in every jurisdiction, so an enum would force a wrong answer. */
+const regulatorSchema = z.string().trim().min(1).max(200);
+
+/**
+ * `expires_at` is a Postgres `date`, which Drizzle hands back as `YYYY-MM-DD`.
+ *
+ * The second check is not redundant with the regex: `2026-02-31` matches the
+ * pattern and Postgres rejects it with `date/time field value out of range`,
+ * which reaches the applicant as a 500 for what is a typo in a date field.
+ */
+const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "must be a date in YYYY-MM-DD form")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return (
+      !Number.isNaN(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === value
+    );
+  }, "not a real date");
+
+/**
+ * Create or edit one of the caller's own licences.
+ *
+ * `id` distinguishes an edit from a claim. Without it, correcting a typo in a
+ * subdivision ("Californa" → "California") would not update the row — it would
+ * insert a second one, because the natural key the upsert falls back on
+ * INCLUDES the subdivision. The therapist would then hold two Californian
+ * licences and nothing downstream could say which was authoritative, which is
+ * precisely what `therapist_licences_unique` exists to prevent and cannot,
+ * since the two rows differ.
+ *
+ * `verification` and every review column are ABSENT, not optional. They are the
+ * reviewer's conclusion; `therapist_licences_guard` raises
+ * `insufficient_privilege` on an applicant who sends any of them, so a field
+ * here that a client could populate would be a form that cannot submit.
+ */
+export const licenceUpsertSchema = z
+  .object({
+    /** Present when editing an existing licence, absent when claiming a new one. */
+    id: z.string().uuid().optional(),
+    jurisdiction: jurisdictionSlugSchema,
+    subdivision: subdivisionSchema.optional(),
+    regulator: regulatorSchema.optional(),
+    licenceNumber: licenceNumberSchema.optional(),
+    expiresAt: isoDateSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    const needsSubdivision = requiresSubdivision(value.jurisdiction);
+    const country = requirementFor(value.jurisdiction)?.country ?? value.jurisdiction;
+
+    /*
+     * The guard raises on this too. Caught here so the applicant reads "tell us
+     * which state" rather than a Postgres check_violation — and so the error
+     * arrives attached to the field it concerns.
+     */
+    if (needsSubdivision && !value.subdivision) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["subdivision"],
+        message: `licensure in ${country} is issued by a state or province, not nationally — name the one that licensed you`,
+      });
+    }
+
+    /*
+     * Rejected rather than silently dropped. A subdivision on a national
+     * licence would sit in the unique key, so "kenya/null" and "kenya/Nairobi"
+     * would be two rows for one licence — and because the constraint treats
+     * NULLs as distinct, Postgres would accept both. Dropping the value quietly
+     * is how a form comes to disagree with the row it just wrote.
+     */
+    if (!needsSubdivision && value.subdivision) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["subdivision"],
+        message: `${country} licenses nationally — leave the state or province blank`,
+      });
+    }
+  });
+
+export type LicenceUpsertPayload = z.infer<typeof licenceUpsertSchema>;
+
+/**
+ * A reviewer's verdict on one licence.
+ *
+ * `verification` is REQUIRED on an approval and absent from a rejection,
+ * because it records how the reviewer checked — and a rejection confirms
+ * nothing. It is the column a client later reads as "this clinician's standing
+ * was verified against their regulator", so it cannot default.
+ */
+export const licenceReviewSchema = z.discriminatedUnion("action", [
+  z.object({
+    licenceId: z.string().uuid(),
+    action: z.literal("approve"),
+    verification: licenceVerificationSchema,
+    note: kycNoteSchema.optional(),
+  }),
+  z.object({
+    licenceId: z.string().uuid(),
+    action: z.literal("reject"),
+    /** The therapist reads this verbatim. A rejection with no reason is not one. */
+    note: kycNoteSchema,
+  }),
+]);
+
+export type LicenceReviewPayload = z.infer<typeof licenceReviewSchema>;
+
+/**
+ * The conclusions a reviewer may honestly record for a jurisdiction.
+ *
+ * This is the enforcement of the whole point of `VerificationMode`. For a
+ * `case-by-case` jurisdiction Echo has NOT established which body regulates
+ * psychotherapy, so `named_regulator` is not a checkable claim — recording it
+ * would have the platform telling clients it verified a registration against a
+ * register it never identified. `lib/licensing.ts` says as much in the
+ * `reviewerGuidance` for those entries; this is the half a UI cannot skip.
+ *
+ * `case_by_case` is always permitted: a reviewer who could not reach the
+ * register must be able to say so, even where a register exists.
+ *
+ * It lives in this file rather than in `lib/licensing.ts` because it answers a
+ * question about a PAYLOAD — which values of `verification` are acceptable for
+ * this jurisdiction — which is what everything else here does.
+ */
+export function allowedVerificationsFor(
+  slug: string
+): readonly LicenceVerification[] {
+  switch (requirementFor(slug)?.verification) {
+    case "named-regulator":
+      return ["named_regulator", "case_by_case"];
+    case "sub-national":
+      return ["sub_national", "case_by_case"];
+    case "case-by-case":
+      return ["case_by_case"];
+    default:
+      /* Unknown slug. Empty, so every approval is refused rather than one
+         arbitrary mode being waved through for a jurisdiction nobody described. */
+      return [];
+  }
+}
 
 // /api/promo
 export const promoSchema = z.object({

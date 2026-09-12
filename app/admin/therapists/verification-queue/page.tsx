@@ -6,8 +6,11 @@ import { CheckCircle, Clock, FileWarning, Hourglass, Info } from "lucide-react";
 import AdminPageHeader from "../../_components/AdminPageHeader";
 import AdminBadge, { kycBadge } from "../../_components/AdminBadge";
 import TherapistKycActions from "../TherapistKycActions";
+import LicenceReviewCard from "../LicenceReviewCard";
 import {
+  listPendingLicenceReviews,
   listVerificationQueue,
+  type PendingLicenceRow,
   type VerificationQueueRow,
 } from "../../_lib/queries";
 import { kycDocumentLabel } from "@/lib/kyc";
@@ -35,7 +38,20 @@ export default async function VerificationQueuePage() {
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
 
-  const queue = await listVerificationQueue();
+  /*
+   * Two independent queues, fetched in parallel.
+   *
+   * A licence is NOT a sub-item of an application: a clinician who is already
+   * `verified` and later claims a second jurisdiction never appears in
+   * `listVerificationQueue`, which filters on `therapists.kyc_status`. Folding
+   * licences into the application rows would leave that UK licence sitting
+   * `pending` with nothing on any screen pointing at it — invisible work, which
+   * is the same failure shape as an event nobody emits.
+   */
+  const [queue, pendingLicences] = await Promise.all([
+    listVerificationQueue(),
+    listPendingLicenceReviews(),
+  ]);
 
   /*
    * Split rather than one list. "Pending" is work waiting on the reviewer;

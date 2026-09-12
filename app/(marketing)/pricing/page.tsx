@@ -21,6 +21,7 @@ import {
   PLAN_SESSIONS,
   PROMO_DISCOUNT_PERCENT,
 } from "@/lib/constants";
+import { describeRegionalBands } from "@/lib/pricing";
 
 /**
  * The page the FAQ has been pointing at in prose for months without it
@@ -33,13 +34,23 @@ import {
  * pointed at that anchor from every page on the site, concentrating the anchor
  * text "Pricing" on a URL that already ranked for the brand.
  *
- * ## Every figure here is read from `lib/constants.ts`
+ * ## Every figure here is read from `lib/constants.ts` and `lib/pricing.ts`
  *
  * Not one is typed into this file. The FAQ page learned this the hard way: it
  * used to spell the numbers into prose, which is how a pricing page and an FAQ
  * end up quoting different amounts for the same plan — and this one carries
  * `Offer` structured data, so a stale figure would propagate into search
  * results.
+ *
+ * ## This page is static, which is WHY prices can only be reduced
+ *
+ * Nothing here reads headers, so all thirteen public pages stay cacheable and
+ * every visitor is served the same HTML — including the same prices. Regional
+ * pricing therefore publishes the standard price as a ceiling and lets
+ * `lib/pricing.ts` charge some countries less at the point of payment. Making
+ * this page resolve a country instead would opt it into a per-request render,
+ * or require a `Vary` header that, once forgotten, serves one country's prices
+ * to everybody. See the long comment in `lib/pricing.ts` before revisiting it.
  *
  * ## KES is a fact about the charge, not a fact about the buyer
  *
@@ -63,6 +74,28 @@ export const metadata = pageMetadata({
 
 const perSession = (plan: string) =>
   money(Math.round(PLAN_PRICES[plan]! / Math.max(1, PLAN_SESSIONS[plan] ?? 1)));
+
+/**
+ * The regional-pricing disclosure, derived rather than written.
+ *
+ * Prices here vary by the country a visitor is paying from, and a visitor has
+ * to be able to FIND that out: a price that changes per person and is
+ * disclosed nowhere is the kind of thing that becomes a story rather than a
+ * support ticket. The countries and the amounts come from `lib/pricing.ts`
+ * through one shared sentence, which `/terms` §5 also renders — a contract
+ * naming different countries from the pricing page is a dispute, not a typo.
+ *
+ * The cards below show the STANDARD prices, which are also the highest:
+ * `lib/pricing.ts` may only reduce a price, never raise one. So nobody reading
+ * this page is ever charged more than what it says, and the disclosure only
+ * ever has to explain a reduction.
+ *
+ * The copy says the other plans are reduced "in the same way" rather than by a
+ * stated percentage, because the three plans come down by 28–30% in one band
+ * and 44–46% in the other — any single percentage would be wrong for two of
+ * them. Do not turn "in the same way" into a number.
+ */
+const REGIONAL_SUMMARY = describeRegionalBands();
 
 const PLANS = [
   {
@@ -190,6 +223,10 @@ const FAQS: readonly Faq[] = [
     a: `We run promotional codes from time to time, worth ${PROMO_DISCOUNT_PERCENT}% off a plan. If you have one, enter it at checkout and the discount is applied before you pay — you will never be charged the full amount and refunded the difference.`,
   },
   {
+    q: "Does everyone pay the same price?",
+    a: `Not quite, and it is worth knowing before you compare notes with someone. The prices above are our standard prices, and they are the most anyone pays. A few countries are charged a lower regional price: a single session is ${REGIONAL_SUMMARY}, against ${money(PLAN_PRICES.individual)} standard, and the other plans are reduced in the same way. The lower price is applied automatically when you go to pay — there is nothing to claim and no code to enter — and the exact shilling figure is shown before you authorise anything. It is worked out from the country your connection reaches us from, so a VPN or a trip abroad can change which price you are offered. Your therapist is paid the same fixed share of the standard price either way, so a lower price for you never means a lower rate for them.`,
+  },
+  {
     q: "What currency am I charged in?",
     a: "Kenyan shillings, wherever you are — that is the currency Echo's payment account settles in. Where we can tell you are somewhere else, the prices above also show an approximate amount in your own currency, marked with a ≈, alongside the exact shilling figure you will be charged. Treat the approximate one as a guide only: your bank does the actual conversion at its own rate.",
   },
@@ -235,8 +272,10 @@ export default function PricingPage() {
           <p className="mx-auto mt-6 max-w-xl text-[17px] leading-8 text-stone-600">
             Therapy on Echo is sold as a bundle of sessions, paid for one time.
             There is no subscription, no card kept on file for a monthly charge,
-            and no expiry date on what you have bought. Every price below is
-            charged in Kenyan shillings, whichever currency your card is in.
+            and no expiry date on what you have bought. Every price below is our
+            standard price, charged in Kenyan shillings whichever currency your
+            card is in — a few countries pay less, and the payment section below
+            says which.
           </p>
         </div>
       </section>
@@ -377,6 +416,17 @@ export default function PricingPage() {
             own fee, so the amount you are billed can differ slightly from the
             approximate figure shown here. That difference is your
             bank&apos;s, not ours, and we do not add a margin of our own.
+          </p>
+          {/* Said in the open, not only in the FAQ below it. A price that
+              varies per visitor and is disclosed nowhere a visitor will look
+              is worse than the variation itself. */}
+          <p>
+            The prices above are our standard prices, and the most anyone pays.
+            A few countries are charged less — a single session is{" "}
+            {REGIONAL_SUMMARY} — and the reduction is applied for you when you
+            go to pay, with the exact shilling figure shown before you
+            authorise anything. Your therapist is paid a fixed share of the
+            standard price regardless, so it never comes out of their rate.
           </p>
         </div>
       </Section>

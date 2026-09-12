@@ -38,6 +38,15 @@ export const PLAN_LABELS: Record<string, string> = {
 /**
  * Plan prices in WHOLE KES — the currency the Paystack account settles in.
  *
+ * ## These are the PUBLISHED prices, and they are a ceiling
+ *
+ * Every public page renders these figures, and `/pricing` is statically
+ * rendered, so they are the same for every visitor. `lib/pricing.ts` may charge
+ * a country LESS than the figure here and may never charge more — a cached page
+ * advertising KES 2,000 to a reader who is then billed more is a
+ * price-transparency breach, whereas billing them less is a courtesy. The
+ * therapist's accrual is measured against these, never against a regional band.
+ *
  * Fixed figures, deliberately not derived from a live exchange rate. A converted
  * price moves daily, which means the amount shown can differ from the amount
  * charged and refunds stop matching the original transaction.
@@ -139,6 +148,21 @@ export const THERAPIST_REVENUE_SHARE = 0.4;
  * Changing this is not retroactive: `payout_ledger` stores the amount owed as a
  * fact at accrual time, so flipping the flag re-prices future sessions only and
  * never rewrites what a therapist has already earned.
+ *
+ * ## Regional pricing is the same problem wearing a different hat
+ *
+ * `lib/pricing.ts` charges some countries a lower KES amount. Everything above
+ * applies to it unchanged, and for the same reason: a clinician in Nairobi must
+ * not earn less for the same 50 minutes because their client happens to be in
+ * Kampala. They did not set the band, cannot see which one applied, and cannot
+ * decline it.
+ *
+ * So `LIST` means the figure in `PLAN_PRICES` — the standard, published,
+ * Kenya-anchored price — not the regional band and not the charged amount. The
+ * cost of that is a further ~17 to ~33 points of contribution margin on a
+ * discounted tier, and at both discounted tiers the platform already clears
+ * less per session than the clinician does. The table is in `lib/pricing.ts`;
+ * read it there rather than rediscovering it from a dashboard.
  */
 export const THERAPIST_PAID_ON_LIST_PRICE = true;
 
@@ -153,6 +177,17 @@ export const THERAPIST_PAID_ON_LIST_PRICE = true;
  * Returns null for an unknown plan rather than 0. A missing plan means the
  * caller cannot establish what the session was worth, and silently accruing
  * zero would record "this therapist earned nothing" as though it were measured.
+ *
+ * ## IT TAKES A PLAN AND NOTHING ELSE. KEEP IT THAT WAY.
+ *
+ * This is the function that feeds `payout_ledger.gross_minor`, so its signature
+ * is the mechanism by which a regional price would reach clinician pay: add a
+ * `tier` (or a country, or a `chargedMinor`) parameter and every therapist in
+ * Nairobi starts earning less for clients in Kampala, retroactively invisible
+ * because the ledger stores the number as a fact at accrual time. There is a
+ * test asserting the arity for that reason. `lib/pricing.ts` computes what the
+ * CLIENT pays; this computes what the SESSION was worth, and they are allowed
+ * to differ — see `THERAPIST_PAID_ON_LIST_PRICE` above.
  */
 export function listPriceMinorPerSession(plan: string): number | null {
   const price = PLAN_PRICES[plan];
@@ -193,6 +228,10 @@ export function therapistEarnings(sessionAmount: number): number {
  * `PROMO_DISCOUNT_PERCENT` is the fallback for codes that do not set one.
  * Clamped because a negative or >100 value in the database would otherwise
  * produce a negative charge.
+ *
+ * Callers pass the **list** price, not a regionally-banded one: discounts do
+ * not compound. `amountToChargeKes()` in `lib/pricing.ts` takes the lower of
+ * this result and the band, and explains why stacking them loses money.
  */
 export function applyPromoDiscount(
   price: number,
@@ -209,6 +248,12 @@ export function applyPromoDiscount(
  * KES 8,900 plan is a refund, a support ticket and a trust problem, and it will
  * not be noticed until someone reconciles the ledger. Failing loudly at the
  * point of purchase is recoverable in a way that a wrong charge is not.
+ *
+ * This is the BASE-PRICE half of the guard, and it still means exactly what it
+ * says. Regional bands add a second way for the price table to be wrong while
+ * looking fine, so the payment path calls `assertPricingConfigured()` in
+ * `lib/pricing.ts` — which runs this first and then validates every band
+ * against `PLAN_PRICES`. Keep this one as the check on `PLAN_PRICES` itself.
  */
 export function assertPricesConfigured(): void {
   if (!PLAN_PRICES_CONFIGURED) {

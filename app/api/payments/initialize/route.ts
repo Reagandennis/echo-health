@@ -6,13 +6,13 @@ import { payments } from "@/lib/db/schema";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { eq, and } from "drizzle-orm";
 import { promoRedemptions, promos } from "@/lib/db/schema";
+import { PLAN_CURRENCY, PROMO_DISCOUNT_PERCENT } from "@/lib/constants";
 import {
-  PLAN_PRICES,
-  PLAN_CURRENCY,
-  PROMO_DISCOUNT_PERCENT,
-  applyPromoDiscount,
-  assertPricesConfigured,
-} from "@/lib/constants";
+  amountToChargeKes,
+  assertPricingConfigured,
+  platformMarginKes,
+  resolveMarket,
+} from "@/lib/pricing";
 import {
   generateReference,
   initializeTransaction,
@@ -25,10 +25,26 @@ import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 /**
  * Start a Paystack transaction and return the hosted-checkout URL.
  *
- * THE AMOUNT IS NEVER TAKEN FROM THE CLIENT. The request carries a plan id; the
- * price is looked up here from `PLAN_PRICES`. Accepting an amount — or a price
- * that had been through the browser's currency conversion — is how a customer
- * pays one shilling for the top plan.
+ * THE AMOUNT IS NEVER TAKEN FROM THE CLIENT. The request carries a plan id and
+ * at most a promo *code*; every shilling is computed here. Accepting an
+ * amount — or a price that had been through the browser's currency
+ * conversion — is how a customer pays one shilling for the top plan.
+ *
+ * ## Regional pricing does not weaken that, because the country is not the
+ * ## client's to state either
+ *
+ * `resolveMarket(req)` reads a country header set by our own network edge and
+ * nothing else: not the body, not the query string, not `Accept-Language`, and
+ * not `lib/useCurrency.ts`, whose browser-side `ipapi.co` lookup is a display
+ * courtesy and is trivially forged. The band it resolves to picks a lower KES
+ * figure from `lib/pricing.ts`; `PLAN_PRICES` remains the ceiling. Read the
+ * long comment at the top of that module before changing any of it — including
+ * how far the header itself can be trusted, which depends on the deployment
+ * and is therefore behind an explicit operator opt-in.
+ *
+ * A visitor who lies about their country gets, at worst, the standard published
+ * price: the bands only ever reduce, and an untrusted or unreadable header
+ * falls through to `standard`.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -55,10 +71,19 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as { plan?: string; promoCode?: string };
     const plan = typeof body.plan === "string" ? body.plan.toLowerCase() : "";
 
-    const listPrice = PLAN_PRICES[plan];
-    if (listPrice === undefined) {
+    /*
+     * The country, from the request itself rather than from anything in `body`.
+     * Deliberately resolved before the plan is even validated, so there is no
+     * code path on which a later branch could take it from somewhere cheaper
+     * to reach.
+     */
+    const market = resolveMarket(req);
+
+    const baseline = amountToChargeKes({ plan, tier: market.tier });
+    if (!baseline) {
       return NextResponse.json({ error: "Unknown plan" }, { status: 400 });
     }
+    const listPrice = baseline.listKes;
 
     /**
      * Promo discounts are applied HERE, never client-side.
@@ -68,7 +93,7 @@ export async function POST(req: NextRequest) {
      * redemption recorded for THIS user, so a discount cannot be conjured by
      * editing the request.
      */
-    let price = listPrice;
+    let price = baseline.chargeKes;
     let promoCode: string | null = null;
     let discountPercent = 0;
 
@@ -113,7 +138,20 @@ export async function POST(req: NextRequest) {
       }
 
       discountPercent = promo.discount ?? PROMO_DISCOUNT_PERCENT;
-      price = applyPromoDiscount(listPrice, discountPercent);
+      /*
+       * The band and the code do not stack — the client gets whichever is
+       * better. `amountToChargeKes` holds that rule and the reasoning; the
+       * short version is that 50% off an already-reduced tier charges less
+       * than the therapist accrues for the session.
+       */
+      const withPromo = amountToChargeKes({
+        plan,
+        tier: market.tier,
+        promoPercent: discountPercent,
+      });
+      /* Non-null: the same plan resolved a moment ago. Belt and braces rather
+         than a `!`, because the fallback here would be a wrong CHARGE. */
+      price = withPromo ? withPromo.chargeKes : baseline.chargeKes;
       promoCode = promo.code;
     }
 
@@ -127,8 +165,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Refuses to charge while the placeholder prices are still in place.
-    assertPricesConfigured();
+    /*
+     * Refuses to charge while the placeholder prices are still in place, AND
+     * while the regional band table disagrees with `PLAN_PRICES` — a band above
+     * the published price, a plan a band forgot, or a country code that is not
+     * a country. Both halves throw into the 500 handler below, which is the
+     * right outcome: a purchase that fails is recoverable, a wrong charge is a
+     * refund nobody notices.
+     */
+    assertPricingConfigured();
+
+    /*
+     * A charge that clears the platform less than it accrues to the clinician
+     * is a deliberate, documented position at the discounted tiers — not a bug.
+     * It is logged anyway, because the alternative is discovering the condition
+     * from a quarterly review rather than from the line that caused it.
+     */
+    const margin = platformMarginKes(plan, price);
+    if (margin?.platformClearsLess) {
+      console.warn(
+        `[payments] ${plan} at ${price} ${PLAN_CURRENCY} (tier=${market.tier}) clears ` +
+          `${margin.platformKes} to the platform against ${margin.therapistKes} accrued ` +
+          `to the therapist, per session. See THERAPIST_PAID_ON_LIST_PRICE.`
+      );
+    }
 
     if (!user.email) {
       return NextResponse.json(
@@ -174,11 +234,23 @@ export async function POST(req: NextRequest) {
      *
      * `list_price_kes` and `amount_kes` are both recorded because the difference
      * between them IS the discount analysis — with only the charged amount, a
-     * promo campaign is indistinguishable from a price cut.
+     * promo campaign is indistinguishable from a price cut. `tier_price_kes`
+     * splits that difference in two once regional bands exist: without it, a
+     * band and a promo are indistinguishable from each other.
      *
-     * The distinct ID is the Auth0 sub. No email and no name: the properties
-     * below are everything an analysis needs and nothing that identifies a
-     * person to a third party.
+     * `price_tier` is a three-valued band label and `tier_source` names the
+     * signal it came from — enough to reconcile revenue, and enough to see at a
+     * glance if a deployment has stopped trusting its edge header and quietly
+     * reverted everyone to the standard price.
+     *
+     * THE RESOLVED COUNTRY IS DELIBERATELY NOT SENT. A two-letter country
+     * against a stable pseudonymous id, on a mental-health platform, is one
+     * join away from "this individual, in this country, is in therapy" — and
+     * the band label already carries everything a revenue question needs. Same
+     * test as everywhere else in `lib/analytics`: would this be acceptable in a
+     * breach notification?
+     *
+     * The distinct ID is the auth provider's subject id. No email and no name.
      */
     await capturePaymentEvent({
       distinctId: user.$id,
@@ -187,7 +259,10 @@ export async function POST(req: NextRequest) {
         reference,
         plan,
         list_price_kes: listPrice,
+        tier_price_kes: baseline.chargeKes,
         amount_kes: price,
+        price_tier: market.tier,
+        tier_source: market.source,
         discount_percent: discountPercent,
         promo_code: promoCode,
         currency: PLAN_CURRENCY,
@@ -202,6 +277,12 @@ export async function POST(req: NextRequest) {
       amount: price,
       listPrice,
       discountPercent,
+      // The band that applied, so a receipt or a support view can say why the
+      // charge is below the published price. Informational: the browser has
+      // already been redirected to Paystack for the amount above by the time
+      // anything reads this, and nothing is priced from it.
+      priceTier: market.tier,
+      tierPrice: baseline.chargeKes,
       currency: PLAN_CURRENCY,
     });
   } catch (error: unknown) {

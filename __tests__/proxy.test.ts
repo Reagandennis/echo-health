@@ -3,95 +3,159 @@
  */
 import { NextResponse } from "next/server";
 
-const mockMiddleware = jest.fn();
-const mockGetSession = jest.fn();
+/**
+ * Rewritten for Supabase Auth.
+ *
+ * This suite used to mock `@/lib/auth0`, which no longer exists. Every
+ * behaviour it asserted still matters and is preserved below — the segment
+ * boundaries especially, since a regression there is a route silently exempt
+ * from the session gate. Three things changed in the port:
+ *
+ *  - The redirect target is `/signin?next=…` rather than `/auth/login?returnTo=…`.
+ *    Supabase has no SDK-served routes, so sign-in is an ordinary page.
+ *  - The `/auth/*` short-circuit is gone for the same reason. `/auth/callback`
+ *    and `/auth/signout` are normal route handlers and must NOT be exempt from
+ *    the proxy, because the session refresh has to run on them too.
+ *  - A new case covers the failure that took the site down: an identity
+ *    provider that cannot answer must degrade to "no session", never throw.
+ */
 
-jest.mock("@/lib/auth0", () => ({
-  auth0: {
-    middleware: (...args: unknown[]) => mockMiddleware(...args),
-    getSession: (...args: unknown[]) => mockGetSession(...args),
-  },
+const mockRefresh = jest.fn();
+
+jest.mock("@/lib/supabase/proxy-session", () => ({
+  refreshSupabaseSession: (...args: unknown[]) => mockRefresh(...args),
 }));
 
-// Imported after the mock so the proxy picks up the stubbed client.
+/* Configured by default so the proxy does not log a warning on every case. */
+jest.mock("@/lib/supabase/env", () => ({
+  supabaseConfigured: () => true,
+  describeMissingConfig: () => "",
+}));
+
+// Imported after the mocks so the proxy picks up the stubs.
 import { proxy } from "@/proxy";
 
-function requestFor(pathname: string, search = "") {
+function requestFor(pathname: string, search = "", cookies: Record<string, string> = {}) {
   return {
     nextUrl: { pathname, search },
     url: `http://localhost${pathname}${search}`,
-    cookies: { get: jest.fn(), getAll: jest.fn(() => []) },
+    cookies: {
+      get: (name: string) => (name in cookies ? { name, value: cookies[name] } : undefined),
+      getAll: () => Object.entries(cookies).map(([name, value]) => ({ name, value })),
+      set: jest.fn(),
+    },
   } as unknown as Parameters<typeof proxy>[0];
+}
+
+/** What `refreshSupabaseSession` resolves to. */
+function session({ hasSession = false, available = true } = {}) {
+  return { response: NextResponse.next(), hasSession, available };
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockMiddleware.mockResolvedValue(NextResponse.next());
+  mockRefresh.mockResolvedValue(session());
 });
 
 describe("proxy", () => {
   it.each(["/admin", "/admin/users", "/therapist", "/dashboard/sessions"])(
-    "redirects unauthenticated protected route %s to Auth0 login",
+    "redirects unauthenticated protected route %s to sign-in",
     async (pathname) => {
-      mockGetSession.mockResolvedValue(null);
-
       const response = await proxy(requestFor(pathname));
 
       expect(response.status).toBe(307);
       const location = new URL(response.headers.get("location") as string);
-      expect(location.pathname).toBe("/auth/login");
+      expect(location.pathname).toBe("/signin");
       // The user must land back where they were headed after authenticating.
-      expect(location.searchParams.get("returnTo")).toBe(pathname);
+      expect(location.searchParams.get("next")).toBe(pathname);
     }
   );
 
-  it("preserves the query string in returnTo", async () => {
-    mockGetSession.mockResolvedValue(null);
-
-    const response = await proxy(requestFor("/dashboard", "?tab=goals"));
+  it("preserves the query string in the return path", async () => {
+    const response = await proxy(requestFor("/dashboard/sessions", "?tab=upcoming"));
 
     const location = new URL(response.headers.get("location") as string);
-    expect(location.searchParams.get("returnTo")).toBe("/dashboard?tab=goals");
+    expect(location.searchParams.get("next")).toBe("/dashboard/sessions?tab=upcoming");
   });
 
   it("allows protected routes when a session exists", async () => {
-    mockGetSession.mockResolvedValue({ user: { sub: "auth0|abc" } });
+    mockRefresh.mockResolvedValue(session({ hasSession: true }));
 
     const response = await proxy(requestFor("/dashboard"));
 
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.status).toBe(200);
   });
 
-  it("hands /auth/* to the SDK without a session check", async () => {
-    const response = await proxy(requestFor("/auth/login"));
+  it("refreshes the session on every covered request, not only protected ones", async () => {
+    /* The refresh is why sessions survive past the first token expiry — see
+       the note in `lib/supabase/proxy-session.ts`. A request to an ordinary
+       covered path must still trigger it. */
+    await proxy(requestFor("/api/me"));
 
-    expect(mockGetSession).not.toHaveBeenCalled();
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not gate public routes", async () => {
-    const response = await proxy(requestFor("/"));
+    const response = await proxy(requestFor("/faq"));
 
-    expect(mockGetSession).not.toHaveBeenCalled();
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.status).toBe(200);
   });
 
   it("does not treat /admin-tools as the protected /admin section", async () => {
-    await proxy(requestFor("/admin-tools"));
+    /* Segment boundary: a prefix match would exempt nothing, but a sloppy
+       `startsWith("/admin")` would GATE an unrelated public path. */
+    const response = await proxy(requestFor("/admin-tools"));
 
-    expect(mockGetSession).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
   });
 
-  it("only short-circuits exact /auth/* SDK routes, not siblings", async () => {
-    // Regression guard for the prefix boundary. A bare "/auth" check would treat
-    // /auth-redirect as an SDK route; the gating below proves it is not, because
-    // a protected path is still evaluated in the same pass.
-    mockGetSession.mockResolvedValue(null);
+  it("gates /therapist but not /therapists or /therapist-jobs", async () => {
+    /* The dangerous direction: `/therapists` is the public directory and
+       `/therapist-jobs` is public recruiting, while `/therapist` is the
+       clinician portal. Confusing them either leaks the portal or 307s two
+       marketing pages. */
+    expect((await proxy(requestFor("/therapists"))).status).toBe(200);
+    expect((await proxy(requestFor("/therapist-jobs"))).status).toBe(200);
+    expect((await proxy(requestFor("/therapist"))).status).toBe(307);
+  });
 
-    await proxy(requestFor("/auth-redirect"));
-    expect(mockGetSession).not.toHaveBeenCalled(); // not protected — falls through
+  it("does not exempt /auth/* from the session refresh", async () => {
+    /*
+     * Under Auth0 these were SDK-served and short-circuited before the gate.
+     * Under Supabase `/auth/callback` is an ordinary route handler that needs
+     * the refresh to run, so the exemption was removed. If someone reinstates
+     * it, the callback stops writing rotated cookies.
+     */
+    await proxy(requestFor("/auth/callback", "?code=abc"));
 
-    const gated = await proxy(requestFor("/dashboard"));
-    expect(gated.status).toBe(307); // protected paths still gate normally
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  describe("when the identity provider cannot answer", () => {
+    /*
+     * The regression this guards. `auth0.middleware()` used to be called
+     * unguarded on the proxy's first line, so removing the provider's env vars
+     * returned 500 for every path the matcher covered — all of `/api/*`, all
+     * three portals, and `/ingest/*`, the reverse proxy browser analytics goes
+     * through. The marketing pages kept working because they are excluded,
+     * which made the site look healthy from outside while everything behind it
+     * was down.
+     */
+    beforeEach(() => {
+      mockRefresh.mockResolvedValue(session({ hasSession: false, available: false }));
+    });
+
+    it("does not throw, and lets unprotected routes through", async () => {
+      const response = await proxy(requestFor("/api/me"));
+
+      expect(response.status).toBe(200);
+    });
+
+    it("still refuses protected routes rather than failing open", async () => {
+      const response = await proxy(requestFor("/admin"));
+
+      expect(response.status).toBe(307);
+      expect(new URL(response.headers.get("location") as string).pathname).toBe("/signin");
+    });
   });
 });

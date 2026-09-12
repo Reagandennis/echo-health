@@ -98,30 +98,44 @@ It therefore **refuses to run against any host that is not loopback** — not a 
 
 Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Auth is Auth0; the database is Postgres (Azure) via Drizzle; analytics is PostHog; video is self-managed WebRTC over Cloudflare Calls (SFU) + Cloudflare TURN; transactional email is Resend (`lib/email.ts`).
 
-### Auth & authorization (Auth0 Universal Login, role-in-layout)
+### Auth & authorization (Supabase Auth, role-in-layout)
 
-**Authentication is Auth0.** `@auth0/nextjs-auth0` v4 — note v4 is a rewrite of v3, and its routes live at `/auth/*`, not `/api/auth/*`.
+**Authentication is Supabase Auth.** It replaced Auth0 Universal Login; the database did NOT move — app data is still the Postgres in `docker-compose.yml` / Azure, and all 69 RLS policies are untouched.
 
-- `lib/auth0.ts` exports the `Auth0Client`, configured from `AUTH0_DOMAIN` / `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_SECRET` / `APP_BASE_URL`.
-- `proxy.ts` (**not** `middleware.ts` — Next 16 deprecated and renamed that convention) mounts the SDK routes `/auth/login`, `/auth/logout`, `/auth/callback`, `/auth/profile`, `/auth/access-token`, and gates `/admin`, `/therapist`, `/dashboard` on session *presence* only. Its matcher must stay broad, because `/auth/*` is served by the proxy rather than by route files.
-- **Role-based access is still enforced inside each section's Server Component layout** (e.g. `app/admin/layout.tsx` checks `user.labels?.includes("admin")`). Add new role gates at the layout, not the proxy.
-- `lib/auth/session.ts` is the auth core:
-  - `getLoggedInUser()` — React-`cache`d, returns a `SessionUser` or `null`. Resolving a session is a local cookie decrypt with **no network call**, so `null` always means "no valid session", never "provider unreachable".
-  - `SessionUser` uses the field names `$id` / `name` / `email` / `labels` / `prefs`. The `$`-prefix is a holdover from the Appwrite era, kept so ~89 call sites and ~76 `labels?.includes(...)` role guards did not have to change. **`$id` is the Auth0 `sub`** (`auth0|…`, `google-oauth2|…`) and is the canonical `user_id` foreign key in Postgres — a `text` column, never uuid.
-  - `labels` ← the namespaced claim `https://echo-health.app/roles`; `prefs` ← `https://echo-health.app/user_metadata`. Claim names are defined once in `lib/auth/claims.ts`.
+- `lib/supabase/env.ts` — the only place the variables are named. `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and server-only `SUPABASE_SERVICE_ROLE_KEY`.
+- `lib/supabase/server.ts` — request-scoped client for Server Components and route handlers.
+- `lib/supabase/browser.ts` — the browser client.
+- `lib/supabase/proxy-session.ts` — session refresh, called from `proxy.ts`.
+- `lib/supabase/admin.ts` / `management.ts` — service-role client and the privileged user-admin API.
+- `lib/auth/session.ts` — still the auth core, still exports the same `SessionUser` (`$id` / `name` / `email` / `labels` / `prefs`), so the ~89 call sites and ~76 `labels?.includes(...)` guards were unchanged by the migration. `$id` is now the Supabase user id (a uuid) rather than an Auth0 `sub`; `user_id` columns are `text`, so the shape was never load-bearing.
+- **Role gates stay in each section's layout** (`app/admin/layout.tsx` etc.), not in the proxy. Unchanged.
 
-#### ⚠️ Roles require BOTH halves. Breaking either fails silently.
+#### ⚠️ Roles live in `app_metadata`. Never `user_metadata`.
 
-1. **The post-login Action sets the claims** — source at `scripts/auth0-roles-action.js`, deployed by `npx tsx scripts/auth0-deploy-actions.ts`. Order matters: `account-linking` must run before `auth`.
-2. **`lib/auth0.ts` must re-admit them via `beforeSessionSaved`.** SDK v4 runs `session.user = filterDefaultIdTokenClaims(session.user)` and keeps ONLY `sub, name, nickname, given_name, family_name, picture, email, email_verified, org_id, act`. Every custom claim is discarded unless that hook is supplied. (v3 kept them — this is a v4 change.)
+This is the entire authorisation model and getting it backwards is privilege escalation, not a style choice:
 
-This cost real debugging time: the Action reported success, the Auth0 execution log showed no errors, the roles were correctly assigned in the tenant — and `user.labels` was still empty, so every `labels.includes("admin")` returned false and admins were locked out with nothing to point at. **If roles stop working, check `beforeSessionSaved` first.**
+- `user_metadata` is **writable by its owner**. A signed-in client can call `supabase.auth.updateUser({ data: { roles: ["admin"] } })` from the browser console.
+- `app_metadata` is writable **only** with the service-role key, which never leaves the server.
 
-Note also that Auth0 returns role names exactly as typed in the dashboard (`Admin`, not `admin`), so `lib/auth/session.ts` lowercases them on read. Don't rely on dashboard capitalisation.
+So `getLoggedInUser()` reads `app_metadata.roles` into `labels`, `lib/supabase/management.ts` is the only thing that writes it, and `prefs` maps to `user_metadata` (display name and similar — nothing that grants access). Role names are lowercased on both read and write, because a role stored as `"Admin"` fails every guard and looks identical to having no role.
 
-- Roles are stamped into the session at login. Assigning one to a signed-in user does nothing until they log in again — `/api/user/set-role` returns `requiresReauth: true` and `/role-select` acts on it.
-- `ADMIN_EMAILS` / `THERAPIST_EMAILS` / `CLIENT_EMAILS` are a bootstrap escape hatch in `lib/auth/session.ts`, matched against **verified** emails only. They exist to solve the chicken-and-egg of granting the first role. Unset them in production: they match on email, which means they will also mask identity bugs (they hid a duplicate-account defect for hours).
-- `lib/auth/client.ts` holds the browser-side entry points (`signIn`, `signUp`, `signInWithGoogle`, `signOut`). They are plain redirects — Universal Login means the app never handles credentials, so there is no `signIn(email, password)`.
+#### ⚠️ `getUser()`, not `getSession()`
+
+`getSession()` decodes the cookie and returns whatever is in it — fine for "probably signed in", **not** fine for an authorisation decision, because the cookie is attacker-supplied. `getLoggedInUser()` and the proxy both call `getUser()`, which validates the JWT against the Auth server. The cost is a network round trip, which is a real change from Auth0's local cookie decrypt — so unlike before, `null` *can* mean "provider unreachable". It fails closed: no session means no `labels` means no access.
+
+#### ⚠️ The proxy's session refresh is half of a pair
+
+Supabase access tokens are short-lived. Next only allows cookie writes from a Server Action, route handler or middleware — **a Server Component rendering cannot set them**. So `lib/supabase/server.ts` swallows write failures and `proxy.ts` does the writing on every covered request. Remove the refresh and sessions work perfectly until the first token expires, then log everyone out with nothing in any log.
+
+`proxy.ts` also **never throws**. `auth0.middleware()` used to be called unguarded on its first line, and when the Auth0 keys were removed from `.env` it returned 500 for every path the matcher covered — all of `/api/*`, all three portals, and `/ingest/*`, the reverse proxy browser analytics goes through. The marketing pages kept working because they are excluded, so the site looked healthy from outside while everything behind it was down. Keep it non-throwing.
+
+Unlike Auth0, Supabase has **no SDK-served routes**: `/auth/callback` and `/auth/signout` are ordinary route handlers under `app/`.
+
+#### The app now handles passwords, and Auth0 did not
+
+AGENTS.md used to say "Universal Login means the app never handles credentials". That property is gone. The obligations it covered are now ours, and they are written down in `lib/auth/client.ts`: no password in a log, a URL or an analytics event; sign-in errors surfaced **verbatim** from Supabase, which returns one `Invalid login credentials` for both a wrong password and an unknown address — do not "improve" that message into an account-enumeration oracle.
+
+`ADMIN_EMAILS` / `THERAPIST_EMAILS` / `CLIENT_EMAILS` survive as the bootstrap hatch in `lib/auth/session.ts`, still matched against **verified** emails only, and still to be unset in production.
 
 ### Data layer (Drizzle + Postgres, with RLS)
 
@@ -186,6 +200,19 @@ Video runs on the **Echo video backend** (`video.echopsychology.com`) — a self
 3. **Signaling protocol** (server assigns roles): the FIRST human in a room is `callee` (waits); the SECOND is `caller` (sends the offer). Two correctness guards in the hook, both cause black video if dropped: (a) **idempotent peer discovery** — the server announces each peer twice (in `role.peers` and as `peer-joined`), so `discoverPeer` dedups per peerId; (b) **ICE candidate buffering** — candidates can arrive before the offer, so they're buffered per peer and flushed after `setRemoteDescription`.
 
 Env: `ECHO_VIDEO_API_URL`, `ECHO_VIDEO_API_KEY` (both server-only; no `NEXT_PUBLIC_`). The old `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID` / `CLOUDFLARE_CALLS_API_TOKEN` / `CLOUDFLARE_TURN_*` vars are dead — remove them from deployment. The `therapy_sessions.patient_tracks` / `therapist_tracks` jsonb columns are now **vestigial** (a future migration may drop them). Recording/screen-share/chat are service features not yet wired into this client — treat them as follow-ups, don't assume they're live.
+
+### Pricing (three KES bands, chosen server-side)
+
+`lib/constants.ts` holds the **published** prices; `lib/pricing.ts` is the only place a *charged* amount is decided. Clients are in thirteen countries and pay one of three KES amounts. Read that module's header comment before touching anything priced — it carries the margin table.
+
+Four invariants, each of which is a money bug when broken:
+
+- **A band is a different KES amount, never a different currency.** Paystack settles in KES and `lib/paystack.ts` converts to minor units exactly once. `lib/useCurrency.ts` + `PriceTag` still do the display-only local conversion; nothing there was duplicated.
+- **The country comes from a request header, never from the client.** `resolveMarket(req)` reads `cf-ipcountry` / `x-vercel-ip-country` and nothing else — not the body, not `Accept-Language`, and *not* `lib/useCurrency.ts`, whose browser-side `ipapi.co` call is a display courtesy and trivially forged. Next removed `NextRequest.geo` in v15, so there is no framework geo object to use instead. The header is only as good as "requests cannot reach the origin except through our edge", so it is believed **only** when `TRUST_EDGE_COUNTRY_HEADER === "true"`; otherwise everyone gets the standard price.
+- **⚠️ A band may only LOWER a price, never raise one** — validated, and enforced again where the amount is computed. `/pricing` is statically rendered (same HTML, same prices, for everyone), so the published figure is a ceiling. Charging high-income markets *more* is therefore not possible without making `/pricing` per-request or adding a `Vary`, and a forgotten `Vary` serves one country's prices to everybody.
+- **⚠️ Therapist pay does not move with the client's country.** `listPriceMinorPerSession(plan)` feeds `payout_ledger` and takes a plan and nothing else; adding a tier/country/charged-amount parameter is exactly how a Nairobi clinician would start earning less for a client in Kampala. A test pins its arity. Same reasoning as `THERAPIST_PAID_ON_LIST_PRICE`, and it costs 17–33 points of contribution margin at the discounted bands — at both of them the platform already clears less per session than the clinician.
+
+A promo and a band **do not stack**: `amountToChargeKes` charges the lower of the two, which caps the worst case at the promo-on-list case already accepted rather than charging below the therapist's accrual. `assertPricingConfigured()` is what the payment path calls — it runs `assertPricesConfigured()` and then validates the bands. Prices vary by country, so `/pricing` and `/terms` §5 both say so, from one shared sentence (`describeRegionalBands`).
 
 ### Analytics (PostHog)
 
@@ -330,7 +357,7 @@ The palette, fonts and shared surfaces live in `app/globals.css` — read its he
 - **Validation** — `lib/validation.ts` holds the zod schemas for every API-route body and a `parseOrError(schema, body)` helper returning `{ ok, data } | { ok: false, message }`. Add a schema here and validate at the top of new route handlers rather than hand-rolling checks.
 - **Rate limiting** — `lib/rate-limit.ts` exports `rateLimit(key, opts)` (**async** — every call site awaits it) and `clientIp(req)`. With `REDIS_URL` set it is a shared fixed window via one atomic Lua `EVAL`; without it, the original in-memory token bucket. Two properties worth knowing before you touch it: it **fails open** (a Redis error falls back to the bucket rather than 429-ing payments and the support chat), and the Redis path is a **fixed** window, so it admits up to 2× the limit across a boundary. A route where that burst matters needs a different algorithm, not a smaller number. Still defense-in-depth — put a WAF in front of anything security-critical.
 - **Email** — `lib/email.ts` wraps Resend; `getResend()` returns `null` when `RESEND_API_KEY` is unset, so callers must no-op gracefully (email is optional in dev). HTML-escape interpolated user input.
-- **Plans/currency** — `lib/constants.ts` is the source of truth for plan session allowances and labels; `lib/useCurrency.ts` is a client hook for locale/currency display.
+- **Plans/currency** — `lib/constants.ts` is the source of truth for plan session allowances, labels and the **published** prices; `lib/pricing.ts` decides the **charged** amount (see "Pricing" above); `lib/useCurrency.ts` is a client hook for locale/currency display only.
 
 ## Operational scripts (`scripts/`)
 

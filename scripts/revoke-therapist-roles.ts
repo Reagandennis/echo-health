@@ -44,7 +44,7 @@ import postgres from "postgres";
 /**
  * Load `.env.local` into `process.env` BEFORE anything reads it.
  *
- * `lib/auth0-management.ts` captures AUTH0_DOMAIN / AUTH0_M2M_* into module-scope
+ * `lib/supabase/management.ts` reads SUPABASE_SERVICE_ROLE_KEY into module-scope
  * constants at import time, so it must not be imported until this has run — see
  * the dynamic import in `main()`. A static import at the top of this file would
  * capture `undefined` and report the Management API as unconfigured no matter
@@ -92,7 +92,7 @@ async function main() {
 
   // Imported here, not at the top — see `loadEnvLocal`.
   const { isManagementConfigured, getUserRoles, removeRole } = await import(
-    "../lib/auth0-management"
+    "../lib/supabase/management"
   );
 
   if (!isManagementConfigured()) {

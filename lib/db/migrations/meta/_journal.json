@@ -127,6 +127,13 @@
       "when": 1784703000000,
       "tag": "0017_risk_alert_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784703000001,
+      "tag": "0018_therapist_licences",
+      "breakpoints": true
     }
   ]
 }

@@ -111,6 +111,42 @@ export const ANALYTICS_EVENTS = {
   THERAPIST_KYC_SUBMITTED: "therapist_kyc_submitted",
   THERAPIST_KYC_REVIEWED: "therapist_kyc_reviewed",
   THERAPIST_KYC_DOCUMENT_REVIEWED: "therapist_kyc_document_reviewed",
+
+  /**
+   * One jurisdiction's licence handed to the review queue (migration 0018).
+   *
+   * ## What these two carry, and the one line that decides it
+   *
+   * A licence is a fact about a PROVIDER, and the note above allows provider
+   * identifiers for exactly that reason: a clinician is a business entity here,
+   * and "we have nobody licensed in the UK" is unanswerable without the
+   * jurisdiction. So `jurisdiction`, `subdivision`, `verification_mode`,
+   * `needs_local_confirmation`, `outcome` and `days_waiting` are all captured —
+   * every one of them structural, and the first two are public register data by
+   * construction (`therapist_licences_select` is `USING (true)` precisely
+   * because being checkable is the point).
+   *
+   * `licence_number` is NOT captured, and neither is the regulator's own
+   * reference, the therapist's name, nor anything from the uploaded documents.
+   * Not because a licence number is secret — it is on a public register — but
+   * because the register is the place to look it up, and a third-party
+   * analytics store holding "this pseudonymous id is registration 12345 with
+   * the HCPC" re-identifies the clinician from a single event. Applying the
+   * breach-notification test from the note above: the jurisdiction passes, the
+   * number does not.
+   *
+   * Reviewer notes are never captured. They are free text about a person's
+   * credentials, written to be read by that person.
+   */
+  THERAPIST_LICENCE_SUBMITTED: "therapist_licence_submitted",
+  /**
+   * A reviewer's verdict on one licence. `verification` is the mode they
+   * actually recorded, which is NOT always the jurisdiction's declared
+   * `verification_mode` — a reviewer who could not reach a register records
+   * `case_by_case` against a `named-regulator` country, and the gap between
+   * those two properties is the only measure of how often that happens.
+   */
+  THERAPIST_LICENCE_REVIEWED: "therapist_licence_reviewed",
   /** @unwired Would go in `saveMyAvailabilityAction`. */
   THERAPIST_AVAILABILITY_SAVED: "therapist_availability_saved",
   /** @unwired Would go in `createClinicalNoteAction` — count only, no content. */

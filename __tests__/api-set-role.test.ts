@@ -9,13 +9,17 @@ jest.mock("@/lib/auth/session", () => ({
   getLoggedInUser: jest.fn(),
 }));
 
-jest.mock("@/lib/auth0-management", () => ({
+jest.mock("@/lib/supabase/management", () => ({
   isManagementConfigured: jest.fn(() => true),
   assignRole: jest.fn(),
   getUserRoles: jest.fn(async () => []),
 }));
 
-import { assignRole, getUserRoles, isManagementConfigured } from "@/lib/auth0-management";
+import {
+  assignRole,
+  getUserRoles,
+  isManagementConfigured,
+} from "@/lib/supabase/management";
 
 const mockedGetLoggedInUser = getLoggedInUser as jest.MockedFunction<
   typeof getLoggedInUser
@@ -36,9 +40,10 @@ function jsonRequest(body: unknown, headers: Record<string, string> = {}) {
 }
 
 /**
- * Roles live in Auth0, so assigning one is a Management API call. The module is
- * mocked here: these tests cover the route's authorization gates and its
- * contract with that API, not Auth0 itself.
+ * Roles live in the Supabase user's `app_metadata`, so assigning one is a
+ * service-role write. `lib/supabase/management.ts` is mocked here: these tests
+ * cover the route's authorization gates and its contract with that module, not
+ * Supabase itself.
  *
  * The gates matter more than the happy path — each one is the only thing
  * standing between a self-serve signup and a privilege escalation.
@@ -104,8 +109,9 @@ describe("/api/user/set-role", () => {
 
     expect(response.status).toBe(200);
     expect(mockedAssignRole).toHaveBeenCalledWith("user-1", "client");
-    // The roles claim is minted at login, so the caller must re-authenticate
-    // before the new role is visible. Silence here strands the user roleless.
+    // `app_metadata` is stamped into the access token when it is issued, so
+    // the caller must refresh the session before the new role is visible.
+    // Silence here strands the user in a roleless session.
     expect(body.requiresReauth).toBe(true);
   });
 
@@ -132,7 +138,7 @@ describe("/api/user/set-role", () => {
     expect(mockedAssignRole).toHaveBeenCalledWith("user-2", "therapist");
   });
 
-  it("degrades to 501 when Management credentials are absent", async () => {
+  it("degrades to 501 when the service-role key is absent", async () => {
     mockedIsConfigured.mockReturnValue(false);
     // Distinct subject: the rate limiter is module-scoped and keyed on user id,
     // so reusing "user-1" here would trip its 5/minute cap and return 429.

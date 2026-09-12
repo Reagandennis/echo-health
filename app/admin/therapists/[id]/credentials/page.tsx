@@ -25,6 +25,7 @@ import {
 } from "@/lib/kyc";
 import TherapistKycActions from "../../TherapistKycActions";
 import KycDocumentActions from "../../KycDocumentActions";
+import LicenceReviewCard from "../../LicenceReviewCard";
 
 /**
  * Therapist credentialing review.
@@ -64,7 +65,15 @@ export default async function TherapistCredentialsPage({
   const review = await getTherapistKycReview(id);
   if (!review) notFound();
 
-  const { therapist: t, documents, events, missingRequired } = review;
+  const { therapist: t, documents, events, licences, missingRequired } = review;
+
+  /*
+   * Split so the reviewer's own work is first. A `pending` licence is waiting
+   * on them; a decided one is context. Mixing the two is how the document queue
+   * came to look longer than it was and bury the rows someone could act on.
+   */
+  const licencesAwaiting = licences.filter((l) => l.status === "pending");
+  const licencesSettled = licences.filter((l) => l.status !== "pending");
 
   // Group by the requirement each document is meant to satisfy, so the reviewer
   // reads "practising certificate: here is the file, here is what to check"
@@ -117,14 +126,21 @@ export default async function TherapistCredentialsPage({
 
           <dl className="space-y-3 text-sm">
             <Field
-              label="Licence number"
+              label="Licence number (legacy)"
               /*
                * Stated by the applicant, not verified by anything. The reviewer
                * guidance for the professional licence says to check it against
                * the issuing body's own register — this field is the input to
                * that check, not its result, and is labelled so.
+               *
+               * SUPERSEDED by "Licensed jurisdictions" below. This column has no
+               * jurisdiction attached because every clinician was Kenyan when it
+               * was written; migration 0018 copied it into `therapist_licences`
+               * as a Kenyan licence and deliberately did not drop it, so it is
+               * still shown — as the un-jurisdiction'd number it is, not as a
+               * second opinion about the licences underneath.
                */
-              hint="As entered by the applicant — verify it against the regulator's register"
+              hint="Pre-0018, with no jurisdiction attached — review the per-jurisdiction licences below"
               value={t.licenseNumber ?? null}
               fallback="Not provided"
             />
@@ -224,6 +240,58 @@ export default async function TherapistCredentialsPage({
                 ))}
               </div>
             </div>
+          )}
+        </section>
+
+        {/* ─── Licensed jurisdictions ──────────────────────────────────────── */}
+        {/*
+          Placed after the documents and before the overall decision, in the
+          order a reviewer works: read the evidence, decide each jurisdiction,
+          then decide the application.
+
+          WHY THIS SECTION EXISTS AT ALL. Every clinician here was Kenya-licensed
+          and every client — in thirteen countries — got one of them. "It's a red
+          flag for a UK or US citizen getting therapy from a therapist in Kenya."
+          A licence is now per jurisdiction and verified separately, and this is
+          where that verification happens.
+        */}
+        <section className="space-y-4">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <h2 className="text-sm font-bold text-stone-800">
+              Licensed jurisdictions
+            </h2>
+            <p className="text-xs text-stone-400">
+              {licences.length} claimed · {licencesAwaiting.length} awaiting a
+              decision
+            </p>
+          </div>
+
+          {licences.length === 0 ? (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  No jurisdiction claimed
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Nothing on file says where this clinician may practise. Rows
+                  predating migration 0018 were backfilled from{" "}
+                  <code className="font-mono">therapists.license_number</code> as
+                  Kenyan licences, so an empty list here means the applicant has
+                  not been through the jurisdictions step — not that the backfill
+                  missed them.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {licencesAwaiting.map((licence) => (
+                <LicenceReviewCard key={licence.id} licence={licence} />
+              ))}
+              {licencesSettled.map((licence) => (
+                <LicenceReviewCard key={licence.id} licence={licence} />
+              ))}
+            </>
           )}
         </section>
 
@@ -538,6 +606,11 @@ function eventCopy(action: string): { label: string; variant: BadgeVariant } {
     revoked: { label: "Revoked", variant: "danger" },
     document_accepted: { label: "Document accepted", variant: "success" },
     document_rejected: { label: "Document rejected", variant: "danger" },
+    /* Written by `reviewLicenceAction`. `kyc_review_events` has no licence
+       column — it predates migration 0018 — so the jurisdiction and the
+       recorded verification mode are in the note. */
+    licence_approved: { label: "Licence approved", variant: "success" },
+    licence_rejected: { label: "Licence rejected", variant: "danger" },
   };
   return (
     map[action] ?? { label: action.replace(/_/g, " "), variant: "neutral" }

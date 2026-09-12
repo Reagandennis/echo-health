@@ -1,4 +1,5 @@
 import {
+  date,
   pgTable,
   pgEnum,
   uuid,
@@ -47,6 +48,19 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
  */
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
+
+/**
+ * How a licence was checked, recorded per licence by the reviewer.
+ *
+ * Stored rather than derived from `lib/licensing.ts` at display time, so the
+ * claim made to a client is the claim the reviewer actually verified — if the
+ * requirements file is later corrected, history does not silently change.
+ */
+export const licenceVerificationEnum = pgEnum("licence_verification", [
+  "named_regulator",
+  "sub_national",
+  "case_by_case",
+]);
 
 export const kycStatusEnum = pgEnum("kyc_status", [
   "incomplete",
@@ -180,6 +194,60 @@ export const therapists = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("therapists_user_id_idx").on(t.userId)]
+);
+
+/**
+ * One licence per therapist per jurisdiction (migration 0018).
+ *
+ * `therapists.license_number` is the single implicitly-Kenyan licence this
+ * replaces. It is deliberately still there and still written: dropping it in
+ * the same migration that introduces the replacement means a failed deploy
+ * loses the data. A later migration removes it.
+ *
+ * ## The security property, so it is not accidentally removed
+ *
+ * `therapist_licences_update` authorises the ROW, not the columns, so without
+ * the `therapist_licences_guard` trigger a therapist could insert a licence
+ * for the United Kingdom, set it `verified`, and be presented to UK clients as
+ * HCPC-registered with no reviewer involved. That is migration 0015's hole in
+ * a worse place. The trigger also requires a `subdivision` for `united-states`
+ * and `canada`, where licensure is sub-national and "licensed in the United
+ * States" is not a meaningful claim.
+ */
+export const therapistLicences = pgTable(
+  "therapist_licences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    therapistId: uuid("therapist_id")
+      .notNull()
+      .references(() => therapists.id, { onDelete: "cascade" }),
+    /** A market slug from `lib/markets.ts`. Text, not an enum: the market list
+     *  is product configuration and should not need a schema change. */
+    jurisdiction: text("jurisdiction").notNull(),
+    /** State or province. Required for sub-national jurisdictions; the trigger
+     *  enforces it, so this stays nullable for the national cases. */
+    subdivision: text("subdivision"),
+    regulator: text("regulator"),
+    licenceNumber: varchar("licence_number", { length: 128 }),
+    verification: licenceVerificationEnum("verification").notNull().default("case_by_case"),
+    /** Reuses `kyc_status` so a licence and an application speak one language. */
+    status: kycStatusEnum("status").notNull().default("incomplete"),
+    expiresAt: date("expires_at"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: text("reviewed_by"),
+    /** Shown to the therapist on a rejection — the only explanation they get. */
+    reviewNote: varchar("review_note", { length: 1000 }),
+    documentId: uuid("document_id").references(() => kycDocuments.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("therapist_licences_unique").on(t.therapistId, t.jurisdiction, t.subdivision),
+    index("therapist_licences_therapist_idx").on(t.therapistId),
+  ]
 );
 
 // ─── Profiles ────────────────────────────────────────────────────────────────

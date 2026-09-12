@@ -350,6 +350,22 @@ function CheckoutContent() {
               />
             </div>
 
+            {/* Regional pricing, disclosed on the screen that takes the money.
+                This page renders `PLAN_PRICES` — the standard price — because
+                the amount is computed server-side at
+                `/api/payments/initialize` from a country header the browser
+                cannot set, and a client component must not be given a second
+                way to arrive at a price (see `lib/pricing.ts`). A band can only
+                ever reduce the figure above, so the worst case is someone
+                paying less than the summary they just read. Saying so is the
+                difference between a pleasant surprise and a "why is this
+                number different" support ticket on Paystack's page. */}
+            <p className="text-xs leading-relaxed text-stone-500 mb-5">
+              This is our standard price. If your country has a lower regional
+              price it is applied automatically when you continue — you will
+              see the exact amount before you authorise the payment.
+            </p>
+
             <ul className="space-y-2 border-t border-brand/8 pt-4 mb-5">
               {plan.features.map((feat) => (
                 <li key={feat} className="flex items-start gap-2 text-sm">

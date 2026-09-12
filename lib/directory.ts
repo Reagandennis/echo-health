@@ -2,6 +2,7 @@ import net from "node:net";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { therapists } from "@/lib/db/schema";
 import { withAnonymous } from "@/lib/db/session";
+import { canListInJurisdiction } from "@/lib/licensing";
 
 /**
  * The public therapist directory.
@@ -26,6 +27,19 @@ export interface DirectoryTherapist {
   readonly specialties: readonly string[];
   readonly timezone: string;
   readonly sessionDurationMinutes: number;
+  /**
+   * Market slugs this therapist holds a **verified** licence in.
+   *
+   * Only verified ones, and only jurisdictions `canListInJurisdiction()`
+   * allows — a licence in a country whose requirements no qualified adviser
+   * has confirmed is recorded and reviewable but must not be advertised. The
+   * alternative is telling a UK client "your therapist is HCPC-registered" on
+   * the strength of a requirements list nobody competent has checked.
+   *
+   * Empty is normal and means "Kenya only" for existing clinicians, which is
+   * what `describeLicensingForClient` renders when the list is empty.
+   */
+  readonly licensedIn: readonly string[];
 }
 
 /**
@@ -46,6 +60,28 @@ const publiclyVisible = and(
 );
 
 /**
+ * Verified, listable jurisdictions as a subquery rather than a join.
+ *
+ * A join would multiply each therapist row by their licence count and the
+ * caller would have to de-duplicate — which is how a directory ends up
+ * rendering the same clinician three times. `array_agg` in a correlated
+ * subquery keeps one row per therapist.
+ *
+ * Filtered to `verified` in SQL rather than in JS: an unverified licence must
+ * never reach a page, and the closer that filter sits to the data the harder
+ * it is to forget.
+ */
+const licensedInSql = sql<string[]>`
+  coalesce(
+    (SELECT array_agg(DISTINCT l.jurisdiction)
+       FROM therapist_licences l
+      WHERE l.therapist_id = ${therapists.id}
+        AND l.status = 'verified'),
+    ARRAY[]::text[]
+  )
+`;
+
+/**
  * Columns are listed explicitly rather than selecting the row.
  *
  * `therapists` carries `license_number`, `license_url`, `kyc_review_note` and
@@ -63,6 +99,7 @@ const publicColumns = {
   specialties: therapists.specialties,
   timezone: therapists.timezone,
   sessionDurationMinutes: therapists.sessionDurationMinutes,
+  licensedIn: licensedInSql,
 };
 
 /**
@@ -270,6 +307,7 @@ async function safely<T>(what: string, run: () => Promise<T>, fallback: T): Prom
   }
 }
 
+
 function toDirectory(row: {
   id: string;
   name: string;
@@ -279,8 +317,15 @@ function toDirectory(row: {
   specialties: string[] | null;
   timezone: string;
   sessionDurationMinutes: number;
+  licensedIn: string[] | null;
 }): DirectoryTherapist {
-  return { ...row, specialties: row.specialties ?? [] };
+  return {
+    ...row,
+    specialties: row.specialties ?? [],
+    /* Advertised only where the jurisdiction's requirements have actually been
+       confirmed. See the note on `licensedIn`. */
+    licensedIn: (row.licensedIn ?? []).filter(canListInJurisdiction),
+  };
 }
 
 /** Every publicly listed therapist, most experienced first. */

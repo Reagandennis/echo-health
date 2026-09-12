@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Heart, Stethoscope, ArrowRight, Loader2 } from "lucide-react";
 import { Suspense } from "react";
@@ -122,13 +123,40 @@ function RoleSelectContent() {
           throw new Error(data.error ?? "Failed to save role.");
         }
 
-        // The role now exists in Auth0, but this browser still holds a session
-        // cookie whose roles claim was minted at login — so `user.labels` would
-        // stay empty and the client would be bounced straight back here.
-        // Re-entering the login flow mints a fresh token; Auth0's SSO session
-        // makes it a silent redirect rather than another sign-in prompt.
+        /*
+         * The role is now in `app_metadata`, but this browser still holds an
+         * access token minted before it existed — so `user.labels` would come
+         * back empty and the client would be bounced straight back here.
+         *
+         * Under Auth0 the fix was to re-enter the login flow so a new token
+         * was issued, which meant a full redirect through the provider. Under
+         * Supabase a refresh is enough: `app_metadata` is read into the JWT at
+         * token-issue time, and `refreshSession()` exchanges the refresh token
+         * for a new access token carrying the claim. No sign-in prompt, no
+         * redirect, and the `/auth/login` route it used to navigate to does
+         * not exist any more.
+         *
+         * A hard navigation afterwards, not `router.push`: every Server
+         * Component already rendered in this tab was rendered with the old
+         * token, so a client-side navigation would reuse that tree and land on
+         * a portal that still thinks the user has no role.
+         */
         if (data.requiresReauth) {
-          window.location.assign(`/auth/login?returnTo=${encodeURIComponent(target)}`);
+          const supabase = getSupabaseBrowserClient();
+          const { error: refreshError } = supabase
+            ? await supabase.auth.refreshSession()
+            : { error: new Error("Supabase is not configured") };
+
+          if (refreshError) {
+            /* The role IS saved — only this browser's token is stale. Saying
+               "failed" would be wrong and would invite a second POST. */
+            throw new Error(
+              "Your role was saved, but we could not refresh this session. " +
+                "Sign out and back in to continue."
+            );
+          }
+
+          window.location.assign(target);
           return;
         }
       }

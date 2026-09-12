@@ -19,7 +19,7 @@ import {
   getUserEmail,
   isManagementConfigured,
   removeRole,
-} from "@/lib/auth0-management";
+} from "@/lib/supabase/management";
 import {
   sendKycApprovedEmail,
   sendKycChangesRequestedEmail,
@@ -43,9 +43,9 @@ jest.mock("@/lib/posthog-server", () => ({
 }));
 
 // Mocked outright rather than left to environment detection: `next/jest` loads
-// `.env.local`, so a real `AUTH0_M2M_CLIENT_ID` would otherwise send these tests
-// at the live Management API.
-jest.mock("@/lib/auth0-management", () => ({
+// `.env.local`, so a real `SUPABASE_SERVICE_ROLE_KEY` would otherwise send these
+// tests at the live project — with a key that bypasses row-level security.
+jest.mock("@/lib/supabase/management", () => ({
   isManagementConfigured: jest.fn(() => false),
   assignRole: jest.fn().mockResolvedValue(undefined),
   removeRole: jest.fn().mockResolvedValue(undefined),

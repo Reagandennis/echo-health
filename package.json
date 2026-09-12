@@ -25,7 +25,8 @@
     "db:setup": "npm run db:up && node scripts/db-wait.mjs && npm run db:apply"
   },
   "dependencies": {
-    "@auth0/nextjs-auth0": "^4.25.0",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0",
     "lucide-react": "^1.9.0",

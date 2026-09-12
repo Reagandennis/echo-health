@@ -30,6 +30,17 @@
 export interface Market {
   readonly slug: string;
   readonly country: string;
+  /**
+   * ISO 3166-1 **alpha-2**, uppercase. The form a CDN edge reports a visitor's
+   * country in (`CF-IPCountry: GB`), and therefore the only key a
+   * country-to-price band can be looked up by — see `lib/pricing.ts`.
+   *
+   * Note `GB`, not `UK`: "UK" is not an ISO 3166-1 code, it is a common
+   * mistake, and a band keyed on it would silently never match a British
+   * visitor. `validatePricing()` checks every band's codes against this list
+   * for exactly that reason.
+   */
+  readonly iso: string;
   /** IANA zone. For multi-zone countries, the most populous one. */
   readonly zone: string;
   /** Shown to the reader when the country spans more than one zone. */
@@ -45,37 +56,50 @@ export interface Market {
 
 export const MARKETS: readonly Market[] = [
   // ── East Africa — same or near-same clock as the therapists ──────────────
-  { slug: "kenya",         country: "Kenya",          zone: "Africa/Nairobi",        currency: "KES", locallyLicensed: true,  mpesa: true,  region: "East Africa" },
-  { slug: "uganda",        country: "Uganda",         zone: "Africa/Kampala",        currency: "UGX", locallyLicensed: false, mpesa: true,  region: "East Africa" },
-  { slug: "tanzania",      country: "Tanzania",       zone: "Africa/Dar_es_Salaam",  currency: "TZS", locallyLicensed: false, mpesa: true,  region: "East Africa" },
-  { slug: "rwanda",        country: "Rwanda",         zone: "Africa/Kigali",         currency: "RWF", locallyLicensed: false, mpesa: true,  region: "East Africa" },
+  { slug: "kenya",          country: "Kenya",                     iso: "KE", zone: "Africa/Nairobi",       currency: "KES", locallyLicensed: true,  mpesa: true,  region: "East Africa" },
+  { slug: "uganda",         country: "Uganda",                    iso: "UG", zone: "Africa/Kampala",       currency: "UGX", locallyLicensed: false, mpesa: true,  region: "East Africa" },
+  { slug: "tanzania",       country: "Tanzania",                  iso: "TZ", zone: "Africa/Dar_es_Salaam", currency: "TZS", locallyLicensed: false, mpesa: true,  region: "East Africa" },
+  { slug: "rwanda",         country: "Rwanda",                    iso: "RW", zone: "Africa/Kigali",        currency: "RWF", locallyLicensed: false, mpesa: true,  region: "East Africa" },
 
   // ── West & Southern Africa ───────────────────────────────────────────────
-  { slug: "nigeria",       country: "Nigeria",        zone: "Africa/Lagos",          currency: "NGN", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
-  { slug: "ghana",         country: "Ghana",          zone: "Africa/Accra",          currency: "GHS", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
-  { slug: "south-africa",  country: "South Africa",   zone: "Africa/Johannesburg",   currency: "ZAR", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
+  { slug: "nigeria",        country: "Nigeria",                   iso: "NG", zone: "Africa/Lagos",         currency: "NGN", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
+  { slug: "ghana",          country: "Ghana",                     iso: "GH", zone: "Africa/Accra",         currency: "GHS", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
+  { slug: "south-africa",   country: "South Africa",              iso: "ZA", zone: "Africa/Johannesburg",  currency: "ZAR", locallyLicensed: false, mpesa: false, region: "West & Southern Africa" },
 
   // ── Europe & North America — the widest gap, stated plainly ──────────────
-  { slug: "united-kingdom", country: "the United Kingdom", zone: "Europe/London",    currency: "GBP", locallyLicensed: false, mpesa: false, region: "Europe & North America" },
+  { slug: "united-kingdom", country: "the United Kingdom",        iso: "GB", zone: "Europe/London",        currency: "GBP", locallyLicensed: false, mpesa: false, region: "Europe & North America" },
   {
-    slug: "united-states", country: "the United States", zone: "America/New_York",   currency: "USD", locallyLicensed: false, mpesa: false, region: "Europe & North America",
+    slug: "united-states",  country: "the United States",         iso: "US", zone: "America/New_York",     currency: "USD", locallyLicensed: false, mpesa: false, region: "Europe & North America",
     zoneNote: "The gap below is from Eastern Time; add three hours if you are on the West Coast.",
   },
   {
-    slug: "canada",        country: "Canada",         zone: "America/Toronto",       currency: "CAD", locallyLicensed: false, mpesa: false, region: "Europe & North America",
+    slug: "canada",         country: "Canada",                    iso: "CA", zone: "America/Toronto",      currency: "CAD", locallyLicensed: false, mpesa: false, region: "Europe & North America",
     zoneNote: "The gap below is from Eastern Time; add up to four and a half hours further west.",
   },
 
   // ── Gulf — the most favourable overlap of any market here ────────────────
-  { slug: "uae",           country: "the United Arab Emirates", zone: "Asia/Dubai",  currency: "AED", locallyLicensed: false, mpesa: false, region: "Gulf" },
-  { slug: "saudi-arabia",  country: "Saudi Arabia",   zone: "Asia/Riyadh",           currency: "SAR", locallyLicensed: false, mpesa: false, region: "Gulf" },
-  { slug: "qatar",         country: "Qatar",          zone: "Asia/Qatar",            currency: "QAR", locallyLicensed: false, mpesa: false, region: "Gulf" },
+  { slug: "uae",            country: "the United Arab Emirates",  iso: "AE", zone: "Asia/Dubai",           currency: "AED", locallyLicensed: false, mpesa: false, region: "Gulf" },
+  { slug: "saudi-arabia",   country: "Saudi Arabia",              iso: "SA", zone: "Asia/Riyadh",          currency: "SAR", locallyLicensed: false, mpesa: false, region: "Gulf" },
+  { slug: "qatar",          country: "Qatar",                     iso: "QA", zone: "Asia/Qatar",           currency: "QAR", locallyLicensed: false, mpesa: false, region: "Gulf" },
 ];
 
 export type MarketSlug = (typeof MARKETS)[number]["slug"];
 
 export function findMarket(slug: string): Market | undefined {
   return MARKETS.find((m) => m.slug === slug);
+}
+
+/**
+ * Lookup by the code a CDN edge reports, rather than by our own URL slug.
+ *
+ * Case-insensitive on the way in because header values are not ours to trust
+ * the casing of, and returns `undefined` for the ~180 countries we have no
+ * market entry for — which is the normal case, not an error. `lib/pricing.ts`
+ * treats that as "standard price".
+ */
+export function findMarketByIso(iso: string): Market | undefined {
+  const code = iso.toUpperCase();
+  return MARKETS.find((m) => m.iso === code);
 }
 
 /** The therapists' clock. Every offset on the site is expressed against this. */

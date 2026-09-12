@@ -8,6 +8,7 @@ import {
   type KycDocumentType,
   type KycStatus,
 } from "@/lib/kyc";
+import type { LicenceVerification } from "@/lib/validation";
 import {
   clinicalNotes,
   kycDocuments,
@@ -21,6 +22,7 @@ import {
   riskAlerts,
   sessionFeedback,
   therapySessions,
+  therapistLicences,
   therapists,
 } from "@/lib/db/schema";
 
@@ -880,10 +882,60 @@ export interface KycReviewEventRow {
   createdAt: Date;
 }
 
+/**
+ * One `therapist_licences` row, for the reviewer.
+ *
+ * Every column is selected explicitly — including `licence_number`, which the
+ * reviewer needs because checking it against the issuing body's own register is
+ * the entire job. (Unlike `kyc_documents.content`, there is no `bytea` here, so
+ * the reason for naming columns is precision rather than payload size.)
+ */
+export interface TherapistLicenceRow {
+  id: string;
+  $id: string;
+  jurisdiction: string;
+  subdivision: string | null;
+  regulator: string | null;
+  licenceNumber: string | null;
+  verification: LicenceVerification;
+  status: KycStatus;
+  /** `YYYY-MM-DD`. A Postgres `date`, so it has no time and no zone. */
+  expiresAt: string | null;
+  submittedAt: Date | null;
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+  reviewNote: string | null;
+}
+
+function selectLicenceColumns() {
+  return {
+    id: therapistLicences.id,
+    jurisdiction: therapistLicences.jurisdiction,
+    subdivision: therapistLicences.subdivision,
+    regulator: therapistLicences.regulator,
+    licenceNumber: therapistLicences.licenceNumber,
+    verification: therapistLicences.verification,
+    status: therapistLicences.status,
+    expiresAt: therapistLicences.expiresAt,
+    submittedAt: therapistLicences.submittedAt,
+    reviewedAt: therapistLicences.reviewedAt,
+    reviewedBy: therapistLicences.reviewedBy,
+    reviewNote: therapistLicences.reviewNote,
+  } as const;
+}
+
 export interface TherapistKycReview {
   therapist: Doc<TherapistRow>;
   documents: KycDocumentSummary[];
   events: KycReviewEventRow[];
+  /**
+   * The jurisdictions this clinician claims, in the order they claimed them.
+   *
+   * Read in the SAME transaction as the documents on purpose: a licence
+   * approved between two separate reads would render a page whose licence list
+   * disagreed with its own decision trail.
+   */
+  licences: TherapistLicenceRow[];
   /**
    * Required document types with no ACCEPTED document on file.
    *
@@ -962,6 +1014,12 @@ export async function getTherapistKycReview(
       .orderBy(desc(kycReviewEvents.createdAt))
       .limit(200);
 
+    const licences = await tx
+      .select(selectLicenceColumns())
+      .from(therapistLicences)
+      .where(eq(therapistLicences.therapistId, therapistId))
+      .orderBy(asc(therapistLicences.createdAt));
+
     const acceptedTypes = documents
       .filter((d) => d.reviewStatus === "accepted")
       .map((d) => d.docType);
@@ -970,8 +1028,54 @@ export async function getTherapistKycReview(
       therapist: toDoc(therapist),
       documents: documents.map((d) => ({ ...d, $id: d.id })),
       events,
+      licences: licences.map((l) => ({ ...l, $id: l.id })),
       missingRequired: missingRequiredTypes(acceptedTypes),
     };
+  });
+}
+
+/**
+ * Licences awaiting a decision, across every therapist, longest-waiting first.
+ *
+ * A SEPARATE query from `listVerificationQueue`, which filters
+ * `therapists.kyc_status IN ('pending','incomplete')`. An already-verified
+ * clinician who later claims a second jurisdiction is not in that set at all,
+ * so their UK licence would sit `pending` forever with nothing on any screen
+ * pointing at it — the same class of invisibility as an event nobody emits.
+ *
+ * `therapist_licences_select` is `USING (true)` for the public directory, so
+ * RLS narrows nothing here; the admin gate is the `labels.includes("admin")`
+ * check the calling page performs before this runs.
+ */
+export interface PendingLicenceRow extends TherapistLicenceRow {
+  therapistId: string;
+  therapistName: string;
+  /** The clinician's own application status — an unverified applicant's licence
+   *  is reviewed alongside their KYC, a verified one's stands alone. */
+  therapistKycStatus: KycStatus;
+}
+
+export async function listPendingLicenceReviews(
+  limit = 100
+): Promise<PendingLicenceRow[]> {
+  return withCurrentUser(async (tx) => {
+    const rows = await tx
+      .select({
+        ...selectLicenceColumns(),
+        therapistId: therapistLicences.therapistId,
+        therapistName: therapists.name,
+        therapistKycStatus: therapists.kycStatus,
+      })
+      .from(therapistLicences)
+      .innerJoin(therapists, eq(therapists.id, therapistLicences.therapistId))
+      .where(eq(therapistLicences.status, "pending"))
+      .orderBy(
+        sql`${therapistLicences.submittedAt} ASC NULLS LAST`,
+        asc(therapistLicences.createdAt)
+      )
+      .limit(limit);
+
+    return rows.map((r) => ({ ...r, $id: r.id }));
   });
 }
 

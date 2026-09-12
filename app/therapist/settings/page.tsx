@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@/app/components/UserProvider";
 import { getProfileByUserIdAction, updateProfileAction } from "@/app/actions/database";
-import { goToPasswordReset } from "@/lib/auth/client";
+import { sendPasswordReset } from "@/lib/auth/client";
 import { User, Bell, Shield, Save, ExternalLink, Loader2 } from "lucide-react";
 
 interface Profile { $id: string; name: string; email: string; }
@@ -14,6 +14,8 @@ type Tab = typeof TABS[number];
 export default function TherapistSettingsPage() {
   const user = useUser();
   const [tab, setTab] = useState<Tab>("Profile");
+  /* Idle → sending → sent/error for the password-reset email below. */
+  const [resetState, setResetState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -125,15 +127,47 @@ export default function TherapistSettingsPage() {
             whole flow — the app never sees a current or new password — so the
             three-field form was replaced with a hand-off to Auth0's own reset.
           */}
+          {/*
+            Now a real reset email rather than a hand-off to a hosted page.
+            Under Auth0 Universal Login this button navigated away, because the
+            app had no way to trigger a reset itself. Supabase does, so it
+            emails the link directly and the user never leaves the settings
+            page.
+
+            Deliberately does NOT surface whether the address exists: the
+            confirmation below is identical either way. `sendPasswordReset`
+            returns the same result for an unknown address, and phrasing it as
+            "if that address has an account" is what stops the button being an
+            enumeration oracle for anyone who can reach this page.
+          */}
           <p className="text-sm text-stone-500 leading-relaxed">
-            Your password is managed on our secure sign-in page. Choose{" "}
-            <span className="font-medium text-stone-700">Forgot password?</span> there
-            and we&apos;ll email you a link to set a new one.
+            We&apos;ll email you a link to set a new password. It expires after a
+            short time, so use it soon after it arrives.
           </p>
-          <button onClick={() => goToPasswordReset()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:opacity-90 transition-opacity">
-            <ExternalLink size={14} /> Change password
+          <button
+            type="button"
+            disabled={resetState === "sending"}
+            onClick={async () => {
+              if (!user?.email) return;
+              setResetState("sending");
+              const result = await sendPasswordReset(user.email);
+              setResetState(result.ok ? "sent" : "error");
+            }}
+            className="flex min-h-11 items-center gap-2 rounded-xl bg-brand px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            <ExternalLink size={14} />
+            {resetState === "sending" ? "Sending…" : "Email me a reset link"}
           </button>
+          {resetState === "sent" && (
+            <p aria-live="polite" className="text-sm font-medium text-brand-700">
+              Sent. Check your inbox for a link to set a new password.
+            </p>
+          )}
+          {resetState === "error" && (
+            <p aria-live="polite" className="text-sm font-medium text-red-700">
+              We couldn&apos;t send that just now. Try again in a moment.
+            </p>
+          )}
         </div>
       )}
     </div>

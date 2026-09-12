@@ -4,7 +4,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { withSystem } from "@/lib/db/session";
 import { payments, promoRedemptions } from "@/lib/db/schema";
 import { verifyWebhookSignature, verifyTransaction, fromMinorUnits } from "@/lib/paystack";
-import { updateUserMetadata, isManagementConfigured } from "@/lib/auth0-management";
+import { updateUserMetadata, isManagementConfigured } from "@/lib/supabase/management";
 import { capturePaymentEvent, SYSTEM_DISTINCT_ID } from "@/app/api/payments/analytics";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 

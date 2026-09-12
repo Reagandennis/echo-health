@@ -7,22 +7,27 @@ import {
   assignRole,
   getUserRoles,
   isManagementConfigured,
-} from "@/lib/auth0-management";
+} from "@/lib/supabase/management";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 import { captureServer } from "@/lib/analytics/server";
 
 /**
  * Assign a role to a user.
  *
- * Roles live in Auth0, not Postgres — `getLoggedInUser()` reads them from a token
- * claim — so this writes through the Management API. Storing them in a local
- * table instead would be worse than failing: the write would appear to succeed
- * while every `labels.includes(...)` check kept returning false.
+ * Roles live in the Supabase user's `app_metadata.roles`, not in Postgres —
+ * `getLoggedInUser()` reads them from the access-token claims — so this writes
+ * through the service-role client in `lib/supabase/management.ts`. Storing them
+ * in a local table instead would be worse than failing: the write would appear
+ * to succeed while every `labels.includes(...)` check kept returning false.
  *
- * The caller MUST send the user back through `/auth/login` after a success. The
- * roles claim is minted at login and then cached in the session cookie, so a
- * freshly assigned role is invisible to the current session. Auth0's SSO session
- * makes that redirect silent — no credential re-entry.
+ * `app_metadata` rather than `user_metadata` is the load-bearing half. The
+ * latter is writable by its owner from the browser, so a role there would be
+ * self-grantable and this entire route — with its admin checks and its KYC gate
+ * — would be decoration. See `lib/supabase/admin.ts`.
+ *
+ * THE CALLER MUST REFRESH THE SESSION AFTER A SUCCESS. See `requiresReauth` at
+ * the bottom for what "refresh" means here; it is cheaper than it was under
+ * Auth0, but it is not optional.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -69,8 +74,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Role assignment is unavailable: Auth0 Management API credentials " +
-            "are not configured. Ask an administrator to assign your role.",
+            "Role assignment is unavailable: the Supabase service-role key is " +
+            "not configured on this deployment. Ask an administrator to assign " +
+            "your role.",
         },
         { status: 501 }
       );
@@ -108,9 +114,26 @@ export async function POST(req: NextRequest) {
       success: true,
       role,
       /**
-       * Tells the caller the user must re-authenticate before the role takes
-       * effect. Returned explicitly rather than left implicit, so a caller that
-       * forgets cannot silently strand someone in a roleless session.
+       * The role exists now, but this browser's ACCESS TOKEN does not know it.
+       *
+       * Supabase stamps `app_metadata` into the JWT when the token is issued,
+       * so the claim the app reads is a snapshot: `user.labels` stays empty,
+       * every `labels.includes(...)` guard keeps returning false, and a client
+       * who just chose "client" is bounced straight back to `/role-select`.
+       *
+       * What actually picks the new role up is a TOKEN REFRESH, which happens
+       * on any of:
+       *   - `supabase.auth.refreshSession()` from the browser — the deliberate
+       *     one, and what a caller acting on this flag should do;
+       *   - the automatic refresh when the access token expires (one hour by
+       *     default) or when `proxy.ts` refreshes an expiring session;
+       *   - a fresh sign-in.
+       *
+       * That is strictly cheaper than the Auth0 flow this replaced, which
+       * required a full round trip through `/auth/login` to mint a new ID
+       * token. The flag is still returned explicitly rather than left implicit,
+       * because a caller that forgets it strands someone in a roleless session
+       * that looks exactly like a failed assignment.
        */
       requiresReauth: true,
     });

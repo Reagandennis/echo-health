@@ -55,6 +55,12 @@ import { pageMetadata, legalEntityName } from "@/lib/seo";
  *   • Whether the risk scanner's automated processing needs a DPIA.
  *   • Children's-data consent mechanics for the 13–17 route.
  *   • Confirmation that `legalEntityName` is the registered controller.
+ *   • **The country signal now used to price a payment** (§1, and Cloudflare in
+ *     §5). It is an IP-derived inference that determines what someone is
+ *     charged, which is a stronger use than the currency guess beside it: it
+ *     needs a lawful basis stated, and confirmation that "we do not keep it" is
+ *     the right claim to make when the edge that supplies it keeps its own
+ *     logs. Terms §5 carries the consumer-law half of the same question.
  */
 
 export const metadata = pageMetadata({
@@ -101,7 +107,10 @@ The amount, currency, status and reference of each transaction, plus which plan 
 A profile photo, and for therapists, identity and licensing documents. These are stored as bytes in our own database rather than with a third-party file host.
 
 **Technical information.**
-IP address, browser and device type, the pages you visit, and approximate location derived from your IP. Section 9 covers this and what we do to limit it.`,
+IP address, browser and device type, the pages you visit, and approximate location derived from your IP. Section 9 covers this and what we do to limit it.
+
+**The country you are paying from.**
+When you start a payment, our network edge tells our server the two-letter country code your connection is coming from, worked out from your IP address. We use it for one thing: choosing which price applies to you, because [prices are lower in some countries](/pricing). We do not keep it. It is not written to your payment record, which stores the amount you were charged, and it is not sent to our analytics provider, which records only which of the three price bands applied.`,
   },
   {
     id: "use",
@@ -165,6 +174,7 @@ Everything else — your profile, your messages, your journal entries, your mood
 - **Resend** — transactional email. Receives your email address and the contents of the notification being sent.
 - **PostHog** (United States) — product analytics. Receives a random identifier and a coarse role, never your name or email, and never the content of anything you write. Section 9 has the detail.
 - **ipapi.co** — receives your **IP address** when a page needs to guess which currency to show you. It is told nothing else about you, and it happens on public pages regardless of whether you have an account.
+- **Cloudflare** — our network edge. Every request to this site passes through it, and it derives the two-letter country code described in section 1 from your IP address. It is the only source we use for that, and we use it only to select a price.
 - **open.er-api.com** — currency exchange rates. Receives no information about you.
 
 **We share with no one else** except where we are legally required to, or in the safety circumstances below.

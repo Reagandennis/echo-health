@@ -1,23 +1,30 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { auth0 } from "@/lib/auth0";
 import {
   DEV_SESSION_COOKIE,
   devAuthEnabled,
   devUserFromCookie,
 } from "@/lib/auth/dev-session";
-import { METADATA_CLAIM, ROLES_CLAIM } from "@/lib/auth/claims";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { describeMissingConfig } from "@/lib/supabase/env";
 
-// Claim names live in their own module so `lib/auth0.ts` can whitelist them in
-// `beforeSessionSaved` without importing this file (which imports it).
-export { ROLES_CLAIM, METADATA_CLAIM } from "@/lib/auth/claims";
+/*
+ * The namespaced-claim indirection is gone with Auth0.
+ *
+ * `lib/auth/claims.ts` existed because the Auth0 SDK's `beforeSessionSaved`
+ * hook had to whitelist the custom claim names, and it could not import this
+ * file (this file imported it). Supabase puts roles in `app_metadata` on the
+ * user object directly, so there is no claim namespace to agree on and no
+ * circular import to break — one fewer moving part in the half of the auth
+ * setup that used to fail silently.
+ */
 
 /**
  * Bootstrap roles by email address, from `ADMIN_EMAILS`, `THERAPIST_EMAILS` and
  * `CLIENT_EMAILS` (each comma-separated).
  *
- * WHY THIS EXISTS. Roles normally arrive in the `ROLES_CLAIM` above, which needs
- * the post-login Action deployed and a role assigned in the Auth0 dashboard.
+ * WHY THIS EXISTS. Roles normally arrive in `app_metadata.roles`, which can
+ * only be written with the Supabase service-role key.
  * That is a chicken-and-egg problem on a fresh tenant: you cannot reach `/admin`
  * to administer anything until someone is already an admin. The self-serve paths
  * that would otherwise grant `client` (`/api/user/set-role`) and `therapist`
@@ -63,17 +70,22 @@ function bootstrapRolesFor(email: string): string[] {
  * `user.labels?.includes("admin")` keep working unchanged after the Auth0
  * migration.
  *
- * `$id` is the Auth0 `sub` (e.g. `auth0|68f…`, `google-oauth2|1179…`) and is the
- * canonical user identifier written into Appwrite documents as `userId`.
+ * `$id` is now the **Supabase user id** — a uuid, e.g.
+ * `9f1c…-…`. It remains the canonical `user_id` foreign key in Postgres, which
+ * is a `text` column precisely so the identifier's shape is not load-bearing:
+ * it held `auth0|…` before this migration and holds a uuid after, and the RLS
+ * policies compare it as text either way. Rows written under an Auth0 id stay
+ * readable by nothing, because no Supabase user will ever present that id —
+ * which is the correct outcome, not a bug to paper over.
  */
 export interface SessionUser {
-  /** Auth0 `sub`. Canonical user ID / foreign key into Appwrite documents. */
+  /** Supabase user id (uuid). Canonical `user_id` foreign key in Postgres. */
   $id: string;
   name: string;
   email: string;
-  /** Roles from the Auth0 custom claim. Named `labels` for Appwrite parity. */
+  /** From `app_metadata.roles`. Named `labels` for Appwrite-era parity. */
   labels: string[];
-  /** Auth0 `user_metadata`, surfaced under the Appwrite-era name `prefs`. */
+  /** Supabase `user_metadata`, surfaced under the Appwrite-era name `prefs`. */
   prefs: Record<string, string>;
   picture?: string;
   emailVerification: boolean;
@@ -96,14 +108,12 @@ export interface SessionUser {
  */
 let warnedAboutProvider = false;
 
-function logAuthProviderFailure(error: unknown): void {
+function logAuthProviderFailure(detail: string): void {
   if (warnedAboutProvider) return;
   warnedAboutProvider = true;
   console.error(
-    "[auth] Could not read a session: the identity provider is unavailable or " +
-      "not configured. Treating every request as signed out. Check AUTH0_DOMAIN, " +
-      "AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET and AUTH0_SECRET. " +
-      `Underlying error: ${error instanceof Error ? error.message : String(error)}`
+    `[auth] Could not read a session, so every request is being treated as ` +
+      `signed out. ${detail}`
   );
 }
 
@@ -128,75 +138,156 @@ export const getLoggedInUser = cache(async (): Promise<SessionUser | null> => {
   }
 
   /*
-   * A provider that cannot answer means "no session", not an exception.
+   * ── Reading the session ───────────────────────────────────────────────────
    *
-   * `auth0.getSession()` THROWS when the SDK is unconfigured
-   * (`invalid_configuration`) or its domain will not resolve. This function is
-   * called from ~89 places including `/api/me`, which `UserProvider` probes on
-   * every page load — so an unguarded throw turned a missing `AUTH0_CLIENT_ID`
-   * into a 500 on that route for every visitor, signed in or not.
+   * `getUser()`, not `getSession()`. The distinction matters: `getSession()`
+   * decodes the cookie and hands back whatever it contains, which is fine for
+   * "is someone probably signed in" and NOT fine for an authorisation
+   * decision — the cookie is attacker-supplied. `getUser()` validates the JWT
+   * against the Supabase Auth server.
    *
-   * Returning null is the honest answer and it fails CLOSED: every role guard
-   * is `labels?.includes(...)`, so no session means no access. The distinction
-   * the rest of the app relies on — that `null` means "no valid session" and
-   * never "provider unreachable" — is preserved for the case that matters,
-   * because a provider we cannot reach cannot have told us anyone is signed
-   * in. What we must not do is let it become a 500.
-   *
-   * Logged once per process; see `logAuthProviderFailure`.
+   * Every role guard in this app hangs off the `labels` returned here, so this
+   * has to be the validating call. The cost is a network round trip, which is
+   * a real change from Auth0 (a local cookie decrypt) and is why the note on
+   * this function no longer claims `null` can never mean "provider
+   * unreachable". It can, and that is handled below.
    */
-  let session: Awaited<ReturnType<typeof auth0.getSession>> = null;
-  try {
-    session = await auth0.getSession();
-  } catch (error) {
-    logAuthProviderFailure(error);
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    logAuthProviderFailure(describeMissingConfig());
     return null;
   }
 
-  const user = session?.user;
+  /*
+   * Failing CLOSED on an unreachable provider.
+   *
+   * Returning null means "signed out", and because every guard is
+   * `labels?.includes(...)`, signed out means no access. So a Supabase outage
+   * degrades to everyone being locked out of the portals rather than anyone
+   * being let into the wrong one. That is the correct direction for this
+   * trade: a therapist seeing an error beats a client seeing a therapist's
+   * caseload.
+   *
+   * What must NOT happen is a throw. This function has ~89 call sites
+   * including `/api/me`, which `UserProvider` probes on every page load, so an
+   * unguarded rejection turns a provider blip into a 500 on every route —
+   * which is exactly what removing the Auth0 keys did before this migration.
+   */
+  let authUser;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      /*
+       * An expired or absent session is the ordinary case, not a failure, and
+       * must not be logged as one — every anonymous visitor to the home page
+       * hits this branch.
+       *
+       * Two signals are needed, because Supabase does not use one
+       * consistently. A rejected token comes back with an HTTP 401/403. But
+       * simply having NO session at all raises `AuthSessionMissingError` with
+       * **no status field**, so a status-only check logged
+       * "Could not read a session … Auth session missing!" on ordinary
+       * anonymous traffic — the exact log noise this guard exists to prevent,
+       * and worse than silence because it reads like a misconfiguration.
+       */
+      const status = (error as { status?: number }).status;
+      const isOrdinaryNoSession =
+        status === 401 ||
+        status === 403 ||
+        error.name === "AuthSessionMissingError" ||
+        /session (missing|not found)|missing sub claim/i.test(error.message);
 
-  if (!user?.sub) return null;
+      if (!isOrdinaryNoSession) {
+        logAuthProviderFailure(`Supabase returned: ${error.message}`);
+      }
+      return null;
+    }
+    authUser = data.user;
+  } catch (error) {
+    logAuthProviderFailure(
+      `Supabase was unreachable: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return null;
+  }
 
-  const claim = user[ROLES_CLAIM];
-  const labels = Array.isArray(claim)
-    ? claim
+  if (!authUser) return null;
+
+  /*
+   * ── Roles come from `app_metadata`, never `user_metadata` ────────────────
+   *
+   * This is the authorisation model in one line, and getting it wrong is a
+   * privilege-escalation bug rather than a style choice:
+   *
+   *   • `user_metadata` is writable by its owner. A client could call
+   *     `updateUser({ data: { roles: ["admin"] } })` from the browser console
+   *     and grant themselves the admin portal.
+   *   • `app_metadata` is writable only with the service-role key, which never
+   *     leaves the server. See `lib/supabase/admin.ts`.
+   *
+   * So `labels` reads `app_metadata.roles` and `prefs` reads `user_metadata`.
+   * Never swap them. Never merge them.
+   */
+  const appMetadata = (authUser.app_metadata ?? {}) as Record<string, unknown>;
+  const rawRoles = appMetadata.roles;
+
+  const labels = Array.isArray(rawRoles)
+    ? rawRoles
         .filter((role): role is string => typeof role === "string")
-        // Normalised to lowercase. Auth0 returns role names exactly as typed in
-        // the dashboard, so a role created as "Admin" arrives as "Admin" and
-        // silently fails every `labels.includes("admin")` guard in the app —
-        // which looks identical to having no role at all. Normalising here means
-        // the dashboard's capitalisation stops being load-bearing.
+        /* Lowercased on read, for the same reason the Auth0 version did it:
+           a role typed "Admin" in a dashboard arrives as "Admin" and silently
+           fails every `labels.includes("admin")` guard, which is
+           indistinguishable from having no role at all. */
         .map((role) => role.trim().toLowerCase())
         .filter(Boolean)
     : [];
 
-  // Bootstrap escape hatch — see `bootstrapRolesFor` above. Verified email only,
-  // so a listed address cannot be claimed by someone who does not own it.
-  const email = ((user.email as string) ?? "").trim().toLowerCase();
-  if (user.email_verified) {
-    for (const role of bootstrapRolesFor(email)) {
+  const userMetadata = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+
+  const email = (typeof userMetadata.email === "string" ? userMetadata.email : authUser.email) ?? "";
+  const emailVerified = Boolean(authUser.email_confirmed_at);
+
+  /*
+   * Bootstrap escape hatch — unchanged in spirit, and still gated on a
+   * VERIFIED email. That check is what keeps it from being a backdoor: without
+   * it, anyone signing up through a connection that does not verify email
+   * could claim a listed address and inherit the role.
+   */
+  if (emailVerified) {
+    for (const role of bootstrapRolesFor(email.trim().toLowerCase())) {
       if (!labels.includes(role)) labels.push(role);
     }
   }
 
-  const metadata = user[METADATA_CLAIM];
-  const prefs =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? (metadata as Record<string, string>)
-      : {};
+  const name =
+    (typeof userMetadata.full_name === "string" && userMetadata.full_name) ||
+    (typeof userMetadata.name === "string" && userMetadata.name) ||
+    email ||
+    "";
+
+  /* `prefs` is declared `Record<string, string>`, and `user_metadata` is
+     arbitrary JSON — so non-string values are dropped rather than cast, which
+     would put objects behind a `string` type and break callers at runtime. */
+  const prefs: Record<string, string> = {};
+  for (const [key, value] of Object.entries(userMetadata)) {
+    if (typeof value === "string") prefs[key] = value;
+  }
 
   return {
-    $id: user.sub,
-    name: (user.name as string) ?? (user.nickname as string) ?? (user.email as string) ?? "",
-    email: (user.email as string) ?? "",
+    $id: authUser.id,
+    name,
+    email,
     labels,
     prefs,
-    picture: user.picture as string | undefined,
-    emailVerification: Boolean(user.email_verified),
+    picture:
+      typeof userMetadata.avatar_url === "string"
+        ? userMetadata.avatar_url
+        : typeof userMetadata.picture === "string"
+          ? userMetadata.picture
+          : undefined,
+    emailVerification: emailVerified,
   };
 });
 
-/** True when the user holds the given role. */
 export function hasRole(user: SessionUser | null, role: string): boolean {
   return Boolean(user?.labels.includes(role));
 }

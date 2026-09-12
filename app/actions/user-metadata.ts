@@ -1,7 +1,7 @@
 "use server";
 
 import { getLoggedInUser } from "@/lib/auth/session";
-import { isManagementConfigured, updateUserMetadata } from "@/lib/auth0-management";
+import { isManagementConfigured, updateUserMetadata } from "@/lib/supabase/management";
 
 /**
  * Keys this action is allowed to write.

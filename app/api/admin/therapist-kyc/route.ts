@@ -11,7 +11,7 @@ import {
   getUserEmail,
   isManagementConfigured,
   removeRole,
-} from "@/lib/auth0-management";
+} from "@/lib/supabase/management";
 import { kycDocumentLabel, missingRequiredTypes, type KycDocumentType } from "@/lib/kyc";
 import {
   sendKycApprovedEmail,

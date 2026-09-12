@@ -8,6 +8,7 @@ import {
   formatKes,
   PLAN_PRICES,
 } from "@/lib/constants";
+import { describeRegionalBands } from "@/lib/pricing";
 
 /**
  * ── Terms of service ───────────────────────────────────────────────────────
@@ -29,6 +30,12 @@ import {
  * same module the checkout charges from. A terms page quoting a different
  * number from the one billed is a dispute, not a typo, and this repo has
  * already been bitten by prose prices drifting from the source of truth.
+ *
+ * That now includes the **regional bands** in `lib/pricing.ts`: §5 no longer
+ * presents three fixed prices, because there are not three fixed prices. It
+ * states the standard ones as a maximum, states that some countries pay less,
+ * names them and their figures from the same function `/pricing` uses, and says
+ * a band and a promo code do not stack.
  *
  * ## What I did NOT write, deliberately
  *
@@ -52,6 +59,15 @@ import {
  *   • Whether the 13–17 consent model in §4 satisfies Kenyan law on minors.
  *   • An IP / user-content licence clause, which is absent.
  *   • Confirmation that `legalEntityName` is the contracting entity.
+ *   • **Country-based pricing in §5**, which is new and is the item most
+ *     likely to need redrafting rather than review. Three things to put to
+ *     counsel: whether differential pricing by country needs a disclosure
+ *     stronger than the one in §5 and on `/pricing` under Kenya's Consumer
+ *     Protection Act 2012 s.12–13; whether deriving the price from an
+ *     IP-inferred country is adequately disclosed for the DPA 2019 (privacy
+ *     §1 and §5 describe the processing); and whether "we will never charge
+ *     more than the standard price" should be a contractual commitment rather
+ *     than a description of current behaviour, given the code enforces it.
  */
 
 export const metadata = pageMetadata({
@@ -63,6 +79,16 @@ export const metadata = pageMetadata({
 
 const LAST_UPDATED = "12 September 2026";
 const EFFECTIVE_DATE = "12 September 2026";
+
+/**
+ * The same sentence `/pricing` renders, from the same function.
+ *
+ * §5 lists the standard prices and now also has to state that they vary by
+ * country. Two documents describing one price list from two hand-written
+ * sources is how a contract ends up naming a country the product does not
+ * discount — see `describeRegionalBands` in `lib/pricing.ts`.
+ */
+const REGIONAL_SUMMARY = describeRegionalBands();
 
 const INTRO = [
   `These terms are the agreement between you and ${legalEntityName}, operating as Echo Health, when you use this site or book a session. We have tried to write them in language you can actually read, and to put the things that most often surprise people near the top rather than in the last section.`,
@@ -129,10 +155,13 @@ You are responsible for the accuracy of what you tell us. Therapy depends on it,
     content: `**You are buying sessions, not a subscription.**
 Each plan is a **one-time payment** for a fixed number of 50-minute sessions. Nothing renews. There is no card kept on file charging you monthly and nothing to remember to cancel.
 
-**Prices.**
+**Standard prices.**
 - Individual — ${formatKes(PLAN_PRICES.individual)} for ${PLAN_SESSIONS.individual} session.
 - Plus — ${formatKes(PLAN_PRICES.plus)} for ${PLAN_SESSIONS.plus} sessions.
 - Couples — ${formatKes(PLAN_PRICES.couples)} for ${PLAN_SESSIONS.couples} joint sessions.
+
+**Prices vary by country, downwards only.**
+Those are our standard prices and the most you will be charged. In some countries we charge a lower regional price — ${REGIONAL_SUMMARY} for a single session — and the reduction is applied automatically at checkout without you having to ask for it. Which price applies is determined from the country your connection reaches us from at the moment you pay, so it can change if you travel or use a VPN. We will never charge you **more** than the standard price shown on the [pricing page](/pricing), and the exact amount is shown to you before you authorise the payment. A regional price and a promotional code do not combine: you are charged whichever of the two is lower, not both.
 
 **You are charged in Kenyan shillings.**
 Always, whatever your own currency. Where prices are shown we also display an approximate amount in your local currency for browsing, with the exact shilling figure you will be charged alongside it. **Your bank sets the exchange rate** and may add its own cross-border fee, so the amount on your statement can differ slightly from the converted figure we showed. That difference is your bank's; we add no margin of our own.

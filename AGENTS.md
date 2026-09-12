@@ -187,13 +187,55 @@ Keep `HIGH_RISK_KEYWORDS` / `MODERATE_RISK_KEYWORDS` as the source of truth; the
 - Messages are written with the **admin client** (the browser SDK has no session) and stored across `chatMessages` / `chatSessions` collections. A `text === "heartbeat"` message is an online-presence ping, not a real message (`role: "system"`).
 - Sibling routes: `history/` (fetch a thread), `offline/` (capture a message when no agent is online), `reply/` (agent → visitor). Risk scanning runs here via `analyzeRisk`.
 
+### Public marketing surface (route group + one nav source)
+
+Every public page lives in the **`app/(marketing)/`** route group. It is a group, so no URL changed: `/about` is still `/about`. `app/(marketing)/layout.tsx` renders `SiteHeader`, a single `<main id="main">` and `SiteFooter` — **a page in this group must not render its own `<header>`, `<footer>` or `<main>`.**
+
+Before this existed, each of the thirteen marketing pages inlined its own `<header>` containing a back-arrow to `/` and nothing else. Twelve had no navigation at all, so `/faq` and `/guides` had no crawlable link between them, and the home page's own nav pointed at `#how`, `#therapists` and `#pricing` — three in-page anchors that cannot rank, cannot carry a title or description, and cannot be a search result. Those three now have real URLs (`/how-it-works`, `/therapists`, `/pricing`).
+
+#### `lib/navigation.ts` is the IA, and `sitemap.ts` derives from it
+
+Header, footer, breadcrumbs and `app/sitemap.ts` all read that one file. **Adding a public page means adding it to `ALL_INDEXABLE_ROUTES` there**, or it is not submitted to search engines. The previous sitemap was a hand-kept literal list that had already drifted in both directions: `/organizations` shipped, was footer-linked, and was never submitted; `/cookies` was submitted while carrying `index: false`, which Search Console reports as an error.
+
+`CONDITIONS` and `LOCATIONS` in the same file drive `/therapy-for/[condition]` and `/online-therapy/[city]` through `generateStaticParams`. Changing a slug there changes a live URL — they accrue links, so treat them as stable.
+
+#### Compose pages from `app/components/marketing/sections.tsx`
+
+`Section`, `SectionHeading`, `CtaButton`, `Steps`, `FeatureGrid`, `CheckList`, `FaqList`, `CtaBand`, `RelatedLinks`. None of it is `"use client"` and it should stay that way — `FaqList` uses native `<details>` specifically so an accordion costs no hydration boundary and its answers stay in the server HTML where a crawler and Ctrl-F can both find them.
+
+Render an FAQ with `FaqList(faqs)` **and** `faqJsonLd(faqs)` from the same array. Hand-writing the JSON-LD separately is how structured data ends up disagreeing with the page, which Google treats as a markup violation rather than a nicety.
+
+Every JSON-LD block goes through `app/components/marketing/JsonLd.tsx`, which escapes `<`. That is not cosmetic: therapist profiles serialise database values, and an unescaped `<` closes the script element early.
+
+#### ⚠️ Do not put a canonical, or a session read, in a layout
+
+- **`app/layout.tsx` must not set `alternates.canonical`.** Next's metadata inheritance hands a layout canonical to every page that does not override it, so any page whose author forgets `pageMetadata` silently declares itself a duplicate of the home page. That had already happened to `/organizations` — the highest commercial-intent page on the site — and to all three auth pages. Each page declares its own via `pageMetadata({ path })`.
+- **`app/(marketing)/layout.tsx` must not call `getLoggedInUser()`.** Nothing in it reads cookies, headers or the session, and that is what keeps every marketing route statically rendered. Personalising the header would opt all of them into a server round-trip. Client components in a layout do *not* have this effect — `UserProvider` fetches `/api/me` from the browser precisely so they don't.
+
+#### Honesty rules that apply to every public page
+
+This surface has twice accumulated claims nothing could back up, and both sweeps are documented in the files that were fixed. The standing rules:
+
+- **No statistic that is not read from `lib/constants.ts` or enforced in code.** A band of counters ("10,000+ people helped", "94% report improvement") and a chart of outcome percentages footnoted to a survey that does not exist were removed from the home page as a misleading representation under the Consumer Protection Act 2012 (Kenya) s.12–13. `/organizations` kept an unswept version ("4x ROI", "32% reduction in turnover") until later.
+- **No HIPAA, CCPA or SOC 2 claims.** HIPAA is a United States statute with no application to a Kenyan service; the governing instrument is the **Kenya Data Protection Act 2019**. The claim has been removed three times now — from the home page, from `/organizations`, and from `app/opengraph-image.tsx`, which is the asset that travels furthest because it renders every time anyone pastes an Echo link anywhere.
+- **No stock photography presented as a real person.** The home page carried three invented clinicians with Unsplash portraits, and one of those portraits also appeared on `/about` under a different name and job title. `/therapists` now reads real rows; the home page renders nothing if the directory is empty.
+- **No testimonials.** See the long note at the top of `app/(marketing)/reviews/page.tsx`. Beyond having nothing real to publish, session feedback is written to a therapist, not for publication, and consent obtained from someone currently in your care is not freely given.
+- **No control that does nothing.** `/cookies` shipped four toggles and a Save button with no handler and no storage; `/blog` and `/guides` shipped cards whose every link was `href="#"`. A dead control is worse than an absent one, and a consent control that discards consent is a misrepresentation.
+
+#### The intake funnel
+
+`/get-started` renders `IntakeQuiz` — one question per screen, answers held in component state and `sessionStorage`, nothing submitted until sign-up. The home page's three hero cards are the quiz's first question and pass `?for=self|couple|teen`, which the quiz validates and uses to skip question one.
+
+**Its analytics carry a step number and nothing else.** `INTAKE_STEP_COMPLETED` with an answer attached would put "this individual reported depression" into a third-party analytics store about someone who becomes identifiable two screens later. See the note on `INTAKE_*` in `lib/analytics/events.ts`. `lib/clinical/risk.ts` is deliberately **not** called on quiz answers — a substring scanner firing on a dropdown label would file crisis alerts against everyone who ticked "grief".
+
 ### UI & design tokens
 
 The palette, fonts and shared surfaces live in `app/globals.css` — read its header comment before changing a colour.
 
 - **`stone-*` and `slate-*` are not Tailwind's.** Both are remapped to one neutral ("ink"), tinted slightly toward the brand hue, so the portals (stone) and marketing pages (slate) read as one product. They are identical; use either. **`teal-*` is remapped to the brand scale.**
 - **`brand` is `brand-600`** — 5:1 on white, safe for text and for white-on-brand buttons. `brand-50…950` exist for tints and hovers. Don't set text in faded brand (`text-brand/50` is ~2:1); use `text-stone-500`/`-600` for secondary copy.
-- `font-display` (Fraunces) is for marketing headlines and greetings only; UI text stays in Geist.
+- `font-display` (Fraunces) is for marketing headlines and greetings only; UI text stays in Geist. **It no longer has an italic face** — `style: ["normal", "italic"]` was pulling a second 145.8 KB variable font, preloaded on every route, for a single two-word `<em>`. Never pair `font-display` with `italic`; you will get a synthesised oblique. `Geist_Mono` is also no longer preloaded: outside the admin portal it is used only by the two error screens.
+- The page ground is a **warm off-white** (`--background`), not `#fff`; cards paint `bg-surface`, which is pure white. Hierarchy comes from the card sitting on the ground rather than from a border. `curve-down` draws an arced section boundary (set `--curve-to` to the next section's colour) and `bg-hero-soft` is the quieter hero wash.
 - Surfaces: `bg-app-surface` (portal background), `bg-brand-gradient` (brand panels), `bg-aurora` (marketing hero). There is no dark theme; `color-scheme: light` is deliberate.
 - **Portal chrome:** each section's `layout.tsx` is only the auth/role gate; the chrome is `ClientShell` / `TherapistShell` / `AdminShell`. Shared pieces are in `app/components/portal/` (`BrandMark`, `Avatar`, `NavList`, `MobileDrawer`). Nav configs live in client modules because lucide icons are functions and cannot cross the server→client boundary as props.
 - **Logos:** `public/echo-logo.png` is the original and has an opaque white background. `public/echo-butterfly.png` (full) and `public/echo-logo-mark.png` (tight crop) are transparent derivatives — use those anywhere the background is not white.

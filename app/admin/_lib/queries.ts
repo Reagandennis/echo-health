@@ -237,9 +237,28 @@ export async function listPromos(limit = 100): Promise<PromoRow[]> {
         expiresAt: promos.expiresAt,
         disabled: promos.disabled,
         createdAt: promos.createdAt,
+        /*
+         * `promos.code` is written out, not interpolated — and this one failed
+         * in the dangerous direction.
+         *
+         * `${promos.code}` rendered as a bare `"code"`, which inside
+         * `FROM promo_redemptions r` resolved to `r.code`. The predicate became
+         * `r.code = r.code`: true for every non-null row, so each promo
+         * reported the redemption count of EVERY promo combined. The other two
+         * instances of this mistake (`lib/directory.ts` and `docCount` below)
+         * collapsed to always-false and under-reported; this one over-reported.
+         *
+         * Display only, and worth being precise about: the `redemption_limit`
+         * is NOT enforced from here. `app/api/promo/route.ts` runs its own
+         * correctly-bound count (`eq(promoRedemptions.code, normalised)`)
+         * before accepting a code, so no campaign was cut short. What this
+         * broke is the admin's view of which codes are being used — every
+         * promo showed the same total, so a dead code and a popular one were
+         * indistinguishable.
+         */
         redemptions: sql<number>`(
           SELECT count(*)::int FROM promo_redemptions r
-          WHERE r.code = ${promos.code} AND r.payment_reference IS NOT NULL
+          WHERE r.code = promos.code AND r.payment_reference IS NOT NULL
         )`,
       })
       .from(promos)
@@ -1128,9 +1147,28 @@ export async function listVerificationQueue(
      * the subquery is raw SQL, where nothing else records what type the
      * comparison is against.
      */
+    /*
+     * ## ⚠️ `therapists.id` is written out, not interpolated
+     *
+     * `WHERE d.therapist_id = ${therapists.id}` renders that column reference
+     * **unqualified**, as a bare `"id"`, and this subquery's FROM is
+     * `kyc_documents d` — so `"id"` resolved to `d.id` and the predicate became
+     * `d.therapist_id = d.id`, which is false for every row. All four counts
+     * below were therefore 0 for every applicant on the verification queue: an
+     * admin reviewing a complete application saw "0 documents".
+     *
+     * Silent, because 0 is a legitimate count. Proven against the live
+     * database: the same subquery shape returns `{}` unqualified and
+     * `{kenya}` qualified. The identical mistake was in `lib/directory.ts`
+     * (see the long note there, where it published the wrong professional
+     * title) and in the promo redemption count above, where the inner table
+     * also has the correlated column name and the predicate collapsed to
+     * `r.code = r.code` — always TRUE, inflating every promo's count to the
+     * platform-wide total.
+     */
     const docCount = (status?: KycDocReview) => sql<number>`(
       SELECT count(*)::int FROM kyc_documents d
-      WHERE d.therapist_id = ${therapists.id}
+      WHERE d.therapist_id = therapists.id
       ${status ? sql`AND d.review_status = ${status}::kyc_doc_review` : sql.empty()}
     )`;
 
@@ -1156,10 +1194,11 @@ export async function listVerificationQueue(
          * enum array: postgres.js parses arrays by element type OID, and a
          * custom enum's OID is not in its type table.
          */
+        /* Qualified for the same reason as `docCount` above. */
         acceptedTypes: sql<string[]>`(
           SELECT coalesce(array_agg(DISTINCT d.doc_type::text), ARRAY[]::text[])
           FROM kyc_documents d
-          WHERE d.therapist_id = ${therapists.id} AND d.review_status = 'accepted'
+          WHERE d.therapist_id = therapists.id AND d.review_status = 'accepted'
         )`,
       })
       .from(therapists)

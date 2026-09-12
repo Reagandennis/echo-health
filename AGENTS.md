@@ -389,13 +389,32 @@ The Appwrite-era scratch files (`test_appwrite*.js`, `test_node_appwrite.js`) an
 
 ## Environment
 
-Required env vars (see `.env.local`):
+This list had rotted in the direction that wastes the most time: it still
+required the five `AUTH0_*` variables and the four `CLOUDFLARE_*` ones, none of
+which the code reads any more — Auth0 was replaced by Supabase Auth and
+Cloudflare Calls by the Echo video backend — while naming the Supabase
+variables nowhere. Setting everything listed here would have produced a
+deployment that still could not sign anyone in.
+
+**Required:**
 - `APP_DATABASE_URL` — **what the application connects with.** Role `echo_app`, which is subject to RLS. Requires `?sslmode=require` (Azure rejects unencrypted connections).
-- `DATABASE_URL` — admin role `echo_admin`, used **only** by drizzle-kit for migrations. It has `rolbypassrls = true`, so never point the app at it.
-- `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` — Auth0 application credentials (server-only).
-- `AUTH0_SECRET` — 32-byte hex, encrypts the session cookie. Rotate with `openssl rand -hex 32`.
-- `APP_BASE_URL` — the app's own origin; Auth0 builds callback URLs from it. Must match a **Allowed Callback URL** on the Auth0 application (`<origin>/auth/callback`) or login fails.
-- `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
-- `NEXT_PUBLIC_SITE_URL` — used for OAuth redirect URLs in SSR contexts
-- `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`, `CLOUDFLARE_CALLS_API_TOKEN` — Cloudflare Calls (SFU). Used by `app/api/video/session/route.ts`; the API token stays server-side.
-- `CLOUDFLARE_TURN_TOKEN_ID`, `CLOUDFLARE_TURN_API_TOKEN` — server-only, used by `app/api/video/ice-servers/route.ts` to mint short-lived TURN ICE credentials.
+- `DATABASE_URL` — admin role `echo_admin`, used **only** by the migration runner. It has `rolbypassrls = true`, so never point the app at it.
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — the browser and server clients. Named in one place, `lib/supabase/env.ts`.
+- `SUPABASE_SERVICE_ROLE_KEY` — **server-only.** Writes `app_metadata`, which is where roles live; anything holding this key can grant admin. It is also what `updateUserMetadataAction` needs, so without it a user cannot change their own display name.
+- `NEXT_PUBLIC_SITE_URL` — the app's own origin, used for redirect URLs in SSR contexts.
+
+**Required for video:**
+- `ECHO_VIDEO_API_URL`, `ECHO_VIDEO_API_KEY` — both server-only, no `NEXT_PUBLIC_`. The `sk_live_…` key must never reach the client. Without these, `createVideoSessionAction` cannot mint a session and video does not work.
+
+**Optional, each with a defined unset behaviour:**
+- `NEXT_PUBLIC_POSTHOG_KEY` *or* `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` — either name is accepted; analytics is simply off when neither is set. `NEXT_PUBLIC_POSTHOG_HOST` defaults sensibly.
+- `RESEND_API_KEY` — unset means `getResend()` returns null and callers no-op. Email is optional in dev.
+- `REDIS_URL` — unset falls back to the in-memory rate limiter.
+- `TRUST_EDGE_COUNTRY_HEADER` — set to exactly `"true"` **only** when the deployment is behind an edge that sets `cf-ipcountry` / `x-vercel-ip-country` and origin requests cannot bypass it. Unset means every visitor pays the standard price, which is the safe default.
+- `DEV_AUTH_ENABLED` — the `/dev-login` opt-in. Never set it on anything reachable from the internet.
+- `APP_BASE_URL` — **survived the Auth0 removal and still matters.** It no longer builds callback URLs for an identity provider, but it is the Paystack callback origin in `app/api/payments/initialize/route.ts` and the base for every link in a transactional email (`lib/email.ts`, which falls back to `NEXT_PUBLIC_SITE_URL` and then to `https://echohealth.app`). Unset in production and payment callbacks follow the request origin, which is wrong behind a proxy, and email links can point at the wrong host.
+
+**Dead — remove them from any deployment that still carries them:** every
+`AUTH0_*` variable, `NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID`,
+`CLOUDFLARE_CALLS_API_TOKEN`, `CLOUDFLARE_TURN_TOKEN_ID`,
+`CLOUDFLARE_TURN_API_TOKEN`.

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BadgeCheck, CalendarClock, Clock, Globe, MessageSquare, Video } from "lucide-react";
+import { BadgeCheck, CalendarClock, Check, Clock, Compass, Globe, Minus, MessageSquare, Video } from "lucide-react";
 import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import JsonLd from "@/app/components/marketing/JsonLd";
 import { Avatar } from "@/app/components/marketing/TherapistCard";
 import { CtaBand, RelatedLinks, Section } from "@/app/components/marketing/sections";
 import { getPublicTherapist, listPublicTherapists } from "@/lib/directory";
 import { CONDITIONS } from "@/lib/navigation";
+import { displayTitle, permittedScope } from "@/lib/practitioners";
 import { siteUrl, siteName } from "@/lib/seo";
 
 /**
@@ -46,14 +47,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!therapist) {
     /* An unverified or unknown id must not be indexable — it 404s below, but
        a crawler that arrived from a stale link should be told plainly. */
-    return { title: "Therapist not found", robots: { index: false, follow: true } };
+    return { title: "Practitioner not found", robots: { index: false, follow: true } };
   }
 
   const url = `${siteUrl}/therapists/${therapist.id}`;
   const focus = therapist.specialties.slice(0, 3).join(", ");
+  /*
+   * The noun comes from what they are licensed to do, not from the route name.
+   *
+   * This read `is a licensed therapist` unconditionally, for every profile,
+   * in the meta description AND in the JSON-LD `jobTitle` below. Both travel:
+   * the description is the search snippet, and structured data is ingested as
+   * a factual claim about a named person. A practitioner with no verified
+   * licence was being published as a licensed clinician in the two places
+   * hardest to retract.
+   */
+  const title = displayTitle(therapist.practitionerType);
+  const qualifier =
+    therapist.practitionerType === "licensed_therapist" ? "licensed " : "";
   const description = focus
-    ? `${therapist.name} is a licensed therapist on Echo Health with ${therapist.experience} years in practice, working with ${focus.toLowerCase()}. Book an online session.`
-    : `${therapist.name} is a licensed therapist on Echo Health with ${therapist.experience} years in practice. Book an online session.`;
+    ? `${therapist.name} is a ${qualifier}${title} on Echo Health with ${therapist.experience} years in practice, working with ${focus.toLowerCase()}. Book an online session.`
+    : `${therapist.name} is a ${qualifier}${title} on Echo Health with ${therapist.experience} years in practice. Book an online session.`;
 
   return {
     title: therapist.name,
@@ -69,7 +83,8 @@ export default async function TherapistProfilePage({ params }: Props) {
   const therapist = await getPublicTherapist(id);
   if (!therapist) notFound();
 
-  const { name, bio, avatarUrl, experience, specialties, sessionDurationMinutes, timezone } = therapist;
+  const { name, bio, avatarUrl, experience, specialties, sessionDurationMinutes, timezone, practitionerType } = therapist;
+  const scope = permittedScope(practitionerType);
 
   /*
    * `Person` with `knowsAbout`, not `Physician`.
@@ -89,7 +104,10 @@ export default async function TherapistProfilePage({ params }: Props) {
     name,
     description: bio,
     url: `${siteUrl}/therapists/${id}`,
-    jobTitle: "Licensed therapist",
+    /* Same rule as the description above: a claim search engines ingest must
+       match the licence on file. Capitalised for display, from one source. */
+    jobTitle:
+      practitionerType === "licensed_therapist" ? "Licensed therapist" : "Wellness coach",
     knowsAbout: [...specialties],
     worksFor: { "@type": "MedicalOrganization", name: siteName, url: siteUrl },
     ...(avatarUrl ? { image: `${siteUrl}${avatarUrl}` } : {}),
@@ -122,10 +140,27 @@ export default async function TherapistProfilePage({ params }: Props) {
             <h1 className="font-display text-3xl leading-tight tracking-tight text-stone-900 sm:text-4xl">
               {name}
             </h1>
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 ring-1 ring-inset ring-brand-100">
-              <BadgeCheck className="h-3.5 w-3.5" strokeWidth={2} />
-              Licence verified by Echo Health
-            </p>
+            {/*
+              * The badge is a statement about a licence, so it renders only
+              * when there is one. It was unconditional — every profile claimed
+              * "Licence verified by Echo Health" whether or not the person
+              * held a verified licence in any jurisdiction we can advertise.
+              *
+              * A coach gets the honest alternative rather than nothing at all:
+              * an unlabelled profile invites the reader to assume the badge was
+              * merely missing.
+              */}
+            {practitionerType === "licensed_therapist" ? (
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 ring-1 ring-inset ring-brand-100">
+                <BadgeCheck className="h-3.5 w-3.5" strokeWidth={2} />
+                Licence verified by Echo Health
+              </p>
+            ) : (
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-700 ring-1 ring-inset ring-stone-200">
+                <Compass className="h-3.5 w-3.5" strokeWidth={2} />
+                Wellness coach — not a licensed therapist
+              </p>
+            )}
             <p className="mt-4 text-[15px] text-stone-600">
               {experience} {experience === 1 ? "year" : "years"} in practice
             </p>
@@ -170,6 +205,52 @@ export default async function TherapistProfilePage({ params }: Props) {
                 </ul>
               </>
             )}
+
+            {/*
+              * Scope, stated before booking rather than in the terms.
+              *
+              * `lib/practitioners.ts` holds both lists and its header explains
+              * why `mayNot` carries equal weight: the coaching route is only
+              * defensible if the boundary is something the reader is told, in
+              * the place where they are deciding, rather than something they
+              * could have found in a legal document. The lists are rendered
+              * side by side at the same type size for that reason — putting
+              * `mayNot` in a footnote would be the same claim made quietly.
+              */}
+            <h2 className="mt-12 font-display text-2xl tracking-tight text-stone-900">
+              What {name.split(" ")[0]} can help with
+            </h2>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl bg-stone-50 p-5">
+                <h3 className="text-sm font-semibold text-stone-900">Can do</h3>
+                <ul className="mt-3 flex flex-col gap-2.5 text-sm leading-6 text-stone-600">
+                  {scope.may.map((item) => (
+                    <li key={item} className="flex gap-2.5">
+                      <Check className="mt-1 h-4 w-4 shrink-0 text-brand" strokeWidth={2.5} />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl bg-stone-50 p-5">
+                <h3 className="text-sm font-semibold text-stone-900">Cannot do</h3>
+                <ul className="mt-3 flex flex-col gap-2.5 text-sm leading-6 text-stone-600">
+                  {scope.mayNot.map((item) => (
+                    <li key={item} className="flex gap-2.5">
+                      <Minus className="mt-1 h-4 w-4 shrink-0 text-stone-400" strokeWidth={2.5} />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-stone-500">
+              In an emergency, or if you are at risk of harming yourself,{" "}
+              <Link href="/crisis" className="font-semibold text-brand underline underline-offset-2">
+                get help now
+              </Link>{" "}
+              — neither this profile nor Echo Health is a crisis service.
+            </p>
           </div>
 
           <aside className="h-fit rounded-3xl bg-stone-50 p-6">

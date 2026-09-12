@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, Compass } from "lucide-react";
 import type { DirectoryTherapist } from "@/lib/directory";
 
 /**
@@ -17,8 +17,9 @@ import type { DirectoryTherapist } from "@/lib/directory";
  * failure this directory replaced.
  */
 export default function TherapistCard({ therapist }: { readonly therapist: DirectoryTherapist }) {
-  const { id, name, bio, avatarUrl, experience, specialties } = therapist;
+  const { id, name, bio, avatarUrl, experience, specialties, practitionerType } = therapist;
   const href = `/therapists/${id}`;
+  const licensed = practitionerType === "licensed_therapist";
 
   return (
     <article className="group flex flex-col rounded-3xl bg-surface p-6 shadow-sm ring-1 ring-stone-200/70 transition-shadow hover:shadow-md">
@@ -34,10 +35,22 @@ export default function TherapistCard({ therapist }: { readonly therapist: Direc
               {name}
             </Link>
           </h3>
-          <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-brand-700">
-            <BadgeCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-            Licence verified
-          </p>
+          {/* "Licence verified" was on every card unconditionally. A card is
+              the densest place this claim appears and the one a visitor reads
+              most of, so the coach case gets its own label rather than an
+              absent badge — a missing badge reads as an oversight, not as a
+              statement. */}
+          {licensed ? (
+            <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-brand-700">
+              <BadgeCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              Licence verified
+            </p>
+          ) : (
+            <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-stone-500">
+              <Compass className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              Wellness coach
+            </p>
+          )}
           <p className="mt-1 text-sm text-stone-500">
             {experience} {experience === 1 ? "year" : "years"} in practice
           </p>
@@ -87,7 +100,7 @@ export function Avatar({
     return (
       <Image
         src={avatarUrl}
-        alt={`${name}, therapist at Echo Health`}
+        alt={`${name} at Echo Health`}
         width={size}
         height={size}
         className="shrink-0 rounded-2xl object-cover"

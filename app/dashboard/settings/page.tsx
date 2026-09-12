@@ -46,21 +46,27 @@ export default function SettingsPage() {
   }
 
   /**
-   * TODO: this cannot succeed yet. `updateUserMetadataAction` is a stub that
-   * throws until Auth0 Management API credentials are configured (see
-   * `app/actions/user-metadata.ts`). The failure is surfaced rather than
-   * swallowed so the page never claims "Saved ✓" over data it dropped.
+   * This works now, and the name in particular did not before.
    *
-   * `name` rides along in the patch for now, but note it is a *root* Auth0 user
-   * field rather than `user_metadata` — it will need its own PATCH body key when
-   * the action is implemented.
+   * Two separate problems, both of which ended in a green "Saved ✓":
+   *
+   *  1. The action threw unless the Auth0 Management API was configured. That
+   *     dependency is gone — it writes through the Supabase admin client and
+   *     needs only `SUPABASE_SERVICE_ROLE_KEY`, which is set.
+   *  2. The patch sent `name`, which was not on the action's allowlist, so it
+   *     was dropped without error while every other field saved. The session
+   *     reads its display name from `user_metadata.full_name`
+   *     (`lib/auth/session.ts`), so that is the key to send.
+   *
+   * The error is still surfaced rather than swallowed: this page must never
+   * claim to have saved something it dropped, which is exactly what it did.
    */
   async function handleSaveProfile() {
     setSaving(true);
     setSaveError(null);
     try {
       await updateUserMetadataAction({
-        name,
+        full_name: name,
         sessionType,
         commStyle,
         emergencyName,

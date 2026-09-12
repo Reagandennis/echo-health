@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import TherapistCard from "./TherapistCard";
 import type { DirectoryTherapist } from "@/lib/directory";
+import { collectiveTitle, displayTitle } from "@/lib/practitioners";
 
 /**
  * Filtering for the public directory.
@@ -102,7 +103,14 @@ export default function TherapistDirectory({
             the only feedback a screen-reader user gets that a chip did
             anything, since the change happens far below the control. */}
         <p aria-live="polite" className="text-sm text-stone-600">
-          {visible.length} {visible.length === 1 ? "therapist" : "therapists"}
+          {/* Counted from what is actually in the filtered list, not from the
+              route name — the grid mixes licensed therapists and wellness
+              coaches, and this line is what a visitor skims before opening
+              any profile. See `collectiveTitle`. */}
+          {visible.length}{" "}
+          {visible.length === 1
+            ? displayTitle(visible[0]!.practitionerType)
+            : collectiveTitle(visible.map((t) => t.practitionerType))}
           {filtering ? " match your filters" : " available"}
         </p>
         {filtering && (
@@ -128,7 +136,7 @@ export default function TherapistDirectory({
         </div>
       ) : (
         <p className="mt-6 rounded-3xl bg-stone-50 p-8 text-center text-[15px] leading-7 text-stone-600">
-          No therapist matches that yet. Try a broader search — or{" "}
+          Nobody matches that yet. Try a broader search — or{" "}
           <a href="/get-started" className="font-semibold text-brand-700 underline underline-offset-2">
             answer a few questions
           </a>{" "}

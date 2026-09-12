@@ -13,6 +13,7 @@ import {
   type Answers,
   type Question,
 } from "@/lib/intake";
+import { requiresLicensedPractitioner } from "@/lib/practitioners";
 import {
   CRISIS_DIRECTORY_URL,
   PLAN_LABELS,
@@ -409,6 +410,23 @@ function Recommendation({
   const plan = recommendPlan(answers);
   const sessions = PLAN_SESSIONS[plan];
 
+  /*
+   * The safety gate, at the only moment it can still change anything.
+   *
+   * `requiresLicensedPractitioner` reads the intake and says whether this
+   * person needs a clinician rather than a coach. It fails towards the
+   * clinician — an answer nobody has classified yields `true` — and it is
+   * deliberately not a risk assessment; see its own doc comment.
+   *
+   * It is consulted HERE, before the account and before the payment, because
+   * this is the last screen where telling someone "coaching is not the right
+   * fit for what you described" costs them nothing. After the account exists
+   * and the plan is paid for, the same sentence is a refund conversation, and
+   * the incentive to not have it is exactly the one `/terms` §2 commits us
+   * against.
+   */
+  const clinical = requiresLicensedPractitioner(answers);
+
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-12 sm:px-6">
       <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-700 ring-1 ring-inset ring-brand-200">
@@ -422,7 +440,19 @@ function Recommendation({
         Based on your answers, the <strong className="text-stone-900">{PLAN_LABELS[plan]}</strong>{" "}
         plan fits best — {sessions === 1 ? "one 50-minute session" : `${sessions} 50-minute sessions`} at{" "}
         {money(PLAN_PRICES[plan])}, paid once. Create your account and we&apos;ll
-        introduce you to a therapist who matches what you told us.
+        introduce you to {clinical.required ? "a licensed therapist" : "someone"} who
+        matches what you told us.
+      </p>
+
+      {/*
+        Why this states the practitioner KIND rather than leaving it implied:
+        Echo works with licensed therapists and, in jurisdictions where the
+        title is protected and we hold no local registration, with wellness
+        coaches. Those are different things and `/terms` §3 says so. A screen
+        that says only "a therapist" is making the stronger claim by default.
+      */}
+      <p className="mt-4 text-[15px] leading-7 text-stone-600">
+        {clinical.because}
       </p>
 
       {/*
@@ -436,7 +466,11 @@ function Recommendation({
         <ol className="mt-4 flex list-decimal flex-col gap-3 pl-5 text-[15px] leading-7 text-stone-600 marker:text-stone-400">
           <li>Create your account — name, email, password. Nothing you answered here is shared yet.</li>
           <li>Confirm the plan and pay once with M-Pesa, card or bank transfer.</li>
-          <li>We introduce you to a matched therapist and you pick a time that works.</li>
+          <li>
+            We introduce you to a matched{" "}
+            {clinical.required ? "licensed therapist" : "practitioner"} and you pick a
+            time that works.
+          </li>
         </ol>
         <Link
           href={`/signup?plan=${plan}`}

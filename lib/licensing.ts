@@ -265,27 +265,59 @@ export function selectableJurisdictions(): readonly JurisdictionRequirement[] {
 }
 
 /**
- * What a client in `market` should be told about a therapist's licensing.
+ * What a client in `market` should be told about a practitioner's licensing.
  *
  * One function, so the directory, the profile page, the country pages and the
  * matching explanation cannot drift into telling four different stories about
  * the same fact — which is exactly what happened when "licensed in Kenya" was
  * hardcoded in nine places.
+ *
+ * ## ⚠️ An empty list is NOT Kenya
+ *
+ * This function had `"Licensed in Kenya."` as its fallback for a practitioner
+ * with no listable licence, in both branches. That was written when every
+ * clinician was Kenyan-licensed and the licence table did not exist, so
+ * "nothing on file" really did mean "the Kenyan default".
+ *
+ * After migration 0018 backfilled an explicit `kenya` row for every verified
+ * therapist, an empty list inverted its meaning: it now describes someone with
+ * **no verified licence anywhere**. The fallback therefore asserted a specific
+ * Kenyan credential on behalf of a person who might hold none — a fabricated
+ * professional qualification attached to a named individual, which is the same
+ * class of claim as the invented clinicians that once filled the home page.
+ *
+ * It reached no page before it was found (nothing called this function yet),
+ * which is luck rather than design. `locallyLicensed` stays `false` throughout
+ * the unlicensed path, so no caller can read the summary as a credential.
  */
 export function describeLicensingForClient(
   clientMarket: Market | undefined,
   therapistJurisdictions: readonly string[]
 ): { readonly locallyLicensed: boolean; readonly summary: string } {
   const listable = therapistJurisdictions.filter(canListInJurisdiction);
+  const names = () =>
+    listable.map((s) => requirementFor(s)?.country ?? s).join(", ");
 
-  if (!clientMarket) {
+  /*
+   * No listable licence: say so plainly and name what it costs the reader.
+   * `lib/practitioners.ts` is what turns this into the right noun on a page;
+   * this function's job is to never imply a licence that is not there.
+   */
+  if (listable.length === 0) {
     return {
       locallyLicensed: false,
-      summary:
-        listable.length > 0
-          ? `Licensed in ${listable.map((s) => requirementFor(s)?.country ?? s).join(", ")}.`
-          : "Licensed in Kenya.",
+      summary: clientMarket
+        ? `Not licensed as a therapist in ${clientMarket.country}, or anywhere we can ` +
+          `confirm. Sessions with them are non-clinical wellness coaching — not ` +
+          `therapy, and not a substitute for it.`
+        : "Not licensed as a therapist in any jurisdiction we can confirm. Sessions " +
+          "with them are non-clinical wellness coaching — not therapy, and not a " +
+          "substitute for it.",
     };
+  }
+
+  if (!clientMarket) {
+    return { locallyLicensed: false, summary: `Licensed in ${names()}.` };
   }
 
   if (listable.includes(clientMarket.slug)) {
@@ -298,8 +330,7 @@ export function describeLicensingForClient(
   return {
     locallyLicensed: false,
     summary:
-      `Licensed in ${listable.map((s) => requirementFor(s)?.country ?? s).join(", ") || "Kenya"} — ` +
-      `not in ${clientMarket.country}. That matters if you need a diagnosis or a letter ` +
-      `a local insurer, employer, school or court will accept.`,
+      `Licensed in ${names()} — not in ${clientMarket.country}. That matters if you ` +
+      `need a diagnosis or a letter a local insurer, employer, school or court will accept.`,
   };
 }

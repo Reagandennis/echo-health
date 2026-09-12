@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { therapists } from "@/lib/db/schema";
 import { withAnonymous } from "@/lib/db/session";
 import { canListInJurisdiction } from "@/lib/licensing";
+import { practitionerTypeFor, type PractitionerType } from "@/lib/practitioners";
 
 /**
  * The public therapist directory.
@@ -36,10 +37,29 @@ export interface DirectoryTherapist {
    * alternative is telling a UK client "your therapist is HCPC-registered" on
    * the strength of a requirements list nobody competent has checked.
    *
-   * Empty is normal and means "Kenya only" for existing clinicians, which is
-   * what `describeLicensingForClient` renders when the list is empty.
+   * ## Empty does NOT mean "Kenya only"
+   *
+   * It used to, before migration 0018: every clinician was Kenyan-licensed and
+   * the fact lived in `therapists.license_number`, so an empty list meant
+   * "the default". 0018's backfill gave each verified therapist an explicit
+   * `kenya` licence row, so an empty list now means something completely
+   * different — **no verified licence in any jurisdiction we can advertise**.
+   *
+   * That inversion is why `practitionerType` below exists rather than being
+   * inferred at each call site. Anything still reading "empty" as "Kenya" is
+   * asserting a credential nobody holds.
    */
   readonly licensedIn: readonly string[];
+  /**
+   * Whether this person may be presented to clients as a therapist.
+   *
+   * **Derived from `licensedIn`, never stored.** A column would be a second
+   * source of truth that drifts the moment a licence is verified or revoked
+   * without someone remembering to update it, and the drift direction that
+   * matters is the one where a coach keeps a stale `licensed_therapist` value.
+   * See `practitionerTypeFor` for why this particular signal is the right one.
+   */
+  readonly practitionerType: PractitionerType;
 }
 
 /**
@@ -71,11 +91,39 @@ const publiclyVisible = and(
  * never reach a page, and the closer that filter sits to the data the harder
  * it is to forget.
  */
+/*
+ * ## ⚠️ `therapists.id` is written out, NOT interpolated. This was a silent bug.
+ *
+ * It read `WHERE l.therapist_id = ${therapists.id}`, which looks obviously
+ * right and is obviously right in a top-level WHERE. Inside a correlated
+ * subquery it is not: Drizzle rendered that column reference **unqualified**,
+ * as a bare `"id"`, and the subquery's own FROM is `therapist_licences l`. So
+ * `"id"` resolved to the LICENCE's id and the predicate became
+ * `l.therapist_id = l.id` — comparing a licence's owner to the licence's own
+ * primary key, which is never true for any row.
+ *
+ * The failure mode is the worst kind. No error, no empty result set, no log
+ * line: `coalesce(..., ARRAY[]::text[])` turned "nothing matched" into a
+ * perfectly valid empty array, every time. `licensedIn` was therefore empty
+ * for every therapist since migration 0018 shipped, and nothing noticed
+ * because empty was also the expected value before the backfill existed.
+ *
+ * It surfaced only when `practitionerTypeFor` started deriving a public-facing
+ * noun from this array and every licensed clinician on the site began
+ * rendering as "Wellness coach — not a licensed therapist", in the profile
+ * badge, the meta description and the JSON-LD `jobTitle`. A typecheck cannot
+ * see this and neither can jest, which mocks the database.
+ *
+ * Qualifying it by hand is safe because all three callers below select
+ * `.from(therapists)` with no alias. If one ever aliases that table, this
+ * breaks loudly with "missing FROM-clause entry", which is the failure
+ * direction to want.
+ */
 const licensedInSql = sql<string[]>`
   coalesce(
     (SELECT array_agg(DISTINCT l.jurisdiction)
        FROM therapist_licences l
-      WHERE l.therapist_id = ${therapists.id}
+      WHERE l.therapist_id = therapists.id
         AND l.status = 'verified'),
     ARRAY[]::text[]
   )
@@ -319,12 +367,17 @@ function toDirectory(row: {
   sessionDurationMinutes: number;
   licensedIn: string[] | null;
 }): DirectoryTherapist {
+  /* Advertised only where the jurisdiction's requirements have actually been
+     confirmed. See the note on `licensedIn`. */
+  const licensedIn = (row.licensedIn ?? []).filter(canListInJurisdiction);
+
   return {
     ...row,
     specialties: row.specialties ?? [],
-    /* Advertised only where the jurisdiction's requirements have actually been
-       confirmed. See the note on `licensedIn`. */
-    licensedIn: (row.licensedIn ?? []).filter(canListInJurisdiction),
+    licensedIn,
+    /* Derived here, once, so no page can reach its own conclusion about what
+       to call somebody. */
+    practitionerType: practitionerTypeFor(licensedIn),
   };
 }
 

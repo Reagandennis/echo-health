@@ -1,5 +1,5 @@
 import { MARKETS, type Market } from "./markets";
-import { canListInJurisdiction, requirementFor } from "./licensing";
+import { canListInJurisdiction } from "./licensing";
 
 /**
  * ── Two kinds of practitioner, and why the distinction is load-bearing ─────
@@ -99,6 +99,42 @@ export const PRACTITIONER_SCOPES: Record<PractitionerType, PractitionerScope> = 
 };
 
 /**
+ * What a practitioner may be called, from the licences they actually hold.
+ *
+ * ## Why this is derived and not a column
+ *
+ * A `therapists.practitioner_type` column was the obvious design and is the
+ * wrong one. It would be a second source of truth for something the licence
+ * table already answers, and the drift that matters is one-directional: a
+ * coach who once held a licence, or an admin who set the column before a
+ * licence was revoked, keeps a stale `licensed_therapist` value and goes on
+ * being advertised as a clinician. Deriving it means the claim and the
+ * evidence cannot disagree, because they are the same fact.
+ *
+ * ## The signal
+ *
+ * `jurisdictions` must already be filtered to **verified** licences in
+ * jurisdictions `canListInJurisdiction()` permits — which is exactly what
+ * `DirectoryTherapist.licensedIn` is. Both halves matter:
+ *
+ *  - *Verified* excludes a self-asserted licence. `therapist_licences_guard`
+ *    stops an applicant writing `status = 'verified'` themselves, so this is
+ *    standing on a reviewer's decision rather than a claim.
+ *  - *Listable* excludes a licence in a jurisdiction whose requirements no
+ *    qualified adviser has signed off. We may hold that licence on file and
+ *    review it; we may not advertise it.
+ *
+ * So an empty list yields `wellness_coach`, and that is the safe direction.
+ * Understating a genuine clinician's credentials costs us a booking. The
+ * opposite error tells someone their coach is a therapist.
+ */
+export function practitionerTypeFor(
+  jurisdictions: readonly string[]
+): PractitionerType {
+  return jurisdictions.length > 0 ? "licensed_therapist" : "wellness_coach";
+}
+
+/**
  * The noun to use for a practitioner, everywhere.
  *
  * One function so the answer cannot differ between the directory card, the
@@ -113,43 +149,97 @@ export function displayTitle(type: PractitionerType, plural = false): string {
   return plural ? scope.titlePlural : scope.title;
 }
 
+/**
+ * The collective noun for a mixed list.
+ *
+ * The directory renders therapists and coaches in one grid, so "4 therapists
+ * available" is wrong the moment one of them is a coach — and it is wrong in
+ * the direction that matters, because it is the headline a visitor skims
+ * before opening any profile.
+ *
+ * "Practitioners" is deliberately reserved for the genuinely mixed case. It is
+ * a vaguer, more clinical word, and using it when every person in the list is
+ * a licensed therapist would make an accurate page read as an evasive one.
+ */
+export function collectiveTitle(types: readonly PractitionerType[]): string {
+  const hasTherapist = types.includes("licensed_therapist");
+  const hasCoach = types.includes("wellness_coach");
+  if (hasTherapist && hasCoach) return "practitioners";
+  if (hasCoach) return "wellness coaches";
+  /* Empty list included: "0 therapists" is the right empty state, since the
+     roster is therapists-first and an empty grid asserts nothing. */
+  return "therapists";
+}
+
 export function permittedScope(type: PractitionerType): PractitionerScope {
   return PRACTITIONER_SCOPES[type];
 }
 
 /**
- * What Echo can offer in a market, given who it actually has there.
+ * What a session with this practitioner actually is.
  *
- * `therapy` requires a practitioner Echo can list as locally licensed —
- * `canListInJurisdiction` gates that on a qualified adviser having confirmed
- * the jurisdiction's requirements, so an unconfirmed country cannot quietly
- * become a therapy market.
+ * ## ⚠️ This used to take a Market, and that was wrong
  *
- * Everywhere else the offering is coaching, and the copy for that market must
- * say coaching. This function is what the country pages and the intake funnel
- * should ask rather than assuming.
+ * The first version was `offeringFor(market)`: therapy where
+ * `canListInJurisdiction(market.slug)`, coaching everywhere else. It read
+ * reasonably and it contradicted the copy already shipped on
+ * `/online-therapy/[country]`, which tells a visitor in each of the twelve
+ * non-Kenya markets something quite different — that Echo's practitioners hold
+ * current Kenyan licences, that they are credential-checked clinicians, that
+ * they are **not** registered with a local regulator, and exactly which four
+ * things that costs you (no diagnosis or letter a local body will accept, no
+ * medication anywhere, no local reimbursement, complaints go to the Kenyan
+ * regulator).
+ *
+ * That is cross-border care with its limits named. It is not coaching. So the
+ * market-shaped version asserted, in code, a legal position that nobody
+ * qualified has signed off and that the live site already contradicts — and
+ * having two parts of the codebase disagree about what we sell is the exact
+ * failure this module was written to prevent.
+ *
+ * **Whether a Kenyan-licensed clinician delivering teletherapy into the UK,
+ * the US or the Gulf is practising therapy or something that must be called
+ * coaching there is a question for counsel in each of those jurisdictions.**
+ * It is on the open list. Until it is answered, nothing here decides it.
+ *
+ * What IS knowable without advice is the practitioner: someone holding a
+ * verified, advertisable licence provides therapy, and someone holding none
+ * provides coaching. That is the fact `practitionerTypeFor` derives and the
+ * only one this function reports.
  */
-export function offeringFor(market: Market): {
+export function offeringFor(type: PractitionerType): {
   readonly offering: "therapy" | "coaching";
   readonly reason: string;
 } {
-  if (canListInJurisdiction(market.slug)) {
+  if (type === "licensed_therapist") {
     return {
       offering: "therapy",
-      reason: `Echo has practitioners licensed to provide therapy in ${market.country}.`,
+      reason:
+        "This practitioner holds a licence we have verified, so sessions with them " +
+        "are therapy. Where you are not in the country they are licensed in, the " +
+        "limits of that are set out on the page for your country.",
     };
   }
 
-  const requirement = requirementFor(market.slug);
   return {
     offering: "coaching",
-    reason: requirement
-      ? `Echo does not yet have a practitioner licensed to provide therapy in ${market.country}, ` +
-        `so what is offered there is non-clinical wellness coaching. ` +
-        `We are working towards locally licensed therapists; until then, calling it ` +
-        `therapy would be inaccurate and in some jurisdictions unlawful.`
-      : `${market.country} is not a market Echo currently serves.`,
+    reason:
+      "This practitioner holds no licence we can verify and advertise, so sessions " +
+      "with them are non-clinical wellness coaching — not therapy, and not a " +
+      "substitute for it.",
   };
+}
+
+/**
+ * Markets where Echo has a clinician the LOCAL regulator has registered.
+ *
+ * Named for what it measures. Its predecessor was `therapyMarkets()`, which
+ * implied Echo offers therapy in these and not in the others — the same
+ * conflation `offeringFor` above carried, and wrong in a way that would have
+ * taken twelve country pages down with it if anything had rendered from it.
+ */
+export function locallyLicensedMarkets(): readonly Market[] {
+  return MARKETS.filter((m) => canListInJurisdiction(m.slug));
 }
 
 /**
@@ -235,7 +325,3 @@ export function requiresLicensedPractitioner(answers: {
   };
 }
 
-/** Markets where Echo can currently offer therapy rather than coaching. */
-export function therapyMarkets(): readonly Market[] {
-  return MARKETS.filter((m) => offeringFor(m).offering === "therapy");
-}

@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const limit = rateLimit(`promo:${user.$id ?? clientIp(req)}`, {
+  const limit = await rateLimit(`promo:${user.$id ?? clientIp(req)}`, {
     limit: 10,
     windowMs: 60_000,
   });

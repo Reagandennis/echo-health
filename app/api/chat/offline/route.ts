@@ -23,11 +23,13 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
  *  1. Shape check: only a well-formed UUID is even attempted.
  *  2. Per-IP rate limit: makes enumeration impractical rather than merely tedious.
  *
- * Note `rateLimit` is per-instance and is defence-in-depth, not a hard
- * cross-instance guarantee (see lib/rate-limit.ts).
+ * Note `rateLimit` is defence-in-depth, not a hard guarantee. It is shared
+ * across instances when Redis is configured and per-instance otherwise, and it
+ * fails open on a Redis error — so it makes enumeration expensive rather than
+ * impossible. Guard 1 is what makes the id unguessable (see lib/rate-limit.ts).
  */
 export async function POST(req: NextRequest) {
-  const limited = rateLimit(`chat-offline:${clientIp(req)}`, {
+  const limited = await rateLimit(`chat-offline:${clientIp(req)}`, {
     limit: 30,
     windowMs: 60_000,
   });

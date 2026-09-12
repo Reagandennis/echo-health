@@ -44,6 +44,39 @@ npm run db:generate -- --name=<name>
 
 TypeScript path alias: `@/*` → repo root (e.g. `@/lib/db/schema`).
 
+## Running it locally (Docker Postgres + Redis)
+
+```bash
+docker compose up -d      # Postgres 17 + Redis 7, both bound to 127.0.0.1 only
+npm run db:setup          # waits for health, then applies migrations
+npm run db:seed           # optional: 4 local therapists so /therapists renders
+npm run dev
+```
+
+`.env.local` (gitignored) points `APP_DATABASE_URL` / `DATABASE_URL` / `REDIS_URL` at the stack and overrides `.env`, which Next loads first. `npm run db:reset` destroys the volume and starts clean; `npm run db:psql` opens a shell; `npm run redis:cli` the same for Redis.
+
+### ⚠️ The two Postgres roles are the whole security model
+
+`docker/postgres/init/01-roles.sql` creates them, and its comment is the long version. In short: `echo_admin` owns the tables and **has BYPASSRLS**; `echo_app` owns nothing and does not. Point the app at `echo_admin` and every policy in migration 0001 silently stops applying — every query returns every row and the UI looks identical.
+
+The migrations `GRANT` to `echo_app` but never `CREATE` it (on Azure the roles were provisioned by hand first), and they grant explicitly only for tables added after 0001. The init script closes both gaps with `ALTER DEFAULT PRIVILEGES FOR ROLE echo_admin`, so a table created by a *future* migration is readable by the app without anyone remembering a GRANT line. **A plain `GRANT ON ALL TABLES` there would be a silent no-op** — it applies only to tables that already exist, and at init time none do.
+
+Verified working on the local stack: with `app.user_id` unset, `echo_app` sees **0** journal entries; set to the author, **1**; set to another user, **0**; and set to another user *claiming the admin role*, still **0** — because `journal_entries` is author-only with no admin read path. `echo_admin` sees all of them, which is why it is not the app's role.
+
+### `db:migrate` is broken; use `npm run db:apply`
+
+`drizzle.config.ts` uses the drizzle-kit 0.21+ API (`dialect: "postgresql"`) while `package.json` pins `^0.18.1`, which wants `driver: "pg"`. So both drizzle-kit commands fail to read their own config, and `tsconfig.json` excludes the file so the mismatch does not also break `next build`.
+
+`scripts/db-migrate.mjs` sidesteps it entirely by using **drizzle-orm's runtime migrator**, a separate code path on a current version (0.45.2). It reads the same `meta/_journal.json`, splits on the same `--> statement-breakpoint`, and writes byte-compatible `drizzle.__drizzle_migrations` rows — so whenever drizzle-kit is fixed it will see these as already applied rather than re-running them. Migrations run as `echo_admin`, which is also what makes the default-privileges grant apply.
+
+### `npm run db:seed` writes people who do not exist
+
+It therefore **refuses to run against any host that is not loopback** — not a warning, an exit. Seed rows carry `license_number = 'LOCAL-SEED'` (never exposed publicly, since `lib/directory.ts` selects columns explicitly) so `--clear` removes exactly those. It seeds inside a transaction carrying `app.user_roles = 'admin'` because migration 0015's trigger refuses a therapist row created already `verified` — that is the admin-review path, not a workaround, and `echo_admin`'s BYPASSRLS skips policies but **not triggers**.
+
+### Redis is optional everywhere
+
+`REDIS_URL` unset is a fully supported state: `lib/rate-limit.ts` falls back to the in-memory bucket that production ran on before. Redis makes the limiter a cross-instance guarantee instead of a per-process one — its own doc comment had been asking for that. Do **not** move the realtime fan-out onto it: `lib/db/events.ts` uses Postgres LISTEN/NOTIFY with one shared connection per process, and the reasoning for that design (the ~24-connection Azure ceiling) is documented there.
+
 ## Architecture
 
 Echo Health is a teletherapy platform with three user surfaces — **clients** (`app/dashboard/`), **therapists** (`app/therapist/`), and **admins** (`app/admin/`) — built on the App Router. Auth is Auth0; the database is Postgres (Azure) via Drizzle; analytics is PostHog; video is self-managed WebRTC over Cloudflare Calls (SFU) + Cloudflare TURN; transactional email is Resend (`lib/email.ts`).
@@ -264,7 +297,7 @@ The palette, fonts and shared surfaces live in `app/globals.css` — read its he
 ### Cross-cutting request helpers
 
 - **Validation** — `lib/validation.ts` holds the zod schemas for every API-route body and a `parseOrError(schema, body)` helper returning `{ ok, data } | { ok: false, message }`. Add a schema here and validate at the top of new route handlers rather than hand-rolling checks.
-- **Rate limiting** — `lib/rate-limit.ts` is an in-memory token bucket (`rateLimit(key, opts)` + `clientIp(req)`). It's per-instance defense-in-depth only, **not** a hard cross-instance guarantee — don't rely on it for security-critical limits.
+- **Rate limiting** — `lib/rate-limit.ts` exports `rateLimit(key, opts)` (**async** — every call site awaits it) and `clientIp(req)`. With `REDIS_URL` set it is a shared fixed window via one atomic Lua `EVAL`; without it, the original in-memory token bucket. Two properties worth knowing before you touch it: it **fails open** (a Redis error falls back to the bucket rather than 429-ing payments and the support chat), and the Redis path is a **fixed** window, so it admits up to 2× the limit across a boundary. A route where that burst matters needs a different algorithm, not a smaller number. Still defense-in-depth — put a WAF in front of anything security-critical.
 - **Email** — `lib/email.ts` wraps Resend; `getResend()` returns `null` when `RESEND_API_KEY` is unset, so callers must no-op gracefully (email is optional in dev). HTML-escape interpolated user input.
 - **Plans/currency** — `lib/constants.ts` is the source of truth for plan session allowances and labels; `lib/useCurrency.ts` is a client hook for locale/currency display.
 

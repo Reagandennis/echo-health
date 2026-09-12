@@ -1,0 +1,78 @@
+# ── Local development stack ───────────────────────────────────────────────
+#
+# Postgres and Redis for running the app on a laptop. Neither is used in
+# production: Postgres is Azure Database for PostgreSQL (Flexible Server) and
+# Redis, if it is ever deployed, will be a managed instance. This file exists
+# so a fresh clone can `docker compose up -d` and have a working database in
+# under a minute instead of pointing at the shared Azure instance, which is
+# how development data ends up in a production table.
+#
+#   docker compose up -d          # start both
+#   npm run db:setup              # apply migrations (see scripts/db-migrate.mts)
+#   npm run db:seed               # optional: a few local therapists to browse
+#   docker compose down           # stop, keeping data
+#   docker compose down -v        # stop and DELETE the data volume
+#
+# The passwords below are deliberately trivial and deliberately committed.
+# Nothing here is reachable from outside the machine — both services bind to
+# 127.0.0.1 explicitly rather than 0.0.0.0, so they are not exposed to the
+# local network, which matters on a café wifi.
+
+services:
+  postgres:
+    # 17 matches the Azure Flexible Server major version. Pinned to the minor
+    # so a `docker compose pull` cannot silently move the local database to a
+    # version the production one is not running.
+    image: postgres:17.2-alpine
+    container_name: echo-postgres
+    restart: unless-stopped
+    environment:
+      # The superuser. The app never connects as this — see
+      # docker/postgres/init/01-roles.sql for the two roles that matter.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: echo
+      # Deterministic collation. Without this the image picks a locale from the
+      # host, and `ORDER BY name` can differ between two developers' machines —
+      # which is the kind of difference that makes a test pass for one person.
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - echo-pgdata:/var/lib/postgresql/data
+      # Scripts in this directory run ONCE, on first initialisation of an empty
+      # data volume. They do not re-run on restart. If you change them you must
+      # `docker compose down -v` to see the effect.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # `-U postgres -d echo_health` so this checks the actual database is
+      # accepting queries, not merely that the port is open. The app's first
+      # query runs immediately after `up`, so "starting" must mean "not ready".
+      test: ["CMD-SHELL", "pg_isready -U postgres -d echo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: echo-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    # `--appendonly yes` so rate-limit counters and anything else cached
+    # survive a container restart. Not because losing them matters much, but
+    # because a limiter that resets on every restart is a limiter you cannot
+    # test the reset behaviour of.
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - echo-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  echo-pgdata:
+  echo-redisdata:

@@ -14,11 +14,20 @@
     "db:generate": "drizzle-kit generate --custom",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:generate:auto": "drizzle-kit generate"
+    "db:generate:auto": "drizzle-kit generate",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "db:apply": "node scripts/db-migrate.mjs",
+    "db:seed": "node scripts/db-seed-dev.mjs",
+    "db:psql": "docker exec -it echo-postgres psql -U echo_admin -d echo",
+    "redis:cli": "docker exec -it echo-redis redis-cli",
+    "db:setup": "npm run db:up && node scripts/db-wait.mjs && npm run db:apply"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",
     "drizzle-orm": "^0.45.2",
+    "ioredis": "^6.0.0",
     "lucide-react": "^1.9.0",
     "next": "^16.2.6",
     "postgres": "^3.4.9",

@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const limit = rateLimit(`pay-init:${user.$id ?? clientIp(req)}`, {
+    const limit = await rateLimit(`pay-init:${user.$id ?? clientIp(req)}`, {
       limit: 10,
       windowMs: 60_000,
     });

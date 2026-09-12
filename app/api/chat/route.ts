@@ -8,7 +8,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   // Loose per-IP rate limit — chat is anonymous-friendly so we can't key on user id alone.
-  const limit = rateLimit(`chat:${clientIp(req)}`, { limit: 30, windowMs: 60_000 });
+  const limit = await rateLimit(`chat:${clientIp(req)}`, { limit: 30, windowMs: 60_000 });
   if (!limit.ok) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }

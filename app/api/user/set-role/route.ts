@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const limit = rateLimit(`set-role:${requester.$id ?? clientIp(req)}`, {
+    const limit = await rateLimit(`set-role:${requester.$id ?? clientIp(req)}`, {
       limit: 5,
       windowMs: 60_000,
     });

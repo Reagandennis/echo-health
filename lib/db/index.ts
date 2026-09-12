@@ -28,6 +28,38 @@ if (!connectionString) {
 }
 
 /**
+ * TLS comes from the connection string's own `sslmode`, defaulting to require.
+ *
+ * `ssl: "require"` used to be hardcoded here, which is right for Azure and
+ * makes the app impossible to run against a local Postgres: the container in
+ * `docker-compose.yml` has no certificate, so every connection fails the
+ * handshake before a query is sent.
+ *
+ * Honouring `sslmode` is what every other Postgres client does, and it keeps
+ * production behaviour identical — the Azure URLs already carry
+ * `?sslmode=require` because Azure rejects unencrypted connections, and
+ * AGENTS.md says that must stay.
+ *
+ * ## The default is `require`, not `disable`, and that is deliberate
+ *
+ * An absent `sslmode` means "nobody said" — and the failure modes are wildly
+ * asymmetric. Defaulting to require costs a clear handshake error on a local
+ * database you forgot to mark `sslmode=disable`. Defaulting to disable would
+ * mean a production URL missing one query parameter silently sends clinical
+ * data over plaintext, with nothing anywhere to indicate it. So only an
+ * explicit `disable` turns TLS off.
+ *
+ * `require` here encrypts WITHOUT demanding a verifiable certificate chain,
+ * which is what Azure needs: its chain is not in Node's default trust store
+ * for every region. That is a weaker guarantee than `verify-full` and is the
+ * behaviour the production connection strings already ask for.
+ */
+function sslFromConnectionString(url: string): "require" | false {
+  const mode = /[?&]sslmode=([a-z-]+)/i.exec(url)?.[1]?.toLowerCase();
+  return mode === "disable" ? false : "require";
+}
+
+/**
  * Cached across hot reloads. Without this, every HMR pass in dev opens a fresh
  * pool and Postgres runs out of connections long before you notice why.
  */
@@ -50,7 +82,7 @@ const globalForDb = globalThis as unknown as {
 const sql =
   globalForDb.__echoSql ??
   postgres(connectionString, {
-    ssl: "require",
+    ssl: sslFromConnectionString(connectionString),
     max: 5,
 
     /**

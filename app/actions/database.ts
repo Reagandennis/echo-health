@@ -1182,7 +1182,7 @@ export async function createVideoSessionAction(
 
   // Defense-in-depth against a participant spamming session creation; the real
   // guard is the ownership check below.
-  if (!rateLimit(`video:${user.$id}`, { limit: 60, windowMs: 60_000 }).ok) {
+  if (!(await rateLimit(`video:${user.$id}`, { limit: 60, windowMs: 60_000 })).ok) {
     throw new Error("Too many requests — wait a moment and try again");
   }
 

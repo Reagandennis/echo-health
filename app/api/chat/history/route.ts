@@ -21,7 +21,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
  * guessed session id and a transcript. It runs before any message is read.
  */
 export async function GET(req: NextRequest) {
-  const limit = rateLimit(`chat-history:${clientIp(req)}`, { limit: 60, windowMs: 60_000 });
+  const limit = await rateLimit(`chat-history:${clientIp(req)}`, { limit: 60, windowMs: 60_000 });
   if (!limit.ok) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }

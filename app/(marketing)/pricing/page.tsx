@@ -15,6 +15,7 @@ import {
 import { pageMetadata, siteUrl } from "@/lib/seo";
 import {
   PLAN_CURRENCY,
+  formatKes as money,
   PLAN_PERIOD_LABELS,
   PLAN_PRICES,
   PLAN_SESSIONS,
@@ -39,20 +40,26 @@ import {
  * end up quoting different amounts for the same plan — and this one carries
  * `Offer` structured data, so a stale figure would propagate into search
  * results.
+ *
+ * ## KES is a fact about the charge, not a fact about the buyer
+ *
+ * Most people reading this page are outside Kenya (`lib/markets.ts`), and this
+ * page used to treat the settlement currency as though it also described the
+ * audience — "pricing in Kenyan shillings" in the meta description, "if you are
+ * paying from outside Kenya" as the edge case. Both halves have to be true at
+ * once: the charge really does settle in KES and has to be stated plainly, and
+ * the reader is probably paying from somewhere else. `PriceTag` is what bridges
+ * them — it shows an approximate local figure marked "≈" beside the exact KES
+ * amount — so the prose here describes that behaviour rather than assuming a
+ * reader who does not need it.
  */
 export const metadata = pageMetadata({
   title: "Pricing — pay once, credits never expire",
   description:
-    "Echo Health therapy pricing in Kenyan shillings. One-time payment for a bundle of 50-minute sessions — no subscription, nothing auto-renews, and session credits never expire.",
+    "What therapy costs on Echo Health: a one-time payment for a bundle of 50-minute sessions, charged in Kenyan shillings. Nothing renews and credits never expire.",
   path: "/pricing",
 });
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 const perSession = (plan: string) =>
   money(Math.round(PLAN_PRICES[plan]! / Math.max(1, PLAN_SESSIONS[plan] ?? 1)));
@@ -146,10 +153,19 @@ const MATRIX: readonly {
   },
 ];
 
+/**
+ * Card first, M-Pesa last.
+ *
+ * M-Pesa was listed first and described as "the most common way people pay on
+ * Echo" — an unevidenced claim about our own ledger, and a default that only
+ * makes sense for a Kenyan buyer. Card is the rail that works from all thirteen
+ * markets; M-Pesa is a real option for the subset with a Kenyan mobile-money
+ * account and is described as exactly that.
+ */
 const PAYMENT = [
-  { icon: Smartphone, title: "M-Pesa", body: "Pay from your phone. The most common way people pay on Echo." },
-  { icon: CreditCard, title: "Card", body: "Visa and Mastercard, debit or credit, processed by Paystack." },
+  { icon: CreditCard, title: "Card", body: "Visa and Mastercard, debit or credit, processed by Paystack. Works from any country." },
   { icon: Landmark, title: "Bank transfer", body: "Direct transfer for anyone who would rather not use a card." },
+  { icon: Smartphone, title: "M-Pesa", body: "Mobile money from your phone, if you hold a Kenyan M-Pesa account." },
 ];
 
 const FAQS: readonly Faq[] = [
@@ -174,8 +190,12 @@ const FAQS: readonly Faq[] = [
     a: `We run promotional codes from time to time, worth ${PROMO_DISCOUNT_PERCENT}% off a plan. If you have one, enter it at checkout and the discount is applied before you pay — you will never be charged the full amount and refunded the difference.`,
   },
   {
+    q: "What currency am I charged in?",
+    a: "Kenyan shillings, wherever you are — that is the currency Echo's payment account settles in. Where we can tell you are somewhere else, the prices above also show an approximate amount in your own currency, marked with a ≈, alongside the exact shilling figure you will be charged. Treat the approximate one as a guide only: your bank does the actual conversion at its own rate.",
+  },
+  {
     q: "Do you take insurance?",
-    a: "Not at the moment. Echo is paid for directly, in Kenyan shillings. If your employer offers a mental-health benefit, ask them about Echo for organizations — we can invoice an employer directly.",
+    a: "Not at the moment — sessions are paid for directly. If your insurer or employer reimburses outpatient mental health care, email support@echohealth.app and we can send you an itemised receipt to submit to them; we cannot guarantee any particular insurer will accept it, and your therapist is licensed in Kenya rather than in your own country, which some insurers require. If your employer offers a mental-health benefit, ask them about Echo for organizations — we can invoice an employer directly.",
   },
   {
     q: "Why is it cheaper than seeing someone in person?",
@@ -215,7 +235,8 @@ export default function PricingPage() {
           <p className="mx-auto mt-6 max-w-xl text-[17px] leading-8 text-stone-600">
             Therapy on Echo is sold as a bundle of sessions, paid for one time.
             There is no subscription, no card kept on file for a monthly charge,
-            and no expiry date on what you have bought.
+            and no expiry date on what you have bought. Every price below is
+            charged in Kenyan shillings, whichever currency your card is in.
           </p>
         </div>
       </section>
@@ -338,12 +359,26 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
-        <p className="mt-10 max-w-2xl text-sm leading-7 text-stone-600">
-          Prices are charged in Kenyan shillings. If you are paying from outside
-          Kenya, your bank sets the exchange rate and may add its own fee — the
-          amount on your statement can differ slightly from the amount shown
-          here, and that difference is your bank&apos;s, not ours.
-        </p>
+        <div className="mt-10 flex max-w-2xl flex-col gap-4 text-sm leading-7 text-stone-600">
+          {/* Describes what `PriceTag` actually does: an approximate converted
+              figure, marked as approximate, with the exact settlement amount
+              underneath it. Do not promise a converted price the cards cannot
+              render — currency detection can fail, in which case they simply
+              show the shilling figure. */}
+          <p>
+            Every charge settles in Kenyan shillings, whatever your own currency
+            is. Where we can tell you are somewhere else, the prices above are
+            also shown as an approximate amount in yours, with the exact
+            shilling figure — the one that reaches your statement — underneath
+            it.
+          </p>
+          <p>
+            Your bank sets the exchange rate on that conversion and may add its
+            own fee, so the amount you are billed can differ slightly from the
+            approximate figure shown here. That difference is your
+            bank&apos;s, not ours, and we do not add a margin of our own.
+          </p>
+        </div>
       </Section>
 
       <Section tone="muted">

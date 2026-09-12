@@ -15,8 +15,16 @@ import {
   faqJsonLd,
 } from "@/app/components/marketing/sections";
 import type { Faq } from "@/app/components/marketing/sections";
-import { CONDITIONS, LOCATIONS } from "@/lib/navigation";
-import { CRISIS_REGIONS, PLAN_CURRENCY, PLAN_PRICES, PLAN_SESSIONS } from "@/lib/constants";
+import { CONDITIONS } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
+import {
+  CRISIS_DIRECTORY_URL,
+  CRISIS_REGIONS,
+  PLAN_CURRENCY,
+  formatKes as money,
+  PLAN_PRICES,
+  PLAN_SESSIONS,
+} from "@/lib/constants";
 import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
 
 /**
@@ -30,11 +38,20 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  * gets no truth is worth nothing. So the page states plainly what a parent does
  * and does not receive — before the booking, not after.
  *
- * ── The Childline number is read from `lib/constants.ts`, never typed here ──
+ * ── Crisis routing is global first, Kenya second ──
+ * Most families reading this page are not in Kenya (`lib/markets.ts`), so the
+ * block below leads with `CRISIS_DIRECTORY_URL` — a directory that geolocates
+ * and is maintained by people who do this full time — and offers Childline
+ * Kenya as the named regional option beside it. It used to lead with 116, which
+ * is toll-free from a Kenyan phone and unreachable from anywhere else: a parent
+ * in Toronto was being handed a number that would not connect, at the one
+ * moment a dead end costs the most.
+ *
+ * The Childline entry is read from `lib/constants.ts`, never typed here.
  * `CRISIS_REGIONS` is the repo's highest-consequence data: every number in it
  * was verified against the operating organisation's own site, and the file
  * records the source. Hard-coding "116" into this page would create a second
- * copy that nobody re-verifies. If the lookup below ever fails, the block
+ * copy that nobody re-verifies. If the lookup below ever fails, that clause
  * renders nothing rather than rendering a guess — see the comment at its use.
  *
  * The 13–17 boundary is not a marketing decision. `app/(marketing)/terms` makes
@@ -43,12 +60,6 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  * inventing one.
  */
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 /**
  * Looked up by name because that is the stable key in `CRISIS_REGIONS` — the
@@ -61,7 +72,7 @@ const CHILDLINE = CRISIS_REGIONS.find((r) => r.region === "Kenya")?.services.fin
 export const metadata = pageMetadata({
   title: "Teen therapy online for ages 13–17",
   description:
-    "Online therapy for 13 to 17 year olds in Kenya. A parent or guardian opens the account and consents — and here is exactly how confidentiality works for a teen.",
+    "Online therapy for 13 to 17 year olds, with therapists licensed in Kenya. A parent or guardian consents — and here is exactly how confidentiality works for a teen.",
   path: "/teen-therapy",
 });
 
@@ -74,7 +85,7 @@ const STEPS = [
   {
     icon: CalendarCheck,
     title: "We match on who works with adolescents",
-    body: "Not every therapist does. Say in the intake that the client is 13–17 and what is going on, and we put forward practitioners whose training fits — email support@echohealth.app if you want to talk it through first.",
+    body: "Not every therapist does. Say in the intake that the client is 13–17 and what is going on, and we put forward practitioners whose training fits. Availability is published in East Africa Time (GMT+3), which is worth holding against a school day where you live — email support@echohealth.app if you want to talk the timing through first.",
   },
   {
     icon: Lock,
@@ -117,7 +128,7 @@ const FAQS: readonly Faq[] = [
   },
   {
     q: "Can a 16 or 17 year old sign up on their own?",
-    a: "No. A parent or guardian has to open the account and consent — that is a condition of using Echo for anyone under 18, and it is in our terms. If you are under 18 and cannot involve an adult at home, please talk to a school counsellor, a trusted adult, or Childline Kenya on 116, which is free and answers around the clock.",
+    a: "No. A parent or guardian has to open the account and consent — that is a condition of using Echo for anyone under 18, and it is in our terms. If you are under 18 and cannot involve an adult at home, please talk to a school counsellor or a trusted adult, or find a helpline where you live at findahelpline.com — it lists them by country, including ones for under-18s.",
   },
   {
     q: "My child's parents are separated. Who consents?",
@@ -145,7 +156,12 @@ const serviceJsonLd = {
     alternateName: "Echo Health",
     url: siteUrl,
   },
-  areaServed: { "@type": "Country", name: "Kenya" },
+  /* Was `{ name: "Kenya" }`. The therapists are Kenyan-licensed; the families
+     are not. List read from `lib/markets.ts`. */
+  areaServed: MARKETS.map((m) => ({
+    "@type": "Country",
+    name: m.country.replace(/^the /, ""),
+  })),
   audience: {
     "@type": "PeopleAudience",
     suggestedMinAge: 13,
@@ -170,7 +186,7 @@ const medicalWebPageJsonLd = {
   "@type": "MedicalWebPage",
   name: "Teen therapy online for ages 13–17",
   url: `${siteUrl}/teen-therapy`,
-  inLanguage: "en-KE",
+  inLanguage: "en",
   audience: {
     "@type": "PeopleAudience",
     suggestedMinAge: 13,
@@ -193,9 +209,10 @@ export default function TeenTherapyPage() {
             Someone to talk to, who is not you
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-8 text-stone-600">
-            Online therapy for 13 to 17 year olds, with practitioners licensed in
-            Kenya. A parent or guardian opens the account and gives consent — and
-            then the sessions belong to the young person.
+            A parent or guardian opens the account and gives consent — and then
+            the sessions belong to the young person. The practitioners are
+            licensed in Kenya rather than in your own country, and publish their
+            hours in East Africa Time.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <CtaButton href="/get-started">Start as a parent or guardian</CtaButton>
@@ -204,17 +221,36 @@ export default function TeenTherapyPage() {
             </CtaButton>
           </div>
 
-          {/* Under-18 crisis routing, above the fold and read from the verified
-              crisis data. If the lookup ever returns nothing — a rename in
-              `CRISIS_REGIONS` — this renders nothing at all rather than a number
-              from memory, and the general crisis link below still stands. */}
+          {/* Under-18 crisis routing, above the fold.
+              Ordered global-first on purpose: a toll-free national number is
+              worse than useless to a family in another country, so the
+              geolocating directory comes before the Kenyan line rather than
+              after it. The Childline clause is read from the verified crisis
+              data and disappears entirely if that lookup ever fails — a rename
+              in `CRISIS_REGIONS` must not produce a number from memory. */}
           <div className="mx-auto mt-10 max-w-xl rounded-3xl bg-white p-5 text-left shadow-sm ring-1 ring-stone-200">
             <div className="flex items-start gap-3">
               <Phone className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={1.8} aria-hidden="true" />
               <p className="text-sm leading-6 text-stone-600">
-                {CHILDLINE ? (
+                If a young person needs help right now, this is not the place. In
+                immediate danger, contact your local emergency number. Otherwise{" "}
+                <a
+                  href={CRISIS_DIRECTORY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-brand-700 underline underline-offset-2"
+                >
+                  findahelpline.com
+                </a>{" "}
+                finds a helpline wherever you are, and our{" "}
+                <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
+                  crisis page
+                </Link>{" "}
+                lists verified lines with their real opening hours.
+                {CHILDLINE && (
                   <>
-                    If a young person needs help right now, this is not the place.{" "}
+                    {" "}
+                    In Kenya,{" "}
                     <a
                       href={CHILDLINE.href}
                       className="font-semibold text-brand-700 underline underline-offset-2"
@@ -222,22 +258,7 @@ export default function TeenTherapyPage() {
                       {CHILDLINE.name} — {CHILDLINE.contact}
                     </a>{" "}
                     is {CHILDLINE.cost?.toLowerCase() ?? "available"} and answers{" "}
-                    {CHILDLINE.availability.toLowerCase()}. In immediate danger, contact your local emergency number
-                    . More on our{" "}
-                    <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
-                      crisis page
-                    </Link>
-                    .
-                  </>
-                ) : (
-                  <>
-                    If a young person needs help right now, this is not the place.
-                    Contact your local emergency number
-                    , or see our{" "}
-                    <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
-                      verified crisis lines
-                    </Link>
-                    .
+                    {CHILDLINE.availability.toLowerCase()}.
                   </>
                 )}
               </p>
@@ -434,9 +455,9 @@ export default function TeenTherapyPage() {
             href: `/therapy-for/${c.slug}`,
             label: `Therapy for ${c.short}`,
           })),
-          ...LOCATIONS.map((l) => ({
-            href: `/online-therapy/${l.slug}`,
-            label: `Therapy in ${l.label}`,
+          ...MARKETS.map((m) => ({
+            href: `/online-therapy/${m.slug}`,
+            label: `Therapy in ${m.country}`,
           })),
         ]}
       />

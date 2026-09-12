@@ -1,5 +1,7 @@
 import {
+  BadgeCheck,
   CalendarCheck,
+  Clock,
   CreditCard,
   HeartHandshake,
   MessageSquare,
@@ -23,7 +25,8 @@ import {
   type Faq,
 } from "@/app/components/marketing/sections";
 import { pageMetadata, siteUrl } from "@/lib/seo";
-import { PLAN_CURRENCY, PLAN_PRICES } from "@/lib/constants";
+import { MARKETS } from "@/lib/markets";
+import { formatKes as money, PLAN_PRICES } from "@/lib/constants";
 
 /**
  * The content of the home page's `#how` anchor, given a URL.
@@ -32,6 +35,21 @@ import { PLAN_CURRENCY, PLAN_PRICES } from "@/lib/constants";
  * from every page in the site as `/#how`. That is a high-intent query
  * ("how does online therapy work") pointed at a fragment, which cannot rank,
  * cannot carry a description, and cannot be a search result on its own.
+ *
+ * ## The two cards a cross-border client cannot do without
+ *
+ * "Where your therapist is licensed" and "Sessions run on East Africa Time"
+ * are in the detail grid rather than in a footnote, because they are the two
+ * facts most likely to end in a refund if someone learns them after paying.
+ * Echo's clinicians are licensed in Kenya and its clients are worldwide
+ * (`lib/markets.ts`), so a reader in Toronto is buying a therapist who is not
+ * registered by their own regulator and who works nine time zones away. Both
+ * of those are fine; neither is fine as a surprise.
+ *
+ * The per-country arithmetic deliberately lives on `/online-therapy/<country>`,
+ * which computes the offset from the IANA zone at render time. Do not restate
+ * an hour figure here: a literal would be wrong for months of every year for
+ * the UK, US and Canada, which observe DST while Kenya does not.
  */
 export const metadata = pageMetadata({
   title: "How Echo Health works",
@@ -40,12 +58,6 @@ export const metadata = pageMetadata({
   path: "/how-it-works",
 });
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 const STEPS = [
   {
@@ -61,7 +73,7 @@ const STEPS = [
   {
     icon: HeartHandshake,
     title: "Book your first session",
-    body: "Pick a time from your therapist's real availability and meet by video, phone or message. Fifty minutes, from wherever you are.",
+    body: "Pick a time from your therapist's real availability — published in East Africa Time (GMT+3) — and meet by video, phone or message. Fifty minutes, from wherever you are.",
   },
 ];
 
@@ -82,9 +94,19 @@ const DETAIL = [
     body: "Tell us and we will match you with someone else, at no charge. Unused session credits stay with you. The fit between you and your therapist is the part of therapy that most predicts whether it helps.",
   },
   {
+    icon: BadgeCheck,
+    title: "Where your therapist is licensed",
+    body: "In Kenya. Every licence is checked by our team before a profile goes live — and if you are somewhere else, that licence is not a registration with your own country's regulator. Good therapy either way; not a substitute if you specifically need a locally registered provider.",
+  },
+  {
+    icon: Clock,
+    title: "Sessions run on East Africa Time",
+    body: "Therapists publish their hours in EAT (GMT+3). Across Africa, the Gulf and the UK that lands inside an ordinary day. From North America the workable window is their afternoon and evening, which is your morning — your country page works out the exact gap.",
+  },
+  {
     icon: CreditCard,
     title: "How you pay",
-    body: `A one-time payment for a bundle of sessions, from ${money(PLAN_PRICES.individual)}. M-Pesa, card or bank transfer. Nothing renews and there is no card left on file charging you monthly.`,
+    body: `A one-time payment for a bundle of sessions, from ${money(PLAN_PRICES.individual)}, charged in Kenyan shillings whatever your own currency. Card or bank transfer, or M-Pesa with a Kenyan mobile-money account. Nothing renews and there is no card left on file charging you monthly.`,
   },
   {
     icon: CalendarCheck,
@@ -122,6 +144,10 @@ const FAQS: readonly Faq[] = [
   {
     q: "Can I choose my own therapist instead of being matched?",
     a: "Yes. The directory is public and you do not need an account to browse it — read the profiles, find someone whose focus fits, and start with them. The questionnaire is there for people who would rather not have to choose.",
+  },
+  {
+    q: "My therapist is in Kenya and I am not. What does that actually change?",
+    a: "Three things, and none of them is whether you can book. Your therapist holds a Kenyan licence rather than a registration with the regulator where you live, so Echo cannot stand in for a locally registered provider if an insurer or an employer requires one. Sessions are scheduled in East Africa Time (GMT+3), which overlaps an ordinary working day across Africa, the Gulf and the UK and narrows to your morning in North America. And the charge settles in Kenyan shillings, so your bank converts at its own rate. Each country page sets out what all three mean where you are.",
   },
   {
     q: "How long are sessions, and how often should I have them?",
@@ -247,6 +273,13 @@ export default function HowItWorksPage() {
           { href: "/couples-therapy", label: "Couples therapy" },
           { href: "/teen-therapy", label: "Teen therapy" },
           { href: "/faq", label: "All questions" },
+          /* The country pages are the only place the time-zone gap, the
+             currency conversion and the licensure note are worked out for a
+             specific reader, and the FAQ above sends people here. */
+          ...MARKETS.map((m) => ({
+            href: `/online-therapy/${m.slug}`,
+            label: `Therapy in ${m.country}`,
+          })),
         ]}
       />
 

@@ -10,8 +10,9 @@ import {
   Section,
   SectionHeading,
 } from "@/app/components/marketing/sections";
-import { CONDITIONS, LOCATIONS } from "@/lib/navigation";
+import { CONDITIONS } from "@/lib/navigation";
 import type { ConditionSlug } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
 import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
 
 /**
@@ -57,13 +58,19 @@ const collectionJsonLd = {
   "@type": "CollectionPage",
   name: "What we help with",
   url: `${siteUrl}/therapy-for`,
-  inLanguage: "en-KE",
+  inLanguage: "en",
   about: CONDITIONS.map((c) => ({ "@type": "MedicalCondition", name: c.label })),
   provider: {
     "@type": "Organization",
     name: legalEntityName,
     url: siteUrl,
-    areaServed: { "@type": "Country", name: "Kenya" },
+    /* Was `{ name: "Kenya" }` — a one-country service area, which described
+       where the clinicians are licensed rather than where the clients are.
+       Read from `lib/markets.ts` so it cannot drift from the country pages. */
+    areaServed: MARKETS.map((m) => ({
+      "@type": "Country",
+      name: m.country.replace(/^the /, ""),
+    })),
   },
 };
 
@@ -76,9 +83,9 @@ export default function TherapyForIndexPage() {
     { href: "/therapists", label: "Browse therapists" },
     { href: "/pricing", label: "Pricing" },
     { href: "/how-it-works", label: "How it works" },
-    ...LOCATIONS.map((l) => ({
-      href: `/online-therapy/${l.slug}`,
-      label: `Therapy in ${l.label}`,
+    ...MARKETS.map((m) => ({
+      href: `/online-therapy/${m.slug}`,
+      label: `Therapy in ${m.country}`,
     })),
   ];
 
@@ -149,11 +156,13 @@ export default function TherapyForIndexPage() {
           />
           <div className="mt-8 flex flex-col gap-5 text-[17px] leading-8 text-stone-600">
             <p>
-              Echo is online talking therapy with practitioners licensed in
-              Kenya. We do not provide emergency or crisis care, we do not
-              prescribe or adjust medication, and we do not issue diagnoses for
-              insurers, employers, schools or courts. Those are real needs — they
-              are just not the thing this service does.
+              Echo is online talking therapy. The practitioners are licensed in
+              Kenya — which, if you are reading this anywhere else, means your
+              therapist is not registered with the regulator in your own
+              country. We also do not provide emergency or crisis care, do not
+              prescribe or adjust medication, and do not issue diagnoses for
+              insurers, employers, schools or courts. Those are real needs —
+              they are just not the thing this service does.
             </p>
             <p>
               Nothing on these pages is a substitute for assessment by a
@@ -168,12 +177,13 @@ export default function TherapyForIndexPage() {
           <div className="mt-9 flex items-start gap-3 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-600">
-              If you or someone else is in immediate danger, contact your local emergency number
-              . Our{" "}
+              If you or someone else is in immediate danger, contact your local
+              emergency number. Our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 crisis page
               </Link>{" "}
-              lists verified helplines, with their real opening hours.
+              lists verified helplines with their real opening hours, and a
+              directory that finds one wherever you are.
             </p>
           </div>
         </div>

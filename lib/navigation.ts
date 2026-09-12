@@ -32,6 +32,8 @@ export interface NavGroup {
   readonly feature?: NavLink;
 }
 
+import { MARKETS } from "./markets";
+
 /* ── Conditions ──────────────────────────────────────────────────────────── */
 
 /**
@@ -54,22 +56,21 @@ export const CONDITIONS = [
 
 export type ConditionSlug = (typeof CONDITIONS)[number]["slug"];
 
-/* ── Locations ───────────────────────────────────────────────────────────── */
+/* ── Markets ─────────────────────────────────────────────────────────────── */
 
 /**
- * Location pages. Kenyan cities, not US states — the clinicians are licensed
- * in Kenya, the prices are in KES and the payment rail is M-Pesa, so "online
- * therapy in California" would be a page we cannot serve.
+ * Location pages are per COUNTRY, and the list lives in `lib/markets.ts`.
+ *
+ * They used to be five Kenyan cities — Nairobi, Mombasa, Kisumu, Nakuru,
+ * Eldoret — which was a local-SEO play for a product whose clients are
+ * worldwide. Echo's clinicians are licensed in Kenya; its clients are not
+ * mostly in Kenya, and `lib/constants.ts` says as much.
+ *
+ * `lib/markets.ts` also holds what differs per country: the time-zone gap to
+ * the therapists' working hours, the local currency your bank converts from,
+ * whether M-Pesa is a real option, and — the important one —
+ * `locallyLicensed`, which is true for Kenya and false for the other twelve.
  */
-export const LOCATIONS = [
-  { slug: "nairobi", label: "Nairobi", county: "Nairobi County" },
-  { slug: "mombasa", label: "Mombasa", county: "Mombasa County" },
-  { slug: "kisumu",  label: "Kisumu",  county: "Kisumu County" },
-  { slug: "nakuru",  label: "Nakuru",  county: "Nakuru County" },
-  { slug: "eldoret", label: "Eldoret", county: "Uasin Gishu County" },
-] as const;
-
-export type LocationSlug = (typeof LOCATIONS)[number]["slug"];
 
 /* ── Primary navigation ──────────────────────────────────────────────────── */
 
@@ -195,10 +196,12 @@ export const FOOTER_COLUMNS: readonly NavGroup[] = [
   },
 ];
 
-/** Cities, rendered as one wrapped row rather than a fifth column. */
-export const FOOTER_LOCATIONS: readonly NavLink[] = LOCATIONS.map((l) => ({
-  href: `/online-therapy/${l.slug}`,
-  label: `Therapy in ${l.label}`,
+/** Countries, rendered as one wrapped row rather than a fifth column. */
+export const FOOTER_LOCATIONS: readonly NavLink[] = MARKETS.map((m) => ({
+  href: `/online-therapy/${m.slug}`,
+  /* "Therapy in the United Kingdom" — `country` carries its own article so
+     the label reads correctly for both "Kenya" and "the United States". */
+  label: `Therapy in ${m.country}`,
 }));
 
 export const FOOTER_LEGAL: readonly NavLink[] = [
@@ -240,8 +243,8 @@ export const ALL_INDEXABLE_ROUTES: readonly RouteSpec[] = [
     changeFrequency: "monthly" as const,
     priority: 0.75,
   })),
-  ...LOCATIONS.map((l) => ({
-    path: `/online-therapy/${l.slug}`,
+  ...MARKETS.map((m) => ({
+    path: `/online-therapy/${m.slug}`,
     changeFrequency: "monthly" as const,
     priority: 0.7,
   })),

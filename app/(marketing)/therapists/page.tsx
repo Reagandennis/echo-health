@@ -32,7 +32,7 @@ export const revalidate = 300;
 export const metadata = pageMetadata({
   title: "Find a therapist",
   description:
-    "Browse Echo Health's licensed therapists — their focus areas, experience and approach. Filter by what you want to work on, then book a session that fits your week.",
+    "Browse Echo Health's therapists, every one independently licensed in Kenya — focus areas, experience and approach. Filter by what you want to work on, then book.",
   path: "/therapists",
 });
 
@@ -75,11 +75,18 @@ export default async function TherapistsPage() {
             <h1 className="font-display text-4xl leading-[1.1] tracking-tight text-stone-900 sm:text-5xl">
               Find a therapist who fits
             </h1>
+            {/* The licensure sentence is a disclosure, not a market claim, and
+                the second half is the part that used to be missing: a visitor
+                in Lagos or Toronto is reading a roster of Kenyan-registered
+                clinicians, which is worth knowing before they book rather than
+                when they ask for a letter for an insurer. */}
             <p className="mt-5 text-[17px] leading-8 text-stone-600">
               Every therapist on Echo is independently licensed in Kenya and has
               had their credentials checked by our team before appearing here.
-              Browse them, or answer a few questions and we&apos;ll suggest the
-              ones who match what you&apos;re looking for.
+              If you are somewhere else, that is the licence you are getting —
+              a Kenyan one, not a registration with your own country&apos;s
+              regulator. Browse them, or answer a few questions and we&apos;ll
+              suggest the ones who match what you&apos;re looking for.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
@@ -101,7 +108,7 @@ export default async function TherapistsPage() {
             {[
               { icon: BadgeCheck, label: "Credentials checked before listing" },
               { icon: Video, label: "Video, phone or messaging" },
-              { icon: CalendarClock, label: "50-minute sessions, East Africa Time" },
+              { icon: CalendarClock, label: "50-minute sessions, booked in East Africa Time" },
               { icon: ShieldCheck, label: "Switch therapists at no charge" },
             ].map(({ icon: Icon, label }) => (
               <li key={label} className="flex items-center gap-2 text-sm font-medium text-stone-600">

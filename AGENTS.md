@@ -197,6 +197,23 @@ Every public page lives in the **`app/(marketing)/`** route group. It is a group
 
 Before this existed, each of the thirteen marketing pages inlined its own `<header>` containing a back-arrow to `/` and nothing else. Twelve had no navigation at all, so `/faq` and `/guides` had no crawlable link between them, and the home page's own nav pointed at `#how`, `#therapists` and `#pricing` — three in-page anchors that cannot rank, cannot carry a title or description, and cannot be a search result. Those three now have real URLs (`/how-it-works`, `/therapists`, `/pricing`).
 
+#### ⚠️ Kenya is where the SUPPLY is. It is not the market.
+
+Get this the wrong way round and you will rewrite twenty files, as happened once already:
+
+- **Clinicians are licensed in Kenya.** True, and a material disclosure.
+- **Clients are worldwide.** `lib/constants.ts`, on the crisis directory: *"Where to send anyone outside the regions listed below — which, on a global platform, is most people."* `lib/useCurrency.ts` exists specifically as "a courtesy for international visitors".
+- **Prices settle in KES** because that is what the Paystack account settles in — a payment fact, not a statement of who may buy.
+- **Therapist availability is East Africa Time (GMT+3).** A real scheduling constraint for most clients, and one that must be stated rather than discovered.
+
+A brief that says "this is a Kenyan platform" produced a home page titled "online therapy … in Kenya", five Kenyan *city* pages, `areaServed: Country/Kenya` in the structured data, and a footer that told every visitor on earth to dial 999. Every Kenya reference on a public page must be either **a disclosure** (licensure, currency, time zone — keep these, lead with them) or **deleted** (Kenya as the audience or the only place served). Removing the disclosures is the opposite error: a client in Toronto needs to know their therapist is not Ontario-registered and their card is charged in shillings.
+
+`lib/markets.ts` holds the thirteen client markets and what differs in each — IANA zone, local currency, whether M-Pesa applies, and `locallyLicensed`, which is `true` for Kenya and `false` for the other twelve. **Time-zone offsets are computed from the IANA zone at render time, never written as literals**: the UK, US and Canada observe DST and Kenya does not, so the gap to Nairobi changes twice a year and a literal is silently wrong for months.
+
+#### ⚠️ Never print an emergency number outside `/crisis`
+
+`CRISIS_REGIONS` verifies numbers for two countries. The site serves thirteen markets. Anywhere else, route to `/crisis` and `CRISIS_DIRECTORY_URL` (findahelpline.com, which geolocates) — never name a number. The footer banner and ten pages once read "call 999 or 112", which reaches nothing from the United States, and `lib/constants.ts` already warned that "publishing an unverified emergency number is the specific failure this rewrite exists to fix". A person reads that line while deciding what to do next.
+
 #### `lib/navigation.ts` is the IA, and `sitemap.ts` derives from it
 
 Header, footer, breadcrumbs and `app/sitemap.ts` all read that one file. **Adding a public page means adding it to `ALL_INDEXABLE_ROUTES` there**, or it is not submitted to search engines. The previous sitemap was a hand-kept literal list that had already drifted in both directions: `/organizations` shipped, was footer-linked, and was never submitted; `/cookies` was submitted while carrying `index: false`, which Search Console reports as an error.

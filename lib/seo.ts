@@ -44,8 +44,15 @@ export const siteName = "Echo Health";
 /** The registered entity. The wordmark says "Echo Health"; contracts say this. */
 export const legalEntityName = "Echo Psychology Group";
 
+/**
+ * The site-wide fallback description.
+ *
+ * Deliberately says nothing about country. The clinicians are licensed in
+ * Kenya and the clients are worldwide, so a default that named either one
+ * would be wrong on most of the pages that inherit it.
+ */
 export const defaultDescription =
-  "Connect with licensed therapists on your terms. Echo Health makes mental wellness accessible, personal, and effective — whenever you need it.";
+  "Talk to a licensed therapist by video, phone or message, from anywhere in the world. Echo Health makes therapy accessible, private and built around your week.";
 
 type PageMetaInput = {
   title: string;

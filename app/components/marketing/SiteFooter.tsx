@@ -20,7 +20,10 @@ import { CRISIS_DIRECTORY_URL } from "@/lib/constants";
 const ASSURANCES = [
   { icon: BadgeCheck, label: "Licence-verified therapists" },
   { icon: Lock, label: "Encrypted in transit" },
-  { icon: ShieldCheck, label: "Kenya DPA 2019 aligned" },
+  /* The governing instrument for the data, regardless of where the client
+     is. Worded as the regime rather than the country so it does not read as
+     "we only operate in Kenya" beside the two global assurances above. */
+  { icon: ShieldCheck, label: "Data protected under Kenya DPA 2019" },
 ] as const;
 
 /**
@@ -108,7 +111,7 @@ export default function SiteFooter() {
             />
             <p className="max-w-xs text-sm leading-6 text-stone-600">
               Licensed therapists, booked around your life. Video, phone or
-              messaging — from wherever you feel most yourself.
+              messaging — from wherever in the world you are.
             </p>
             <ul className="flex flex-col gap-2.5">
               {ASSURANCES.map(({ icon: Icon, label }) => (
@@ -159,8 +162,11 @@ export default function SiteFooter() {
 
         {/* Locations as one wrapped row rather than a fifth column, which would
             crowd the grid at every breakpoint for the lowest-priority links. */}
-        <nav aria-label="Therapy by location" className="mt-12 border-t border-stone-200 pt-8">
-          <h2 className="text-sm font-semibold text-stone-900">Online therapy across Kenya</h2>
+        <nav aria-label="Therapy by country" className="mt-12 border-t border-stone-200 pt-8">
+          {/* Was "Online therapy across Kenya" over five Kenyan cities, which
+              described the wrong service: the clinicians are in Kenya, the
+              clients are not. */}
+          <h2 className="text-sm font-semibold text-stone-900">Online therapy, wherever you are</h2>
           <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2.5">
             {FOOTER_LOCATIONS.map((link) => (
               <li key={link.href}>
@@ -176,12 +182,24 @@ export default function SiteFooter() {
             Echo's clinicians are licensed in Kenya and the service settles
             in KES. Saying so plainly is cheaper than a refund from someone
             who booked from another jurisdiction expecting local cover. */}
+        {/*
+          The wording here is load-bearing and was previously wrong in a
+          specific way: "registered in Kenya … priced in Kenyan shillings" read
+          as a statement of who we serve, when it is a statement of where the
+          clinicians are licensed and what currency the card is charged in.
+          Clients are worldwide. Both halves have to be said, and said as what
+          they are.
+        */}
         <p className="mt-10 max-w-4xl text-xs leading-6 text-stone-500">
-          Echo Health connects clients with independently licensed mental-health
-          practitioners registered in Kenya. Sessions are delivered online and
-          priced in Kenyan shillings. Echo Health does not provide emergency,
-          crisis or psychiatric-prescribing services, and nothing on this site is
-          a substitute for assessment by a qualified clinician.
+          Echo Health connects clients worldwide with independently licensed
+          mental-health practitioners registered in Kenya. Your therapist is
+          licensed in Kenya and not in your own country unless you are also
+          there, which means we cannot provide a diagnosis or documentation for
+          an insurer, employer, school or court outside Kenya. Sessions are
+          delivered online, scheduled in East Africa Time, and charged in Kenyan
+          shillings whatever your local currency. Echo Health does not provide
+          emergency, crisis or psychiatric-prescribing services, and nothing on
+          this site is a substitute for assessment by a qualified clinician.
         </p>
       </div>
 

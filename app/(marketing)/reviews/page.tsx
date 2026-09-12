@@ -56,12 +56,12 @@ const CHECKABLE = [
   {
     icon: BadgeCheck,
     title: "Every therapist is verifiable",
-    body: "Our therapists are independently licensed in Kenya. Their profiles are public, no account needed — read them, and ask us for licence details before you book if you want to confirm them yourself.",
+    body: "Our therapists are independently licensed in Kenya — which is also the plain answer to \"licensed where?\", a question worth putting to any online service and one we would rather answer up front than let you assume. Profiles are public, no account needed, and you can ask us for licence details before you book.",
   },
   {
     icon: Wallet,
     title: "The price is the price",
-    body: "Every figure is published, in shillings, before you create an account. There is no subscription, nothing renews, and nothing is disclosed at checkout that was not on the pricing page.",
+    body: "Every figure is published before you create an account, in the Kenyan shillings you will actually be charged, with an approximate figure in your own currency beside it. No subscription, nothing renews, and nothing is disclosed at checkout that was not on the pricing page.",
   },
   {
     icon: RefreshCw,
@@ -165,8 +165,11 @@ export default function ReviewsPage() {
             </li>
             <li>
               <strong className="text-stone-900">Which regulator licenses the therapists, and where?</strong>{" "}
-              A service quoting a foreign compliance regime is telling you the
-              rules it names do not govern your data.
+              On a cross-border service the answer is rarely your own country,
+              and it should be easy to find rather than inferred. A service
+              quoting a foreign compliance regime — HIPAA, usually — is telling
+              you the rules it names do not govern your data. Ours are licensed
+              in Kenya, and our data sits under Kenyan law.
             </li>
             <li>
               <strong className="text-stone-900">What does the service say it cannot do?</strong>{" "}

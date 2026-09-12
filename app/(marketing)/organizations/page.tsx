@@ -14,11 +14,22 @@ import { pageMetadata } from "@/lib/seo";
  * The B2B page. It was the only marketing page with no `metadata` export at
  * all, so it inherited the root title and shipped with no canonical — on the
  * one page an HR buyer is most likely to reach from a search.
+ *
+ * ## The buyer is not assumed to be Kenyan
+ *
+ * This page read as though the employer were in Nairobi: "licensed therapists
+ * in Kenya" as the offer, "priced in shillings" as a selling point, and "no
+ * currency conversion" as a promise — which is false for any finance team
+ * paying from another currency, and most of them are (`lib/markets.ts`). What
+ * is true is that the clinicians are Kenyan-licensed, the invoice settles in
+ * KES, and the therapists keep East Africa hours. All three are disclosures a
+ * benefits buyer has to weigh before they sign, so they are stated as facts
+ * about the service rather than as flattery about the buyer.
  */
 export const metadata = pageMetadata({
   title: "Echo Health for employers",
   description:
-    "Give your team confidential access to licensed therapists in Kenya. Priced in shillings, booked by employees directly, with no visibility for you into who attends.",
+    "Give your team confidential access to therapists licensed in Kenya, invoiced in Kenyan shillings and booked by employees directly — with no visibility for you.",
   path: "/organizations",
 });
 
@@ -53,16 +64,17 @@ const features = [
   },
   {
     /*
-     * Was "Fully HIPAA and GDPR compliant ... 256-bit encryption". HIPAA is a
-     * United States statute with no application to a service delivered from
-     * Kenya, and the same claim was removed from /faq for that reason. We hold
-     * no certification against any of these regimes, so this states the
-     * protections that are actually implemented and names the law that applies.
+     * Was "Fully HIPAA and GDPR compliant ... 256-bit encryption". HIPAA binds
+     * US covered entities — health plans, US-billing providers, clearinghouses
+     * — and Echo is none of those, wherever your employees sit; the same claim
+     * was removed from /faq for that reason. We hold no certification against
+     * any of these regimes, so this states the protections that are actually
+     * implemented and names the law that governs the controller.
      */
     icon: ShieldCheck,
     title: "Built for confidentiality",
     description:
-      "Sessions are encrypted between participants; notes, messages and journals sit behind per-record access controls. Handled in line with Kenya's Data Protection Act 2019.",
+      "Sessions are encrypted between participants; notes, messages and journals sit behind per-record access controls. Echo is a Kenyan data controller, so records are handled under Kenya's Data Protection Act 2019 wherever your employees are.",
   },
 ];
 
@@ -113,8 +125,15 @@ const commitments = [
     body: "A therapist submits their licence and ID, an administrator verifies both, and only then can they be matched with anyone on your team.",
   },
   {
-    title: "Priced in shillings",
-    body: "Invoiced in KES, paid by M-Pesa, card or bank transfer. No currency conversion and no surprise on the renewal.",
+    /*
+     * "No currency conversion" was the claim here, and it is only true for a
+     * Kenyan finance team. For everyone else there is a conversion — theirs.
+     * Saying so is the difference between a disclosure and a surprise on an
+     * invoice, and the reassurance that survives is the one we can actually
+     * make: we do not take a cut of the spread.
+     */
+    title: "Invoiced in Kenyan shillings",
+    body: "The invoice settles in KES, paid by card, bank transfer, or M-Pesa where your team holds Kenyan mobile money. Paying from another currency, your bank sets the rate — we add no margin of our own, and nothing renews without you agreeing it.",
   },
 ];
 
@@ -137,7 +156,8 @@ export default function OrganizationsPage() {
           </h1>
           <p className="mt-6 text-lg leading-8 max-w-2xl mx-auto text-slate-600">
             Give your employees confidential access to licensed therapists —
-            booked directly by them, priced in shillings, and invisible to you.
+            booked directly by them, invoiced in Kenyan shillings, and invisible
+            to you.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
@@ -200,10 +220,21 @@ export default function OrganizationsPage() {
               is tell you exactly what your employees get, and exactly what you
               do not get to see.
             </p>
+            {/* The three-fact disclosure, on the page where the person reading
+                is signing for other people. An HR team that learns about the
+                licensure gap or the East Africa hours after rollout has bought
+                a benefit its employees cannot use. */}
+            <p className="text-teal-100/90 leading-relaxed mb-8">
+              Your employees can be anywhere. Their therapist is licensed in
+              Kenya rather than in their own country, keeps hours in East Africa
+              Time (GMT+3), and is paid in Kenyan shillings — so it is worth
+              checking that overlap against where your team actually sits before
+              you roll it out, particularly for anyone in North America.
+            </p>
             <ul className="space-y-4">
               {[
                 "Confidential by default — no attendance reports, ever",
-                "Licence-verified therapists, registered in Kenya",
+                "Licence-verified therapists, registered in Kenya — not locally",
                 "No subscription: buy sessions once, credits never expire",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">

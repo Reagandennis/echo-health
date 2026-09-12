@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Careers at Echo Health",
   description:
-    "Help us reshape mental health care in Kenya. Open roles across engineering, clinical operations, and design — remote-first, mission-driven teams.",
+    "Help us make therapy reachable worldwide, from a team based in Kenya. Open roles across engineering, clinical operations and design — remote-first.",
   path: "/careers",
 });
 

@@ -13,7 +13,13 @@ import {
   type Answers,
   type Question,
 } from "@/lib/intake";
-import { PLAN_LABELS, PLAN_PRICES, PLAN_SESSIONS, PLAN_CURRENCY } from "@/lib/constants";
+import {
+  CRISIS_DIRECTORY_URL,
+  PLAN_LABELS,
+  PLAN_PRICES,
+  PLAN_SESSIONS,
+  formatKes as money,
+} from "@/lib/constants";
 
 /**
  * The intake questionnaire.
@@ -33,12 +39,6 @@ import { PLAN_LABELS, PLAN_PRICES, PLAN_SESSIONS, PLAN_CURRENCY } from "@/lib/co
  *    component and in `sessionStorage`. Nobody has agreed to anything yet.
  */
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 export default function IntakeQuiz() {
   const [answers, setAnswers] = useState<Answers>({});
@@ -348,18 +348,43 @@ function GuardianStop({ onBack }: { readonly onBack: () => void }) {
         </Link>
       </div>
 
+      {/*
+        No number here, and this is the screen where that restraint matters
+        most.
+
+        It used to read "Childline Kenya answers on 116". This screen is shown
+        to an under-18 who has just been told we cannot help them, and they
+        could be anywhere — 116 alone reaches nothing in the UK (Childline is
+        116111) or the EU (116000 is missing children). Handing a teenager in
+        distress a number that rings out is the worst version of this mistake.
+
+        `findahelpline.com` geolocates and filters for young people, which is
+        the thing a Kenyan number cannot do for twelve of our thirteen markets.
+      */}
       <div className="mt-6 rounded-2xl border-2 border-brand-200 bg-brand-50 p-6">
         <h2 className="font-semibold text-brand-900">If you need someone today</h2>
         <p className="mt-2 text-[15px] leading-7 text-brand-900/80">
-          Childline Kenya answers on <strong>116</strong>, free, 24 hours a day, for
-          anyone under 18. You do not need a parent to call.
+          There are free, confidential helplines for under-18s in most countries,
+          and you do not need a parent&apos;s permission to call one. Find the one
+          for where you are — it takes a few seconds and they will talk to you
+          about anything.
         </p>
-        <Link
-          href="/crisis"
-          className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-brand-800 ring-1 ring-inset ring-brand-200 transition-colors hover:bg-brand-100"
-        >
-          More crisis lines
-        </Link>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            href={CRISIS_DIRECTORY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+          >
+            Find a helpline near you
+          </a>
+          <Link
+            href="/crisis"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-brand-800 ring-1 ring-inset ring-brand-200 transition-colors hover:bg-brand-100"
+          >
+            Verified crisis lines
+          </Link>
+        </div>
       </div>
 
       <button

@@ -60,6 +60,35 @@ export const PLAN_PRICES: Record<string, number> = {
 };
 
 /**
+ * The KES charge, as prose.
+ *
+ * ## Why the locale is `"en"` and not `"en-KE"`
+ *
+ * `en-KE` renders `KES 2000` as **"Ksh 2,000"** — the local symbol. That is
+ * the right answer for a reader in Nairobi and an opaque one for the twelve
+ * other markets in `lib/markets.ts`: "Ksh" is not a string a client in Toronto
+ * or Riyadh can identify, and a price they cannot identify is a price they do
+ * not trust. `"en"` renders the ISO code, **"KES 2,000"**, which is
+ * unambiguous everywhere and is what the rest of the copy calls it.
+ *
+ * This is for PROSE — the amount actually charged. It is not the localised
+ * browsing figure: `lib/useCurrency.ts` and `PriceTag` handle that, showing an
+ * approximate amount in the reader's own currency with this exact figure
+ * alongside it. Do not use one where the other belongs; the distinction is
+ * what keeps "≈ $15" from becoming a chargeback.
+ *
+ * It previously lived as a copy-pasted `money()` in ten page files, which is
+ * ten places for a currency decision to drift.
+ */
+export function formatKes(amount: number): string {
+  return new Intl.NumberFormat("en", {
+    style: "currency",
+    currency: PLAN_CURRENCY,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/**
  * Guard flag: real prices are configured, so live charges are permitted.
  *
  * Set back to `false` if these ever revert to placeholders — `assertPricesConfigured()`

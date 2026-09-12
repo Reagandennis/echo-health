@@ -43,11 +43,24 @@ import { THERAPIST_REVENUE_SHARE, THERAPIST_PAID_ON_LIST_PRICE } from "@/lib/con
  * clinician would most want to know and least expect to be told: whether a
  * marketing promotion quietly reduces their fee. The constant's own comment
  * spells out what the flag costs the business either way.
+ *
+ * ## This page IS Kenya-scoped, and that is correct
+ *
+ * Every other public page had its Kenya framing pulled, because Kenya is where
+ * the supply is and not who the market is. This is the supply side: Echo
+ * credentials against the Kenyan regulators and onboards nobody licensed
+ * elsewhere, so narrowing the audience here is the whole job of the page. A
+ * clinician in Lagos or Manchester should be able to tell in the first screen
+ * that they cannot apply, rather than after uploading a licence.
+ *
+ * The clients, by contrast, are worldwide (`lib/markets.ts`) — which is a fact
+ * about the work on offer, not a caveat, and is stated where a clinician
+ * weighing their diary will see it.
  */
 export const metadata = pageMetadata({
-  title: "Join Echo Health as a therapist",
+  title: "Join Echo Health as a therapist in Kenya",
   description:
-    "Practise online with Echo Health. Set your own hours, keep a fixed share of every session, and let us handle matching, scheduling, payments and the platform.",
+    "Practise online with Echo Health. For clinicians licensed in Kenya: set your own hours, keep a fixed share of every session, and work with clients worldwide.",
   path: "/therapist-jobs",
 });
 
@@ -64,7 +77,7 @@ const BENEFITS = [
   {
     icon: CalendarClock,
     title: "Your hours, your calendar",
-    body: "You publish the times you are willing to work and clients book inside them. No minimum caseload, no shifts, no obligation to take anyone we send you.",
+    body: "You publish the times you are willing to work and clients book inside them — from wherever they are, and Echo's clients are not limited to Kenya. No minimum caseload, no shifts, no obligation to take anyone we send you.",
   },
   {
     icon: Laptop,
@@ -107,7 +120,7 @@ const STEPS = [
 ];
 
 const REQUIREMENTS = [
-  "A current licence or registration to practise as a mental-health professional in Kenya.",
+  "A current licence or registration to practise as a mental-health professional in Kenya. This one is absolute: we credential against the Kenyan regulators and cannot onboard a practitioner licensed anywhere else.",
   "Professional indemnity cover you hold in your own name.",
   "A private space and a connection good enough for video sessions.",
   "Willingness to publish a profile under your real name — the directory is public, and that is the point.",
@@ -128,6 +141,10 @@ const FAQS: readonly Faq[] = [
   {
     q: "Am I an employee?",
     a: "No. You practise as an independent professional under your own licence and your own indemnity cover, choosing your own hours and your own caseload. Echo provides the platform, the clients and the payment rail.",
+  },
+  {
+    q: "Where are the clients?",
+    a: "Not only in Kenya. Echo publishes a page for each market it sells into — East Africa, West and southern Africa, the UK, the US, Canada and the Gulf — so expect part of your caseload to be in another time zone. You publish availability on your own clock and clients book inside it, and every client is told plainly, before they pay, that their therapist is licensed in Kenya rather than registered where they live. Two things worth confirming on your side before you go live: that your indemnity cover extends to clients outside Kenya, and what your own professional body's guidance says about working remotely across borders. We are not in a position to advise you on either.",
   },
   {
     q: "How many clients will I get?",
@@ -165,6 +182,17 @@ export default function TherapistJobsPage() {
             Echo handles matching, scheduling, video and payments. You do the
             work you trained for, in the hours you choose, for a fixed share of
             every session that does not move when marketing runs a promotion.
+          </p>
+          {/* Stated in the first screen, not in the requirements list halfway
+              down: this is the one page on the site whose audience really is
+              Kenyan, and a clinician licensed elsewhere should find that out
+              before they start uploading documents. */}
+          <p className="mt-4 text-[17px] leading-8 text-stone-600">
+            We onboard practitioners licensed in{" "}
+            <strong className="font-semibold text-stone-900">Kenya</strong> only
+            — that is who Echo credentials and the one hard requirement below.
+            The clients are not: they book from across Africa, the Gulf, the UK
+            and North America.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link

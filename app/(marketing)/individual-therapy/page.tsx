@@ -15,9 +15,11 @@ import {
   faqJsonLd,
 } from "@/app/components/marketing/sections";
 import type { Faq } from "@/app/components/marketing/sections";
-import { CONDITIONS, LOCATIONS } from "@/lib/navigation";
+import { CONDITIONS } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
 import {
   PLAN_CURRENCY,
+  formatKes as money,
   PLAN_PERIOD_LABELS,
   PLAN_PRICES,
   PLAN_SESSIONS,
@@ -32,19 +34,18 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  * an outcome. Both are unknowable in advance, both are routinely asserted on
  * pages like this one, and a person deciding whether to spend money on their
  * own mental health deserves the version that is true.
+ *
+ * Kenya appears on this page only as a disclosure — the licence your therapist
+ * holds, the clock their availability is published on, the currency the card is
+ * charged in. It is not a statement about who may book: the clinicians are
+ * Kenyan, the clients are worldwide (`lib/markets.ts`).
  */
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 export const metadata = pageMetadata({
-  title: "Individual therapy online in Kenya",
+  title: "Individual therapy online: what to expect",
   description:
-    "One-to-one online therapy with therapists licensed in Kenya. What a 50-minute session involves, which approaches are used, what it costs, and how to start.",
+    "One-to-one online therapy with a therapist licensed in Kenya, booked from anywhere. What a 50-minute session involves, which approaches are used, and what it costs.",
   path: "/individual-therapy",
 });
 
@@ -62,7 +63,7 @@ const STEPS = [
   {
     icon: Video,
     title: "Fifty minutes, in the browser",
-    body: "Same therapist, same slot, as often as you choose to book. Nothing to install, and camera off is a normal way to use a session rather than a downgrade.",
+    body: "Same therapist, same slot, as often as you choose to book. Availability is published in East Africa Time (GMT+3), so check a slot against your own clock before you take it. Nothing to install, and camera off is a normal way to use a session rather than a downgrade.",
   },
 ];
 
@@ -123,8 +124,12 @@ const FAQS: readonly Faq[] = [
     a: "No to both. Echo therapists do not prescribe or adjust medication, and do not issue diagnoses or reports for insurers, employers, schools or courts. If medication is worth considering, that is a conversation with a doctor — and therapy can run alongside it.",
   },
   {
+    q: "Where is my therapist licensed, and can I book from outside Kenya?",
+    a: "Echo's therapists hold Kenyan licences, and sessions are online, so being elsewhere changes three practical things rather than whether you can book. Licensure: your therapist is not registered by the regulator where you live, which is fine for the therapy and no substitute if an insurer, an employer or a court requires a local provider. Scheduling: availability is published in East Africa Time (GMT+3), which overlaps an ordinary working day across Africa, the Gulf and the UK, and narrows to your morning in North America. Payment: the charge settles in Kenyan shillings whatever your card's currency.",
+  },
+  {
     q: "Is it confidential?",
-    a: "Video runs directly between you and your therapist rather than being recorded by us, and notes and messages sit behind per-record access controls. Your therapist will explain at the start the narrow circumstances in which they would have to break confidentiality — essentially, a serious risk of harm to you or someone else. Kenya's Data Protection Act 2019 gives you the right to access, correct or delete your data.",
+    a: "Video runs directly between you and your therapist rather than being recorded by us, and notes and messages sit behind per-record access controls. Your therapist will explain at the start the narrow circumstances in which they would have to break confidentiality — essentially, a serious risk of harm to you or someone else. Echo is a Kenyan data controller, so your records are handled under Kenya's Data Protection Act 2019, which gives you the right to access, correct or delete them.",
   },
 ];
 
@@ -140,7 +145,13 @@ const serviceJsonLd = {
     alternateName: "Echo Health",
     url: siteUrl,
   },
-  areaServed: { "@type": "Country", name: "Kenya" },
+  /* Was `{ name: "Kenya" }`, which declared a one-country service area. The
+     clinicians are Kenyan; the clients are not. Read from `lib/markets.ts` so
+     this cannot drift from the country pages. */
+  areaServed: MARKETS.map((m) => ({
+    "@type": "Country",
+    name: m.country.replace(/^the /, ""),
+  })),
   availableChannel: {
     "@type": "ServiceChannel",
     serviceUrl: `${siteUrl}/get-started`,
@@ -167,9 +178,9 @@ const serviceJsonLd = {
 const medicalWebPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "MedicalWebPage",
-  name: "Individual therapy online in Kenya",
+  name: "Individual therapy online",
   url: `${siteUrl}/individual-therapy`,
-  inLanguage: "en-KE",
+  inLanguage: "en",
   audience: { "@type": "Patient" },
 };
 
@@ -188,8 +199,9 @@ export default function IndividualTherapyPage() {
             Fifty minutes that are only about you
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-8 text-stone-600">
-            One-to-one sessions with a therapist licensed in Kenya, over video,
-            from wherever you can close a door. No diagnosis required to book,
+            One-to-one sessions over video, from wherever you can close a door.
+            Your therapist is licensed in Kenya rather than in your own country,
+            and keeps hours on East Africa Time. No diagnosis required to book,
             and no subscription to leave running afterwards.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -290,12 +302,12 @@ export default function IndividualTherapyPage() {
             <div className="mt-6 flex items-start gap-3 rounded-3xl bg-brand-50 p-6 ring-1 ring-brand-100">
               <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" strokeWidth={1.8} aria-hidden="true" />
               <p className="text-sm leading-6 text-stone-700">
-                In immediate danger? Contact your local emergency number
-                , or see our{" "}
+                In immediate danger? Contact your local emergency number, or see
+                our{" "}
                 <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                   verified crisis lines
                 </Link>
-                .
+                , which include a directory that finds one wherever you are.
               </p>
             </div>
           </div>
@@ -358,9 +370,10 @@ export default function IndividualTherapyPage() {
               See the full comparison
             </CtaButton>
             <p className="max-w-xl text-sm leading-7 text-stone-500">
-              M-Pesa, card or bank transfer through Paystack. Cancel a booked
-              session at least 24 hours ahead and the credit returns to your
-              account.
+              Card or bank transfer through Paystack, or M-Pesa if you hold a
+              Kenyan mobile-money account. Charged in Kenyan shillings whatever
+              your own currency. Cancel a booked session at least 24 hours ahead
+              and the credit returns to your account.
             </p>
           </div>
         </div>
@@ -394,9 +407,9 @@ export default function IndividualTherapyPage() {
             href: `/therapy-for/${c.slug}`,
             label: `Therapy for ${c.short}`,
           })),
-          ...LOCATIONS.map((l) => ({
-            href: `/online-therapy/${l.slug}`,
-            label: `Therapy in ${l.label}`,
+          ...MARKETS.map((m) => ({
+            href: `/online-therapy/${m.slug}`,
+            label: `Therapy in ${m.country}`,
           })),
         ]}
       />

@@ -17,6 +17,7 @@ import {
 import type { Faq } from "@/app/components/marketing/sections";
 import { CONDITIONS } from "@/lib/navigation";
 import type { ConditionSlug } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
 import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
 
 /**
@@ -39,9 +40,20 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  * how someone decides whether this is the right service — but each is
  * described as what it *is*, never as what it will *do for you*.
  *
- * HIPAA is never mentioned anywhere on this site: it is a United States
- * statute with no application to a Kenyan service. The governing instrument is
- * the Data Protection Act 2019.
+ * HIPAA is never mentioned anywhere on this site. It binds US covered entities
+ * — health plans, US-billing providers and clearinghouses — and Echo is none of
+ * those, whichever country a given client happens to be in. The instrument that
+ * does govern these records is Kenya's Data Protection Act 2019, because that
+ * is where the controller is.
+ *
+ * ── Where Kenya may and may not appear on these pages ──
+ * As a disclosure: the licence the therapist holds, the clock availability is
+ * published on, the currency the card is charged in. Never as the audience.
+ * These eight pages are read from thirteen markets (`lib/markets.ts`), so the
+ * day-to-day detail has to be recognisable to a reader in Lagos, London or
+ * Toronto as readily as one in Nairobi. A previous pass had grief "flattened by
+ * a song in a matatu", which quietly told twelve of the thirteen that the page
+ * was not written for them.
  */
 
 interface Approach {
@@ -77,7 +89,7 @@ interface ConditionContent {
 
 const CONTENT: Record<ConditionSlug, ConditionContent> = {
   anxiety: {
-    metaTitle: "Therapy for anxiety, online in Kenya",
+    metaTitle: "Therapy for anxiety, online",
     metaDescription:
       "Online therapy for anxiety with therapists licensed in Kenya. What anxiety looks like day to day, how CBT and exposure work, and what a first session covers.",
     h1: "Therapy for anxiety",
@@ -144,7 +156,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   },
 
   depression: {
-    metaTitle: "Therapy for depression, online in Kenya",
+    metaTitle: "Therapy for depression, online",
     metaDescription:
       "Online therapy for depression with therapists licensed in Kenya. What depression feels like day to day, how behavioural activation and CBT work, what to expect.",
     h1: "Therapy for depression",
@@ -211,7 +223,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   },
 
   stress: {
-    metaTitle: "Therapy for stress and burnout in Kenya",
+    metaTitle: "Therapy for stress and burnout, online",
     metaDescription:
       "Online therapy for stress and burnout with therapists licensed in Kenya. How burnout differs from a hard week, what therapy can change, and what it cannot.",
     h1: "Therapy for stress and burnout",
@@ -268,7 +280,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
       },
       {
         q: "Can I have sessions during the working day?",
-        a: "Therapists set their own availability, and evening and early-morning slots are common precisely because of this. Sessions run 50 minutes, so a lunch hour usually works. Everything is in East Africa Time.",
+        a: "Therapists set their own availability, and evening and early-morning slots are common precisely because of this. Sessions run 50 minutes, so a lunch hour usually works. All availability is published in East Africa Time (GMT+3), so if you are working in another time zone, check the slot against your own diary before you take it — your country page does the arithmetic.",
       },
       {
         q: "Can my employer find out?",
@@ -278,7 +290,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   },
 
   trauma: {
-    metaTitle: "Therapy for trauma and PTSD in Kenya",
+    metaTitle: "Therapy for trauma and PTSD, online",
     metaDescription:
       "Online therapy for trauma and PTSD with therapists licensed in Kenya. What trauma looks like day to day, how trauma-focused CBT and EMDR work, what to expect.",
     h1: "Therapy for trauma and PTSD",
@@ -345,7 +357,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   },
 
   grief: {
-    metaTitle: "Therapy for grief and loss in Kenya",
+    metaTitle: "Therapy for grief and loss, online",
     metaDescription:
       "Online therapy for grief and loss with therapists licensed in Kenya. Why grief is not an illness, when to talk to someone about it, and what therapy involves.",
     h1: "Therapy for grief and loss",
@@ -354,7 +366,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
     intro:
       "Grief is not a disorder and most of it does not need a therapist. It is what love does when the person is gone, and it runs its own course in its own time. Therapy becomes useful at the points where it stops moving, or where there is no one left to say it to.",
     dayToDay: [
-      "Waves rather than a slope — fine for a week, then flattened by a song in a matatu.",
+      "Waves rather than a slope — fine for a week, then flattened by a song on the radio.",
       "Doing the practical things impeccably and having nothing left for anyone, including yourself.",
       "Guilt about the last conversation, the thing not said, the time not taken.",
       "Anger — at a hospital, at a relative, at the person for going — and shame about the anger.",
@@ -398,7 +410,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
       },
       {
         q: "Everyone around me has moved on and I have not. Is something wrong with me?",
-        a: "Almost certainly not. Communal mourning tends to be intense and then finish, and the weeks after a burial are often the busiest of a person's life — so the grief itself frequently arrives once everyone else has gone home and expects you to be fine.",
+        a: "Almost certainly not. Communal mourning tends to be intense and then finish, and the weeks after a funeral are often the busiest of a person's life — so the grief itself frequently arrives once everyone else has gone home and expects you to be fine.",
       },
       {
         q: "Can I get therapy for a loss that was not a death?",
@@ -479,7 +491,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   },
 
   "self-esteem": {
-    metaTitle: "Therapy for low self-esteem in Kenya",
+    metaTitle: "Therapy for low self-esteem, online",
     metaDescription:
       "Online therapy for low self-esteem with therapists licensed in Kenya. What the inner critic sounds like day to day, how compassion-focused and CBT work goes.",
     h1: "Therapy for low self-esteem",
@@ -682,7 +694,7 @@ export default async function ConditionPage({
     name: content.h1,
     description: content.metaDescription,
     url: `${siteUrl}/therapy-for/${meta.slug}`,
-    inLanguage: "en-KE",
+    inLanguage: "en",
     about: { "@type": "MedicalCondition", name: meta.label },
     /* `audience` rather than any claim of treatment: this page describes a
        service, it does not deliver care, and MedicalWebPage properties that
@@ -692,7 +704,13 @@ export default async function ConditionPage({
       "@type": "Organization",
       name: legalEntityName,
       url: siteUrl,
-      areaServed: { "@type": "Country", name: "Kenya" },
+      /* Was `{ name: "Kenya" }`, which said this service is available in one
+         country. It describes where the clinicians are licensed, not where the
+         readers are; the list is read from `lib/markets.ts`. */
+      areaServed: MARKETS.map((m) => ({
+        "@type": "Country",
+        name: m.country.replace(/^the /, ""),
+      })),
     },
   };
 
@@ -732,12 +750,12 @@ export default async function ConditionPage({
           <div className="mx-auto mt-10 flex max-w-xl items-start gap-3 rounded-3xl bg-white p-5 text-left shadow-sm ring-1 ring-stone-200">
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-600">
-              If you need help right now, Echo is not the right place. Contact your local emergency number
-              , or see our{" "}
+              If you need help right now, Echo is not the right place. Contact
+              your local emergency number, or see our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 verified crisis lines
               </Link>
-              .
+              , which include a directory that finds one wherever you are.
             </p>
           </div>
         </div>

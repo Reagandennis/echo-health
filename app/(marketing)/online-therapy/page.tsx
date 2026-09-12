@@ -25,9 +25,11 @@ import {
   faqJsonLd,
 } from "@/app/components/marketing/sections";
 import type { Faq } from "@/app/components/marketing/sections";
-import { CONDITIONS, LOCATIONS } from "@/lib/navigation";
+import { CONDITIONS } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
 import {
   PLAN_CURRENCY,
+  formatKes as money,
   PLAN_LABELS,
   PLAN_PERIOD_LABELS,
   PLAN_PRICES,
@@ -38,7 +40,7 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
 /**
  * The pillar page, and the hub of the site's internal link graph.
  *
- * Every condition page, every location page and all three service pages are
+ * Every condition page, every country page and all three service pages are
  * linked from the body here — not only from the footer. Footer links are
  * sitewide boilerplate and are discounted accordingly; a link from inside the
  * body of the topically-relevant page is the one that carries weight, and this
@@ -48,20 +50,23 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  * makes an online therapy page trustworthy is naming the people it cannot
  * serve, and the alternative — a page that implies we handle crises, prescribe,
  * or write court reports — converts someone into a booking that will fail them.
+ *
+ * ── Kenya appears here as a disclosure, never as the market ──
+ * This page was titled "Online therapy in Kenya" and read as a Kenya-only
+ * service. Kenya is where the SUPPLY is: the clinicians are licensed there,
+ * the sessions are scheduled on their clock, and the charge settles in their
+ * currency. The clients are worldwide (`lib/markets.ts`). So every Kenya
+ * reference below is one of the three facts a client elsewhere has to know
+ * before paying — licensure, time zone, currency — and none of them is a
+ * statement about who may book.
  */
 
 /** Prices are read from `lib/constants.ts`, never typed into prose. */
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 export const metadata = pageMetadata({
-  title: "Online therapy in Kenya: how it works",
+  title: "Online therapy: how it works and what it costs",
   description:
-    "Online therapy with therapists licensed in Kenya. How sessions run, what video, audio and messaging involve, what it costs, and who it is not right for.",
+    "Online therapy with therapists licensed in Kenya, booked from anywhere. How sessions run, what video and messaging involve, what it costs, and who it is not for.",
   path: "/online-therapy",
 });
 
@@ -74,7 +79,7 @@ const STEPS = [
   {
     icon: CalendarCheck,
     title: "Get matched and pick a time",
-    body: "We put forward therapists whose training and availability fit what you described. You choose, and you book a slot in East Africa Time.",
+    body: "We put forward therapists whose training and availability fit what you described. You choose, and you book from their real availability — published in East Africa Time (GMT+3), whichever time zone you are in.",
   },
   {
     icon: HeartHandshake,
@@ -104,13 +109,15 @@ const FORMATS = [
 const SUITS = [
   "You want to work on something specific — anxiety, low mood, a relationship, a loss, a pattern you keep repeating.",
   "Your schedule or your location makes a weekly trip to a consulting room unrealistic.",
+  "You can make a slot in your therapist's working day, which runs on East Africa Time (GMT+3).",
   "You have a private-enough space, a phone or laptop, and a connection that holds a video call.",
   "You would rather begin from home than walk into a waiting room.",
   "You want to try a session or two before committing to anything longer.",
 ];
 
 const DOES_NOT_SUIT = [
-  "You are in crisis, or someone is in immediate danger. Call 999 or 112 now, or use our crisis page — Echo is not an emergency service and nobody is monitoring for urgent messages.",
+  "You are in crisis, or someone is in immediate danger. Contact your local emergency number now, or use our crisis page — Echo is not an emergency service and nobody is monitoring for urgent messages.",
+  "You need a therapist registered by the regulator where you live. Echo's practitioners hold Kenyan licences and no others, so if local registration is what you need — for an insurer, a workplace scheme, or your own peace of mind — this is not the service.",
   "You need medication prescribed, reviewed or adjusted. Echo therapists do not prescribe. See a doctor or psychiatrist; therapy can run alongside that.",
   "You need a formal diagnosis or a report for an insurer, an employer, a school or a court. We do not carry out medico-legal assessments and cannot produce documents for them.",
   "Therapy has been ordered by a court, or is a condition of something. We cannot certify attendance or report on you to a third party.",
@@ -124,8 +131,12 @@ const FAQS: readonly Faq[] = [
     a: "For many common difficulties it is a genuine alternative rather than a compromise, and for people who would otherwise not go at all it is the only version that happens. That said, it is not universally better: some people need the room, and some presentations need a level of care that a video call cannot hold. If in-person is what you want, an in-person practice is the right choice and we would rather say so.",
   },
   {
-    q: "Are Echo therapists actually licensed?",
-    a: "Yes. Every therapist applying to Echo submits their professional licence and identification, and an administrator reviews and verifies the documents before that therapist can be matched with anyone. A therapist who has not completed that review cannot see clients on the platform.",
+    q: "Are Echo therapists actually licensed, and licensed where?",
+    a: "Licensed in Kenya. Every therapist applying to Echo submits their professional licence and identification, and an administrator reviews and verifies the documents before that therapist can be matched with anyone. Worth being explicit about the second half of the question: if you are outside Kenya, your therapist is not registered with the regulator in your own country. That is fine for therapy itself, and it is not fine if you need a locally registered provider for an insurer, an employer or a court.",
+  },
+  {
+    q: "I am not in East Africa. Will the session times work?",
+    a: "Sessions are scheduled in East Africa Time (GMT+3), because that is the clock your therapist keeps. From West Africa, southern Africa, the Gulf or the UK, most of an ordinary working day overlaps. From the United States or Canada the usable window is your therapist's afternoon and evening, which is your morning — a mid-morning slot in Nairobi falls in the middle of your night and is not bookable in practice. Each country page works the difference out for you rather than leaving you to do the arithmetic.",
   },
   {
     q: "How long is a session, and how many will I need?",
@@ -141,11 +152,11 @@ const FAQS: readonly Faq[] = [
   },
   {
     q: "Who can see what I say in a session?",
-    a: "Your therapist. Video runs directly between the two of you rather than being recorded by us, and messages and notes are stored behind per-record access controls so that only the people involved in your care can read them. Kenya's Data Protection Act 2019 gives you the right to access, correct or delete your data. Your therapist will explain at the outset the narrow circumstances in which they would have to break confidentiality — essentially, a serious risk of harm.",
+    a: "Your therapist. Video runs directly between the two of you rather than being recorded by us, and messages and notes are stored behind per-record access controls so that only the people involved in your care can read them. Echo is a Kenyan data controller, so your records are handled under Kenya's Data Protection Act 2019, which gives you the right to access, correct or delete them. Your therapist will explain at the outset the narrow circumstances in which they would have to break confidentiality — essentially, a serious risk of harm.",
   },
   {
-    q: "How do I pay?",
-    a: "M-Pesa, card or bank transfer through Paystack, in Kenyan shillings. You pay Echo, never your therapist directly, and there is no subscription to cancel.",
+    q: "How do I pay, and in what currency?",
+    a: "Card or bank transfer through Paystack, and M-Pesa if you hold a Kenyan mobile-money account. The charge settles in Kenyan shillings whatever your own currency is, so if your card is denominated in something else your bank sets the exchange rate and may add its own fee. You pay Echo, never your therapist directly, and there is no subscription to cancel.",
   },
 ];
 
@@ -169,7 +180,15 @@ const serviceJsonLd = {
     alternateName: "Echo Health",
     url: siteUrl,
   },
-  areaServed: { "@type": "Country", name: "Kenya" },
+  /* Was `{ name: "Kenya" }` — a declaration that this service is available in
+     one country, which is the opposite of true and the single most misleading
+     thing this page emitted. Derived from `lib/markets.ts` so the list cannot
+     drift from the country pages; `country` carries its own article for prose,
+     which a schema.org `Country.name` must not. */
+  areaServed: MARKETS.map((m) => ({
+    "@type": "Country",
+    name: m.country.replace(/^the /, ""),
+  })),
   availableChannel: {
     "@type": "ServiceChannel",
     serviceUrl: `${siteUrl}/get-started`,
@@ -187,9 +206,12 @@ const serviceJsonLd = {
 const medicalWebPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "MedicalWebPage",
-  name: "Online therapy in Kenya",
+  name: "Online therapy",
   url: `${siteUrl}/online-therapy`,
-  inLanguage: "en-KE",
+  /* Plain "en", not "en-KE": the page is written for readers in thirteen
+     markets, and a regional language tag on the pillar page is a signal that
+     this is Kenyan-audience content. */
+  inLanguage: "en",
   audience: { "@type": "Patient" },
   about: CONDITIONS.map((c) => ({ "@type": "MedicalCondition", name: c.label })),
 };
@@ -253,10 +275,12 @@ export default function OnlineTherapyPage() {
             Therapy that fits around the life you actually have
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-8 text-stone-600">
-            Echo is online talking therapy with practitioners licensed in Kenya.
             Fifty minutes, over video, from wherever you can close a door — no
             commute, no waiting room, and no subscription running quietly in the
-            background.
+            background. Three things to know before you book: your therapist is
+            licensed in Kenya rather than in your own country, sessions are
+            scheduled in East Africa Time (GMT+3), and you are charged in Kenyan
+            shillings whatever your own currency.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <CtaButton href="/get-started">Find your therapist</CtaButton>
@@ -290,8 +314,8 @@ export default function OnlineTherapyPage() {
               What changes is the logistics, and the logistics are usually what
               stops people. No hour lost to traffic on either side of the
               session. No explaining to a colleague where you are going. No
-              geography problem if the therapist who suits you practises four
-              hundred kilometres away.
+              geography problem if the therapist who suits you practises in
+              another country — which, on Echo, they usually do.
             </p>
             <p>
               What does not change is the part that matters: it is still a
@@ -363,12 +387,12 @@ export default function OnlineTherapyPage() {
             <div className="mt-6 flex items-start gap-3 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
               <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={1.8} aria-hidden="true" />
               <p className="text-sm leading-6 text-stone-600">
-                In immediate danger? Contact your local emergency number
-                . Our{" "}
+                In immediate danger? Contact your local emergency number. Our{" "}
                 <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                   crisis page
                 </Link>{" "}
-                lists verified helplines with their real opening hours.
+                lists verified helplines with their real opening hours, and a
+                directory that finds one wherever you are.
               </p>
             </div>
           </div>
@@ -406,9 +430,14 @@ export default function OnlineTherapyPage() {
             See the full comparison
           </CtaButton>
           <p className="max-w-2xl text-center text-sm leading-7 text-stone-500">
-            Paid by M-Pesa, card or bank transfer through Paystack, in Kenyan
-            shillings. Cancel a booked session at least 24 hours ahead and the
-            credit returns to your account.
+            {/* The figures above are rendered server-side in KES and are not
+                converted — only `PriceTag` on /pricing and /checkout shows an
+                approximate local amount, so this must not promise one here. */}
+            Paid by card or bank transfer through Paystack, or by M-Pesa if you
+            hold a Kenyan mobile-money account. The charge settles in Kenyan
+            shillings whatever your own currency; the pricing page shows an
+            approximate figure in yours. Cancel a booked session at least 24
+            hours ahead and the credit returns to your account.
           </p>
         </div>
       </Section>
@@ -454,10 +483,14 @@ export default function OnlineTherapyPage() {
               ],
             },
             {
+              /* Country pages, not city pages: what differs between clients is
+                 the time-zone gap to Nairobi, the currency their bank converts
+                 from, and whether M-Pesa is available — all national, none
+                 municipal. Each page states the licensure gap first. */
               heading: "By where you are",
-              links: LOCATIONS.map((l) => ({
-                href: `/online-therapy/${l.slug}`,
-                label: `Online therapy in ${l.label}`,
+              links: MARKETS.map((m) => ({
+                href: `/online-therapy/${m.slug}`,
+                label: `Therapy in ${m.country}`,
               })),
             },
           ]}

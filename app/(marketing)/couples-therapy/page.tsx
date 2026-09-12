@@ -15,8 +15,10 @@ import {
   faqJsonLd,
 } from "@/app/components/marketing/sections";
 import type { Faq } from "@/app/components/marketing/sections";
-import { CONDITIONS, LOCATIONS } from "@/lib/navigation";
-import { PLAN_CURRENCY, PLAN_PRICES, PLAN_SESSIONS } from "@/lib/constants";
+import { CONDITIONS } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
+import { PLAN_CURRENCY,
+  formatKes as money, PLAN_PRICES, PLAN_SESSIONS } from "@/lib/constants";
 import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
 
 /**
@@ -36,19 +38,19 @@ import { legalEntityName, pageMetadata, siteUrl } from "@/lib/seo";
  *    front of someone you fear can raise the risk to you after the session
  *    ends. That paragraph is a safety notice, not a disclaimer, and it is
  *    placed where someone skimming will hit it.
+ *
+ * ── Kenya is the therapist's licence, not the couple's address ──
+ * Scheduling is the one genuinely hard part of couples work, and on this
+ * platform it is harder than usual: two diaries have to meet a third that runs
+ * on East Africa Time. That is stated in the steps rather than discovered at
+ * the booking screen.
  */
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 export const metadata = pageMetadata({
-  title: "Couples therapy online in Kenya",
+  title: "Couples therapy online: how a joint session works",
   description:
-    "Online couples therapy with therapists licensed in Kenya. What a joint session involves, one price covering both partners, and when it is not the right step.",
+    "Online couples therapy with a therapist licensed in Kenya. What a joint session involves, one price covering both partners, and when it is not the right step.",
   path: "/couples-therapy",
 });
 
@@ -61,7 +63,7 @@ const STEPS = [
   {
     icon: CalendarCheck,
     title: "Agree a time you can both make",
-    body: "The one genuinely hard part of couples therapy is the diary. Pick a slot you can both protect every week or fortnight; evening times exist for exactly this reason.",
+    body: "The one genuinely hard part of couples therapy is the diary — and here it is two of yours against a therapist keeping East Africa Time (GMT+3). Pick a slot you can both protect every week or fortnight, and check what it is on your own clock before you take it.",
   },
   {
     icon: Users,
@@ -84,6 +86,10 @@ const FAQS: readonly Faq[] = [
   {
     q: "Do we both need to be in the same room?",
     a: "Yes. A couples session on Echo is the two of you together on one device and your therapist on the other — the session room holds two connections, so you cannot each join from a different place. If you are currently living apart, or one of you travels, plan the sessions around being in the same room; if that is not possible, individual therapy on the relationship is the workable alternative.",
+  },
+  {
+    q: "We are not in East Africa. Does that make this harder?",
+    a: "Only the scheduling, and it is worth planning for. Your therapist is licensed in Kenya and publishes availability in East Africa Time (GMT+3), so the slot has to work for two of you and for them. From Africa, the Gulf or the UK that is an ordinary evening or working-day appointment. From the United States or Canada the realistic window is your morning, which for a couple usually means before work rather than after it. Each country page sets out the exact gap.",
   },
   {
     q: "Whose therapist is it? Will they take sides?",
@@ -119,7 +125,12 @@ const serviceJsonLd = {
     alternateName: "Echo Health",
     url: siteUrl,
   },
-  areaServed: { "@type": "Country", name: "Kenya" },
+  /* Was `{ name: "Kenya" }`. Kenya is where the licence is, not where the
+     couple is; the list comes from `lib/markets.ts`. */
+  areaServed: MARKETS.map((m) => ({
+    "@type": "Country",
+    name: m.country.replace(/^the /, ""),
+  })),
   availableChannel: {
     "@type": "ServiceChannel",
     serviceUrl: `${siteUrl}/get-started`,
@@ -138,9 +149,9 @@ const serviceJsonLd = {
 const medicalWebPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "MedicalWebPage",
-  name: "Couples therapy online in Kenya",
+  name: "Couples therapy online",
   url: `${siteUrl}/couples-therapy`,
-  inLanguage: "en-KE",
+  inLanguage: "en",
   audience: { "@type": "Patient" },
 };
 
@@ -159,9 +170,10 @@ export default function CouplesTherapyPage() {
             The conversation you keep not managing to have
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-8 text-stone-600">
-            Joint sessions with a therapist licensed in Kenya, for couples who
-            are stuck in the same argument, rebuilding after something, or trying
-            to work out whether to stay. One price covers both of you.
+            Joint sessions for couples who are stuck in the same argument,
+            rebuilding after something, or trying to work out whether to stay.
+            One price covers both of you. Your therapist is licensed in Kenya
+            rather than in your own country, and books in East Africa Time.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <CtaButton href="/get-started">Book a joint session</CtaButton>
@@ -234,13 +246,13 @@ export default function CouplesTherapyPage() {
                   <Link href="/individual-therapy" className="font-semibold text-brand-700 underline underline-offset-2">
                     individual therapy
                   </Link>{" "}
-                  instead and tell your therapist what is happening. If you are in
-                  immediate danger, contact your local emergency number
-                  , or see our{" "}
+                  instead and tell your therapist what is happening. If you are
+                  in immediate danger, contact your local emergency number, or
+                  see our{" "}
                   <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                     verified crisis lines
                   </Link>
-                  .
+                  , which include a directory that finds one wherever you are.
                 </p>
               </div>
             </div>
@@ -322,8 +334,7 @@ export default function CouplesTherapyPage() {
             <LifeBuoy className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" strokeWidth={1.8} aria-hidden="true" />
             <p className="text-sm leading-6 text-stone-700">
               Echo is not a crisis service. If you or someone else is in
-              immediate danger, contact your local emergency number
-              , or see our{" "}
+              immediate danger, contact your local emergency number, or see our{" "}
               <Link href="/crisis" className="font-semibold text-brand-700 underline underline-offset-2">
                 verified crisis lines
               </Link>
@@ -351,9 +362,9 @@ export default function CouplesTherapyPage() {
             href: `/therapy-for/${c.slug}`,
             label: `Therapy for ${c.short}`,
           })),
-          ...LOCATIONS.map((l) => ({
-            href: `/online-therapy/${l.slug}`,
-            label: `Therapy in ${l.label}`,
+          ...MARKETS.map((m) => ({
+            href: `/online-therapy/${m.slug}`,
+            label: `Therapy in ${m.country}`,
           })),
         ]}
       />

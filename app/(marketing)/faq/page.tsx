@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/seo";
 import {
   PLAN_PRICES,
   PLAN_SESSIONS,
-  PLAN_CURRENCY,
+  formatKes as money,
 } from "@/lib/constants";
 
 /**
@@ -16,17 +16,11 @@ import {
  * one is indexed as FAQ structured data, so a stale figure propagates into
  * search results.
  */
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 export const metadata = pageMetadata({
   title: "Frequently Asked Questions",
   description:
-    "Answers about Echo Health therapy: what sessions cost in shillings, how matching works, what stays private, and how to cancel or switch therapist.",
+    "Answers about Echo Health therapy: where the therapists are licensed, what a session costs and in which currency, what stays private, and how to switch therapist.",
   path: "/faq",
 });
 
@@ -55,6 +49,18 @@ const faqs = [
         q: "Are the therapists licensed?",
         a: "Yes. Every therapist applying to Echo Health submits their professional licence and identification, and an administrator reviews and verifies it before they are able to see any client. Therapists who have not completed that review cannot be matched with you.",
       },
+      {
+        /*
+         * Added because it is the question a client outside Kenya has and the
+         * site did not answer. Echo's clinicians are licensed in Kenya and its
+         * clients are worldwide (`lib/markets.ts`), so the honest answer names
+         * the licensure gap first and the scheduling second. It deliberately
+         * makes no claim about which jurisdictions Echo is "available in" —
+         * that would be a legal claim nobody here has established.
+         */
+        q: "Where are the therapists licensed, and can I book from outside Kenya?",
+        a: "The therapists hold Kenyan licences, and sessions are online, so being elsewhere affects three practical things rather than whether you can book. First, your therapist is not registered with the regulator in your own country — that is fine for the therapy itself and not a substitute if an insurer, an employer or a court requires a locally registered provider. Second, availability is published in East Africa Time (GMT+3): across Africa, the Gulf and the UK that sits inside an ordinary day, while from North America the workable window is their afternoon and evening, which is your morning. Third, the charge settles in Kenyan shillings whatever your card's currency. Each country page on the site sets out what those mean where you are.",
+      },
     ],
   },
   {
@@ -62,13 +68,15 @@ const faqs = [
     questions: [
       {
         q: "How much does Echo Health cost?",
-        a: `Sessions start at ${money(PLAN_PRICES.individual)} for a single 50-minute video session. The Plus bundle is ${money(PLAN_PRICES.plus)} for ${PLAN_SESSIONS.plus} sessions plus therapy materials, and Couples is ${money(PLAN_PRICES.couples)} for ${PLAN_SESSIONS.couples} joint sessions covering both partners. These are one-time purchases — there is no subscription and nothing auto-renews. Your session credits never expire. Pay by M-Pesa, card or bank transfer through Paystack; you never pay your therapist directly. See our Pricing page for the full comparison.`,
+        a: `Sessions start at ${money(PLAN_PRICES.individual)} for a single 50-minute video session. The Plus bundle is ${money(PLAN_PRICES.plus)} for ${PLAN_SESSIONS.plus} sessions plus therapy materials, and Couples is ${money(PLAN_PRICES.couples)} for ${PLAN_SESSIONS.couples} joint sessions covering both partners. These are one-time purchases — there is no subscription and nothing auto-renews. Your session credits never expire. Every amount is charged in Kenyan shillings whatever your own currency, and you can pay by card or bank transfer through Paystack, or by M-Pesa if you hold a Kenyan mobile-money account; you never pay your therapist directly. See our Pricing page for the full comparison.`,
       },
       {
         // Replaced an answer written for the United States: "superbill",
         // "out-of-network reimbursement" and "HSA/FSA cards" are US insurance
-        // constructs that do not exist for a Kenyan client, and offering them
-        // is a promise we cannot keep.
+        // constructs Echo cannot produce — it is not a US-billing provider and
+        // its clinicians are not licensed in any US state — so offering them is
+        // a promise we cannot keep. Note the reason is *what Echo is*, not
+        // where the client is: plenty of clients are in the United States.
         q: "Do you accept insurance?",
         a: "Not at the moment — sessions are paid for directly. If your insurer or employer reimburses outpatient mental health care, email support@echohealth.app and we can send you an itemised receipt for your payment to submit to them. We cannot guarantee any particular insurer will accept it.",
       },
@@ -86,13 +94,15 @@ const faqs = [
     category: "Privacy & Security",
     questions: [
       {
-        // Was "Echo Health is fully HIPAA-compliant". HIPAA is a United States
-        // statute and does not apply to a service operating in Kenya — the
-        // relevant instrument is the Data Protection Act 2019. We hold no
-        // certification against either, so this now describes the protections
-        // that are actually in place rather than naming a regime.
+        // Was "Echo Health is fully HIPAA-compliant". HIPAA binds US covered
+        // entities — health plans, US-billing providers and clearinghouses —
+        // and Echo is none of those, wherever a given client lives. The
+        // instrument that does govern these records is Kenya's Data Protection
+        // Act 2019, because that is where the controller is. We hold no
+        // certification against either regime, so this describes the
+        // protections that are actually in place rather than naming one.
         q: "Is my data secure and private?",
-        a: "Your video sessions are encrypted end to end between participants, and everything else — messages, notes, journal entries — travels over an encrypted connection and is stored behind per-record access controls, so only you and the therapist you are working with can read it. We never sell your personal or health data. Kenya's Data Protection Act 2019 gives you the right to access, correct or delete your data; email support@echohealth.app to exercise it.",
+        a: "Your video sessions are encrypted end to end between participants, and everything else — messages, notes, journal entries — travels over an encrypted connection and is stored behind per-record access controls, so only you and the therapist you are working with can read it. We never sell your personal or health data. Echo is a Kenyan data controller, so your records are handled under Kenya's Data Protection Act 2019 wherever you live, and it gives you the right to access, correct or delete them; email support@echohealth.app to exercise it.",
       },
       {
         q: "Can I remain anonymous to my therapist?",

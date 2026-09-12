@@ -27,9 +27,11 @@ import {
 } from "@/app/components/marketing/sections";
 import { sampleTherapists } from "@/lib/directory";
 import { CONDITIONS } from "@/lib/navigation";
+import { MARKETS } from "@/lib/markets";
 import { pageMetadata, siteUrl, defaultDescription } from "@/lib/seo";
 import {
   PLAN_CURRENCY,
+  formatKes as money,
   PLAN_PERIOD_LABELS,
   PLAN_PRICES,
   PLAN_SESSIONS,
@@ -55,7 +57,7 @@ import {
  * actual directory and renders nothing if it is empty.
  */
 export const metadata = pageMetadata({
-  title: "Online therapy with licensed therapists in Kenya",
+  title: "Online therapy with licensed therapists",
   description: defaultDescription,
   path: "/",
   absoluteTitle: true,
@@ -211,12 +213,6 @@ const PLANS = [
   },
 ] as const;
 
-const money = (amount: number) =>
-  new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: PLAN_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 /**
  * The home-page FAQ.
@@ -228,11 +224,11 @@ const money = (amount: number) =>
 const FAQS: readonly Faq[] = [
   {
     q: "How much does therapy on Echo cost?",
-    a: `Sessions start at ${money(PLAN_PRICES.individual)} for one 50-minute session. The Plus bundle is ${money(PLAN_PRICES.plus)} for two sessions, and Couples is ${money(PLAN_PRICES.couples)} for two joint sessions. Every plan is a one-time payment — there is no subscription and nothing renews. Pay with M-Pesa, card or bank transfer.`,
+    a: `Sessions start at ${money(PLAN_PRICES.individual)} for one 50-minute session. The Plus bundle is ${money(PLAN_PRICES.plus)} for two sessions, and Couples is ${money(PLAN_PRICES.couples)} for two joint sessions. Every plan is a one-time payment — there is no subscription and nothing renews. Pay by card, bank transfer, or M-Pesa where it is available.`,
   },
   {
     q: "Who are the therapists?",
-    a: "Independently licensed mental-health practitioners registered in Kenya. We check every practitioner's credentials before their profile appears on the site, and nobody is listed until that check passes.",
+    a: "Independently licensed mental-health practitioners registered in Kenya. We check every practitioner's credentials before their profile appears on the site, and nobody is listed until that check passes. Wherever you are in the world, your therapist is licensed in Kenya rather than in your own country — which matters only if you need documentation a local insurer, employer, school or court will accept.",
   },
   {
     q: "Is Echo Health right for me?",
@@ -247,8 +243,8 @@ const FAQS: readonly Faq[] = [
     a: "Tell us and we will match you with someone else. There is no charge to switch and any unused session credits stay with you — the fit between you and your therapist is the part of therapy that most predicts whether it helps.",
   },
   {
-    q: "Can I use Echo from outside Kenya?",
-    a: "You can, and many people do. Be aware that our therapists are licensed in Kenya, sessions are scheduled in East Africa Time, and prices are charged in Kenyan shillings.",
+    q: "Where in the world can I use Echo?",
+    a: "Anywhere with a private space and a usable connection — most of our clients are outside Kenya. Three things to know before you book: your therapist is licensed in Kenya rather than locally, sessions are scheduled in East Africa Time (GMT+3), and you are charged in Kenyan shillings whatever your own currency. Each country page sets out what that means for your time zone and your bank.",
   },
   {
     q: "Is what I say private?",
@@ -273,7 +269,13 @@ export default async function Home() {
           "@type": "Service",
           serviceType: "Online psychotherapy",
           provider: { "@type": "MedicalOrganization", name: "Echo Health", url: siteUrl },
-          areaServed: { "@type": "Country", name: "Kenya" },
+          /* Was `{ "@type": "Country", name: "Kenya" }`, which told search
+             engines the service is available in Kenya and nowhere else — the
+             machine-readable version of the same mistake the title made. */
+          areaServed: MARKETS.map((m) => ({
+            "@type": "Country",
+            name: m.country.replace(/^the /, ""),
+          })),
           /* `offers` carries the real figures from `lib/constants.ts`, so a
              price change cannot leave stale structured data behind. */
           offers: PLANS.map((p) => ({
@@ -466,7 +468,7 @@ export default async function Home() {
         <SectionHeading
           eyebrow="Pricing"
           title="One payment. No subscription."
-          body="Session credits never expire, and nothing renews on its own. Pay with M-Pesa, card or bank transfer."
+          body="Session credits never expire, and nothing renews on its own. Pay by card, bank transfer, or M-Pesa where it is available."
         />
         {/* Three-up only from `md`. At 640px each card had ~145px of content
             width, which is not enough for a price at any weight that reads as

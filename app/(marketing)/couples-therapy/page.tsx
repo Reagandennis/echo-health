@@ -48,7 +48,7 @@ const money = (amount: number) =>
 export const metadata = pageMetadata({
   title: "Couples therapy online in Kenya",
   description:
-    "Online couples therapy with therapists licensed in Kenya. What a joint session involves, one price covering both partners, and when couples therapy is not the right step.",
+    "Online couples therapy with therapists licensed in Kenya. What a joint session involves, one price covering both partners, and when it is not the right step.",
   path: "/couples-therapy",
 });
 

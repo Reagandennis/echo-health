@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 import { ArrowLeft, ArrowRight, Check, LifeBuoy, Lock, ShieldCheck } from "lucide-react";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 import {
@@ -50,7 +50,7 @@ export default function IntakeQuiz() {
   const question = questions[index];
 
   useEffect(() => {
-    posthog.capture(ANALYTICS_EVENTS.INTAKE_STARTED);
+    capture(ANALYTICS_EVENTS.INTAKE_STARTED);
   }, []);
 
   /*
@@ -114,10 +114,10 @@ export default function IntakeQuiz() {
   }, []);
 
   const advance = useCallback(() => {
-    posthog.capture(ANALYTICS_EVENTS.INTAKE_STEP_COMPLETED, { step: index + 1, total });
+    capture(ANALYTICS_EVENTS.INTAKE_STEP_COMPLETED, { step: index + 1, total });
     if (index + 1 >= total) {
       setDone(true);
-      posthog.capture(ANALYTICS_EVENTS.INTAKE_COMPLETED, { plan: recommendPlan(answers) });
+      capture(ANALYTICS_EVENTS.INTAKE_COMPLETED, { plan: recommendPlan(answers) });
     } else {
       setIndex(index + 1);
     }
@@ -134,10 +134,10 @@ export default function IntakeQuiz() {
     }
     persist({ ...answers, [q.id]: [value] });
     /* Single-select advances on tap. One tap instead of two, ×7 screens. */
-    posthog.capture(ANALYTICS_EVENTS.INTAKE_STEP_COMPLETED, { step: index + 1, total });
+    capture(ANALYTICS_EVENTS.INTAKE_STEP_COMPLETED, { step: index + 1, total });
     if (index + 1 >= total) {
       setDone(true);
-      posthog.capture(ANALYTICS_EVENTS.INTAKE_COMPLETED, {
+      capture(ANALYTICS_EVENTS.INTAKE_COMPLETED, {
         plan: recommendPlan({ ...answers, [q.id]: [value] }),
       });
     } else {

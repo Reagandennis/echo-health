@@ -61,7 +61,7 @@ const CHILDLINE = CRISIS_REGIONS.find((r) => r.region === "Kenya")?.services.fin
 export const metadata = pageMetadata({
   title: "Teen therapy online for ages 13–17",
   description:
-    "Online therapy for 13 to 17 year olds in Kenya. A parent or guardian opens the account and consents — and here is exactly how confidentiality works for a teen client.",
+    "Online therapy for 13 to 17 year olds in Kenya. A parent or guardian opens the account and consents — and here is exactly how confidentiality works for a teen.",
   path: "/teen-therapy",
 });
 

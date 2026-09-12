@@ -347,7 +347,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   grief: {
     metaTitle: "Therapy for grief and loss in Kenya",
     metaDescription:
-      "Online therapy for grief and loss with therapists licensed in Kenya. Why grief is not an illness, when it is worth talking to someone, and what the work involves.",
+      "Online therapy for grief and loss with therapists licensed in Kenya. Why grief is not an illness, when to talk to someone about it, and what therapy involves.",
     h1: "Therapy for grief and loss",
     eyebrow: "What we help with",
     topic: "grief",
@@ -414,7 +414,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   relationships: {
     metaTitle: "Therapy for relationship difficulties",
     metaDescription:
-      "Online therapy for relationship difficulties with therapists licensed in Kenya — recurring conflict, trust and patterns. What individual and couples work each involve.",
+      "Online therapy for relationship difficulties with therapists licensed in Kenya — conflict, trust and patterns. What individual and couples work each involve.",
     h1: "Therapy for relationship difficulties",
     eyebrow: "What we help with",
     topic: "relationship difficulties",
@@ -548,7 +548,7 @@ const CONTENT: Record<ConditionSlug, ConditionContent> = {
   sleep: {
     metaTitle: "Therapy for sleep problems and insomnia",
     metaDescription:
-      "Online therapy for sleep problems with therapists licensed in Kenya. How CBT-I works, when a sleep problem needs a doctor instead, and what a first session covers.",
+      "Online therapy for sleep problems with therapists licensed in Kenya. How CBT-I works, when it needs a doctor instead, and what a first session covers.",
     h1: "Therapy for sleep problems",
     eyebrow: "What we help with",
     topic: "sleep problems",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 import { createVideoSessionAction } from "@/app/actions/database";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/events";
 
@@ -113,7 +113,7 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
     // Anchor for time-to-connect. Taken before getUserMedia, because the device
     // permission prompt is part of what makes joining a call slow.
     const joinStartedAt = Date.now();
-    posthog.capture(ANALYTICS_EVENTS.VIDEO_ROOM_OPENED, { role });
+    capture(ANALYTICS_EVENTS.VIDEO_ROOM_OPENED, { role });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -179,13 +179,13 @@ export function useVideoSession({ sessionId, role }: UseVideoSessionProps) {
          * and the ICE outcome are what diagnose a bad call.
          */
         if (pc.connectionState === "connected") {
-          posthog.capture(ANALYTICS_EVENTS.VIDEO_CONNECTED, {
+          capture(ANALYTICS_EVENTS.VIDEO_CONNECTED, {
             seconds_to_connect: Math.round((Date.now() - joinStartedAt) / 1000),
           });
         }
         if (pc.connectionState === "failed") {
           setError("The call connection dropped. Try rejoining.");
-          posthog.capture(ANALYTICS_EVENTS.VIDEO_FAILED, {
+          capture(ANALYTICS_EVENTS.VIDEO_FAILED, {
             reason: "peer_connection_failed",
             ice_connection_state: pc.iceConnectionState,
             seconds_since_join: Math.round((Date.now() - joinStartedAt) / 1000),

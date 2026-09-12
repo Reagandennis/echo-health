@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useUser } from "./UserProvider";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 
 interface ChatMessage {
   id: string;
@@ -218,7 +218,7 @@ export default function ChatWidget() {
         setSendError(true);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } else {
-        posthog.capture("chat_message_sent", {
+        capture("chat_message_sent", {
           session_id: sessionId,
           message_length: text.length,
         });

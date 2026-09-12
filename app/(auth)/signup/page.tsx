@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { signInWithGoogle, signUp } from "@/lib/auth/client";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 
 /**
  * Sign-up entry point.
@@ -39,13 +39,13 @@ export default function SignUpPage() {
 
   function handleSignUp() {
     setLeaving(true);
-    posthog.capture("sign_up_started", { method: "auth0" });
+    capture("sign_up_started", { method: "auth0" });
     signUp(postLoginReturnTo());
   }
 
   function handleGoogle() {
     setLeaving(true);
-    posthog.capture("sign_up_started", { method: "google" });
+    capture("sign_up_started", { method: "google" });
     signInWithGoogle(postLoginReturnTo());
   }
 

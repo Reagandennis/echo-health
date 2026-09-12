@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import posthog from "posthog-js";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import {
+  analyticsNeverReadyOnServer,
+  getAnalytics,
+  isAnalyticsReady,
+  optInCapturing,
+  optOutCapturing,
+  subscribeAnalyticsReady,
+} from "@/lib/analytics/client";
 import { Check, Loader2 } from "lucide-react";
 
 /**
@@ -35,7 +42,7 @@ import { Check, Loader2 } from "lucide-react";
  *
  * ## How the analytics toggle works
  *
- * `posthog.opt_out_capturing()` sets PostHog's own persisted opt-out flag and
+ * `optOutCapturing()` sets PostHog's own persisted opt-out flag and
  * stops every subsequent capture, including autocapture and pageviews. It is
  * read back with `has_opted_out_capturing()`, so this component holds no
  * duplicate source of truth that could disagree with the library's — a second
@@ -62,27 +69,38 @@ export default function CookiePreferences() {
    * This is the case effects exist for: reading a value out of an external
    * store on mount.
    */
+  /*
+   * The SDK is dynamically imported, so on a fast click into /cookies it may
+   * genuinely not be loaded yet. Waiting on readiness is what stops the toggle
+   * rendering "off" — which would read as "analytics is already disabled" — to
+   * someone whose analytics are in fact on.
+   */
+  const ready = useSyncExternalStore(
+    subscribeAnalyticsReady,
+    isAnalyticsReady,
+    analyticsNeverReadyOnServer
+  );
+
   /* eslint-disable react-hooks/set-state-in-effect -- see the note above */
   useEffect(() => {
-    try {
-      setAnalytics(!posthog.has_opted_out_capturing());
-    } catch {
-      /* PostHog is not initialised when the key is unset (local dev, or a
-         self-hosted build with analytics disabled). Reporting "on" would be a
-         lie; reporting "off" is accurate — nothing is being captured. */
-      setAnalytics(false);
+    const ph = getAnalytics();
+    if (!ph) {
+      /* Not loaded. Either it is still arriving — in which case `ready` flips
+         and this runs again — or the key is unset (local dev, a self-hosted
+         build with analytics off, an extension that blocked the request). In
+         the latter case "off" is not a guess: nothing is being captured. */
+      if (ready) setAnalytics(false);
+      return;
     }
-  }, []);
+    setAnalytics(!ph.has_opted_out_capturing());
+  }, [ready]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function save() {
-    try {
-      if (analytics) posthog.opt_in_capturing();
-      else posthog.opt_out_capturing();
-    } catch {
-      /* Nothing to opt out of. The UI still confirms, because from the
-         person's point of view their preference is now the effective one. */
-    }
+    /* Queued if the SDK has not arrived, so a preference set in the first
+       second of the page load is applied rather than dropped. */
+    if (analytics) optInCapturing();
+    else optOutCapturing();
     setSaved(true);
     window.setTimeout(() => setSaved(false), 4000);
   }

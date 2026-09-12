@@ -26,8 +26,27 @@ describe("static public pages", () => {
 
     expect(screen.getByRole("heading", { name: "Privacy Policy" })).toBeInTheDocument();
     expect(screen.getByText("Last Updated: May 1, 2026")).toBeInTheDocument();
-    expect(screen.getByText(/HIPAA Compliant/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /HIPAA/i })).toHaveAttribute("href", "#hipaa");
+    /*
+     * Was `getByText(/HIPAA Compliant/)` plus a table-of-contents link to a
+     * `#hipaa` section.
+     *
+     * Both assertions were pinning false statements in place. HIPAA is a United
+     * States statute with no application to a service delivered from Kenya, so
+     * the badge claimed a compliance status that cannot exist here, and the
+     * section it linked to told Kenyan users to complain to a US federal
+     * agency. The rest of the site had already been swept for HIPAA claims;
+     * this test is part of why the privacy policy was not.
+     *
+     * They now assert the honest replacements: a badge describing the legal
+     * regime that actually governs the service, and the section stating the
+     * data-subject rights it grants.
+     */
+    expect(screen.getByText(/Kenya DPA 2019 aligned/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Your Rights Under the Data Protection Act/i })
+    ).toHaveAttribute("href", "#your-rights");
+    // Guard against the US text creeping back in wholesale.
+    expect(screen.queryByText(/HIPAA/)).not.toBeInTheDocument();
   });
 
   it("exports privacy page metadata", () => {

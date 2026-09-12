@@ -64,6 +64,37 @@ const publicColumns = {
   sessionDurationMinutes: therapists.sessionDurationMinutes,
 };
 
+/**
+ * Every read below degrades to "nobody is listed" instead of throwing.
+ *
+ * These queries run in three places that all fail badly on an exception:
+ * `generateStaticParams` for `/therapists/[id]`, the ISR render of
+ * `/therapists`, and the home page's therapist strip.
+ *
+ * With the error propagating, an unreachable database does not produce a
+ * degraded directory — it fails `next build` outright ("Failed to collect page
+ * data for /therapists/[id]"), so a momentary database blip during a deploy
+ * takes down the deploy of an otherwise entirely static marketing site. At
+ * request time it is a 500 on the most-linked page on the site.
+ *
+ * The honest empty state already exists on `/therapists`, and the home page
+ * omits its strip when the list is empty, so an empty result is a page that
+ * still works. `revalidate = 300` means the real roster reappears within five
+ * minutes of the database coming back, with no deploy.
+ *
+ * It is logged at `error` rather than swallowed: this must be loud in the
+ * server logs, because "the directory is empty" and "the directory is broken"
+ * look identical from the outside and only one of them needs a person.
+ */
+async function safely<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error(`[directory] ${what} failed; serving an empty directory.`, error);
+    return fallback;
+  }
+}
+
 function toDirectory(row: {
   id: string;
   name: string;
@@ -79,14 +110,20 @@ function toDirectory(row: {
 
 /** Every publicly listed therapist, most experienced first. */
 export async function listPublicTherapists(): Promise<DirectoryTherapist[]> {
-  const rows = await withAnonymous((tx) =>
-    tx
-      .select(publicColumns)
-      .from(therapists)
-      .where(publiclyVisible)
-      .orderBy(desc(therapists.experience), therapists.name)
+  return safely(
+    "listPublicTherapists",
+    async () => {
+      const rows = await withAnonymous((tx) =>
+        tx
+          .select(publicColumns)
+          .from(therapists)
+          .where(publiclyVisible)
+          .orderBy(desc(therapists.experience), therapists.name)
+      );
+      return rows.map(toDirectory);
+    },
+    []
   );
-  return rows.map(toDirectory);
 }
 
 /**
@@ -98,15 +135,21 @@ export async function listPublicTherapists(): Promise<DirectoryTherapist[]> {
  * Rotating the sample also means new clinicians get seen.
  */
 export async function sampleTherapists(limit = 3): Promise<DirectoryTherapist[]> {
-  const rows = await withAnonymous((tx) =>
-    tx
-      .select(publicColumns)
-      .from(therapists)
-      .where(publiclyVisible)
-      .orderBy(sql`random()`)
-      .limit(limit)
+  return safely(
+    "sampleTherapists",
+    async () => {
+      const rows = await withAnonymous((tx) =>
+        tx
+          .select(publicColumns)
+          .from(therapists)
+          .where(publiclyVisible)
+          .orderBy(sql`random()`)
+          .limit(limit)
+      );
+      return rows.map(toDirectory);
+    },
+    []
   );
-  return rows.map(toDirectory);
 }
 
 /** One therapist, or null. Applies the same visibility gate as the listing. */
@@ -117,14 +160,23 @@ export async function getPublicTherapist(id: string): Promise<DirectoryTherapist
     return null;
   }
 
-  const rows = await withAnonymous((tx) =>
-    tx
-      .select(publicColumns)
-      .from(therapists)
-      .where(and(publiclyVisible, eq(therapists.id, id)))
-      .limit(1)
+  return safely(
+    `getPublicTherapist(${id})`,
+    async () => {
+      const rows = await withAnonymous((tx) =>
+        tx
+          .select(publicColumns)
+          .from(therapists)
+          .where(and(publiclyVisible, eq(therapists.id, id)))
+          .limit(1)
+      );
+      return rows[0] ? toDirectory(rows[0]) : null;
+    },
+    /* `null` here renders the 404, not a 500. A profile that cannot be read is
+       indistinguishable from one that does not exist, from the visitor's side
+       — and `notFound()` is the response that does not leak a stack trace. */
+    null
   );
-  return rows[0] ? toDirectory(rows[0]) : null;
 }
 
 /** The specialty facets actually present in the directory, for the filter row. */

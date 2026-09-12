@@ -57,7 +57,7 @@ const CONTENT: Record<LocationSlug, CityContent> = {
   nairobi: {
     metaTitle: "Online therapy in Nairobi",
     metaDescription:
-      "Online therapy in Nairobi with therapists licensed in Kenya. Evening and weekend slots in East Africa Time, paid by M-Pesa, with no cross-city commute to manage.",
+      "Online therapy in Nairobi with therapists licensed in Kenya. Evening and weekend slots in East Africa Time, paid by M-Pesa, and no cross-city commute.",
     intro:
       "Nairobi has more private practice than anywhere else in the country, and it is still a city where the appointment you can get and the appointment you can actually reach are two different things. Online therapy removes the second problem entirely.",
     commute:
@@ -117,7 +117,7 @@ const CONTENT: Record<LocationSlug, CityContent> = {
   eldoret: {
     metaTitle: "Online therapy in Eldoret",
     metaDescription:
-      "Online therapy in Eldoret with therapists licensed in Kenya. Sessions in East Africa Time, paid by M-Pesa, and a choice of therapist that is not limited locally.",
+      "Online therapy in Eldoret with therapists licensed in Kenya. Sessions in East Africa Time, paid by M-Pesa, and a choice of therapist not limited locally.",
     intro:
       "In a town where a lot of people know a lot of people, the privacy of being seen walking into a practice is a genuine reason not to go. A session you take from your own house removes that consideration completely.",
     commute:

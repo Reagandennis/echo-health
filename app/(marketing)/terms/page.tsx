@@ -1,5 +1,46 @@
 import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
-import { pageMetadata } from "@/lib/seo";
+import { pageMetadata, legalEntityName } from "@/lib/seo";
+
+/**
+ * The public terms of service.
+ *
+ * ── What was corrected here, and why ────────────────────────────────────────
+ * Swept alongside /privacy, which had been a United States healthcare policy
+ * with a second company's product spliced into it. This file was in far better
+ * shape — no HIPAA, no CCPA, no arbitration clause naming a US forum, no USD,
+ * and §5 had already been corrected to Kenyan Shillings and one-time bundles.
+ * The one false statement was the contracting party: both §1 and §10 named
+ * "Echo Health, Inc.", a US corporate form. The registered entity is declared
+ * once in `lib/seo.ts` as `legalEntityName`, and is now interpolated from there
+ * so the contract and the footer copyright cannot drift apart. **Verify that
+ * string against the certificate of incorporation before relying on it** — a
+ * contract that names a party which does not exist binds nobody.
+ *
+ * ── WHAT IS MISSING, and was deliberately NOT invented ──────────────────────
+ * These are gaps, not oversights. Writing them would have meant drafting novel
+ * legal terms, which is not something to do from a code editor:
+ *
+ *   • **No governing-law or jurisdiction clause.** /privacy now states Kenyan
+ *     law and Kenyan courts; these Terms say nothing at all, so the agreement
+ *     they form has no stated forum. This is the largest gap on the page.
+ *   • **No dispute-resolution or complaints route** — nothing tells a user how
+ *     to raise a complaint about a therapist, or where it goes.
+ *   • **§5 references "our Refund Policy". There is no such page.** The route
+ *     does not exist and nothing links to one.
+ *   • **§4's "13-17" age band is a US COPPA artifact.** Kenyan law treats
+ *     everyone under 18 as a child requiring verifiable parental consent; the
+ *     13 floor comes from a statute that does not apply here.
+ *   • **§8 and §9 are US-style blanket disclaimers in capitals.** Kenya's
+ *     Consumer Protection Act 2012 limits how far a supplier can exclude
+ *     liability to a consumer, so parts of them may simply be unenforceable.
+ *     They were left as found rather than narrowed by guesswork.
+ *   • No intellectual-property or content-licence terms, and no clause
+ *     covering what happens to session credits on termination (§7 terminates
+ *     accounts "at any time, for any reason" and is silent on paid-for
+ *     credits, which §5 says do not expire).
+ *
+ * NOT LEGALLY REVIEWED. A Kenyan practitioner needs to close the above.
+ */
 
 export const metadata = pageMetadata({
   title: "Terms of Service",
@@ -17,7 +58,7 @@ const sections = [
     title: "1. Acceptance of Terms",
     content: `By accessing or using the Echo Health website, mobile application, or services (collectively, the "Platform"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, you may not access or use the Platform.
     
-These Terms constitute a legally binding agreement between you and Echo Health, Inc. ("Echo Health," "we," "us," or "our").`,
+These Terms constitute a legally binding agreement between you and ${legalEntityName} ("Echo Health," "we," "us," or "our"), which operates the Platform from Kenya.`,
   },
   {
     id: "not-medical-emergency",
@@ -64,7 +105,7 @@ You are responsible for maintaining the confidentiality of your account credenti
     id: "acceptable-use",
     title: "6. Acceptable Use",
     content: `You agree not to:
-- Use the Platform for any illegal purpose or in violation of any local, state, national, or international law.
+- Use the Platform for any illegal purpose, or in violation of Kenyan law or any other law that applies to you.
 - Harass, abuse, or harm another person, including Providers.
 - Impersonate any person or entity or misrepresent your affiliation.
 - Interfere with or disrupt the operation of the Platform or the servers or networks used to make the Platform available.
@@ -92,7 +133,7 @@ We do not guarantee that the Platform will be uninterrupted, secure, or error-fr
     title: "10. Contact Information",
     content: `If you have any questions about these Terms, please contact us at:
 
-Echo Health, Inc.
+${legalEntityName}
 Email: legal@echohealth.app`,
   },
 ];

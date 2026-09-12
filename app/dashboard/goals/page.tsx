@@ -9,7 +9,7 @@ import {
 } from "@/app/actions/database";
 import type { Goal, GoalMilestone } from "@/lib/types/documents";
 import { useUser } from "@/app/components/UserProvider";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 
 /**
  * `goals.milestones` is a real `jsonb` array in Postgres — it used to be a JSON
@@ -42,7 +42,7 @@ function GoalCard({ goal, onUpdate }: { readonly goal: Goal; readonly onUpdate: 
         completedAt: allDone ? new Date() : null,
       });
       if (allDone) {
-        posthog.capture("goal_completed", {
+        capture("goal_completed", {
           goal_id: goal.$id,
           milestone_count: updated.length,
           assigned_by: goal.assignedBy,
@@ -140,7 +140,7 @@ function AddGoalModal({ onClose, onSaved, userId }: {
         assignedBy: "self",
         createdAt: new Date().toISOString(),
       });
-      posthog.capture("goal_created", {
+      capture("goal_created", {
         goal_id: g.$id,
         milestone_count: ms.length,
         assigned_by: "self",

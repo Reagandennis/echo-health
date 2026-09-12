@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn, signInWithGoogle } from "@/lib/auth/client";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics/client";
 
 /** Turn Auth0's `?error=…&error_description=…` bounce-back into display copy. */
 function readAuthError(params: URLSearchParams): string | null {
@@ -36,13 +36,13 @@ function SignInLaunch() {
 
   function handleSignIn() {
     setLeaving(true);
-    posthog.capture("sign_in_started", { method: "auth0" });
+    capture("sign_in_started", { method: "auth0" });
     signIn();
   }
 
   function handleGoogle() {
     setLeaving(true);
-    posthog.capture("sign_in_started", { method: "google" });
+    capture("sign_in_started", { method: "google" });
     signInWithGoogle();
   }
 

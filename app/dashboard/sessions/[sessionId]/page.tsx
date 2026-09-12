@@ -9,7 +9,6 @@ import VideoRoom from "@/app/components/video/VideoRoom";
 import { getSessionAction } from "@/app/actions/database";
 import { useRealtime } from "@/hooks/useRealtime";
 import type { TherapySession } from "@/lib/types/documents";
-import posthog from "posthog-js";
 
 export default function ClientSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();

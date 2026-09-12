@@ -33,7 +33,7 @@ import {
   type KycStatus,
 } from "@/lib/kyc";
 import KycDocumentUploader, { type KycDocumentView } from "./KycDocumentUploader";
-import posthog from "posthog-js";
+import { capture, captureException } from "@/lib/analytics/client";
 
 const SPECIALTIES = [
   "Anxiety & Stress", "Depression", "Trauma & PTSD", "Couples Therapy",
@@ -260,7 +260,7 @@ export default function TherapistOnboardingPage() {
       await refreshDocuments();
       setStep(2);
     } catch (err: unknown) {
-      posthog.captureException(err);
+      captureException(err);
       setError(err instanceof Error ? err.message : "Failed to save profile.");
     } finally {
       setSaving(false);
@@ -273,7 +273,7 @@ export default function TherapistOnboardingPage() {
     try {
       await submitKycForReviewAction();
 
-      posthog.capture("therapist_kyc_submitted", {
+      capture("therapist_kyc_submitted", {
         document_count: documents.length,
         document_types: documents.map((d) => d.docType),
         specialties: selectedSpecialties,
@@ -284,7 +284,7 @@ export default function TherapistOnboardingPage() {
       // stored still showed the applicant a success page.
       router.push("/onboarding/therapist/submitted");
     } catch (err: unknown) {
-      posthog.captureException(err);
+      captureException(err);
       setError(
         err instanceof Error ? err.message : "Could not submit your application."
       );

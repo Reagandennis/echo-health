@@ -48,7 +48,7 @@ const SUMMARIES: Record<ConditionSlug, string> = {
 export const metadata = pageMetadata({
   title: "What we help with — therapy by concern",
   description:
-    "Anxiety, depression, stress and burnout, trauma, grief, relationships, self-esteem and sleep. What each looks like, when to talk to someone, and what therapy involves.",
+    "Anxiety, depression, stress and burnout, trauma, grief, relationships, self-esteem, sleep. What each looks like, when to seek help, and what therapy involves.",
   path: "/therapy-for",
 });
 

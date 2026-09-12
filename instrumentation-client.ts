@@ -1,7 +1,7 @@
-import posthog from "posthog-js";
+import type { PostHog } from "posthog-js";
 
 import { sanitizeProperties } from "@/lib/analytics/sanitize";
-import { markAnalyticsReady } from "@/lib/analytics/ready";
+import { markAnalyticsReady } from "@/lib/analytics/client";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -29,7 +29,17 @@ const isLocal =
  * silently discarded. Two inits meant the config you read was not the config
  * that applied; keeping one means it is.
  */
-function initPostHog() {
+async function initPostHog() {
+  /*
+   * Dynamic, and this is the load-bearing line.
+   *
+   * A static import here would put the 167 KB (gzipped) SDK in the initial
+   * chunk of every route in the app, whatever this function does about WHEN
+   * `init()` runs. Deferring the call without deferring the module defers
+   * nothing that a visitor can feel.
+   */
+  const { default: posthog } = await import("posthog-js");
+
   posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
     api_host: "/ingest",
     ui_host: "https://us.posthog.com",
@@ -74,9 +84,11 @@ function initPostHog() {
     },
   });
 
-  // Releases `PostHogProvider`'s identify step, which is held until init has
-  // run because posthog-js silently drops `identify`/`reset` issued before it.
-  markAnalyticsReady();
+  // Hands the SDK to `lib/analytics/client.ts`, which flushes everything the
+  // app queued while the module was still downloading and releases
+  // `PostHogProvider`'s identify step. posthog-js drops `identify`/`reset`
+  // issued before init rather than buffering them, so this ordering matters.
+  markAnalyticsReady(posthog as PostHog);
 }
 
 /**
@@ -101,10 +113,11 @@ function initPostHog() {
  * `timeout` option covers the other direction — a main thread that stays busy
  * long enough for idle to never arrive — so init is bounded either way.
  *
- * Note what this does NOT do: the `import posthog from "posthog-js"` above
- * still pulls the SDK into the client bundle, because `PostHogProvider` needs
- * the same singleton at module scope. Deferring the download as well would mean
- * a dynamic import behind the React provider, which is a larger change.
+ * The DOWNLOAD is deferred too, via the dynamic `import()` inside
+ * `initPostHog`. That needed `PostHogProvider` to stop holding the singleton at
+ * module scope: it wrapped the tree in posthog-js/react's provider purely to
+ * serve `usePostHog()` to its own child, which is a closed loop. Both are gone,
+ * and `lib/analytics/client.ts` is now the only way the app reaches the SDK.
  */
 if (globalThis.window !== undefined) {
   if (typeof globalThis.requestIdleCallback === "function") {

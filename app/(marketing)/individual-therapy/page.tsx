@@ -44,7 +44,7 @@ const money = (amount: number) =>
 export const metadata = pageMetadata({
   title: "Individual therapy online in Kenya",
   description:
-    "One-to-one online therapy with therapists licensed in Kenya. What a 50-minute session involves, which approaches therapists use, what it costs, and how to start.",
+    "One-to-one online therapy with therapists licensed in Kenya. What a 50-minute session involves, which approaches are used, what it costs, and how to start.",
   path: "/individual-therapy",
 });
 

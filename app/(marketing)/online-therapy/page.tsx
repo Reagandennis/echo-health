@@ -61,7 +61,7 @@ const money = (amount: number) =>
 export const metadata = pageMetadata({
   title: "Online therapy in Kenya: how it works",
   description:
-    "Online therapy with therapists licensed in Kenya. How sessions run, what video, audio and messaging each involve, what it costs, and who online therapy does not suit.",
+    "Online therapy with therapists licensed in Kenya. How sessions run, what video, audio and messaging involve, what it costs, and who it is not right for.",
   path: "/online-therapy",
 });
 

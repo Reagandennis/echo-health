@@ -105,7 +105,20 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-57px)] lg:h-screen max-w-3xl mx-auto">
+    /*
+     * `100dvh`, minus the chrome that is actually there.
+     *
+     * The old `calc(100vh-57px)` was wrong twice over. 57px matched nothing —
+     * `ClientShell`'s sticky header is `h-16`, 64px — and it accounted for the
+     * header alone, ignoring the `pb-28` (112px) that same shell puts on
+     * `<main>` to clear the mobile tab bar `ClientNav` fixes to the bottom
+     * below `lg`. `100vh` then excludes the collapsing browser toolbar on top
+     * of that, so on a phone the thread was told it had well over a screen of
+     * room and pushed the composer — the only control on the page — below the
+     * fold. 64 + 112 = 176, and `100dvh` tracks the visible viewport as the
+     * toolbar shows and hides.
+     */
+    <div className="flex flex-col h-[calc(100dvh-176px)] lg:h-screen max-w-3xl mx-auto">
       {/* Header */}
       <div className="bg-white border-b border-brand/10 px-5 py-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-2xl bg-brand/10 flex items-center justify-center text-brand font-bold text-lg">

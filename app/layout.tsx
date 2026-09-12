@@ -178,14 +178,24 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <PostHogProvider>
-          <UserProvider hydrate>
+        {/*
+          UserProvider is OUTSIDE PostHogProvider, and the order is load-bearing.
+          Both used to run their own mount-time `GET /api/me` — a `force-dynamic`
+          route that decrypts the session cookie — so every page view on every
+          route cost two uncacheable round-trips, anonymous visitors included.
+          PostHogProvider now reads the user from this context instead, which
+          only works while it is nested inside. Invert these two and it throws
+          from `useSession()`; that is deliberate, because the alternative is
+          reintroducing the duplicate fetch without anyone noticing.
+        */}
+        <UserProvider hydrate>
+          <PostHogProvider>
             {children}
             <Suspense fallback={null}>
               <ChatWidgetWrapper />
             </Suspense>
-          </UserProvider>
-        </PostHogProvider>
+          </PostHogProvider>
+        </UserProvider>
       </body>
     </html>
   );

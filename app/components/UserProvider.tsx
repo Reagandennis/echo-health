@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { SessionUser } from "@/lib/auth/session";
 
 /**
@@ -21,6 +21,25 @@ interface UserContextType {
    * that redirects on a missing user MUST wait for this to be false.
    */
   loading: boolean;
+  /**
+   * True once the session state is actually KNOWN: a server-supplied `user`
+   * prop, or an `/api/me` probe that came back.
+   *
+   * This is NOT the inverse of `loading`. `loading` is cleared even when the
+   * probe FAILS, because a consumer blocked on it would otherwise hang forever
+   * — which leaves `user` null without anything having established that nobody
+   * is signed in. That ambiguity is harmless for the ~26 consumers that only
+   * want to render a name, and dangerous for anything whose safe default
+   * depends on being signed in.
+   *
+   * The live case is PostHog session replay: replay is allowed to run on the
+   * anonymous marketing funnel and must never run behind the login wall, so
+   * `PostHogProvider` starts it only when this is true and `user` is null.
+   * Reading a failed probe as "signed out" would start recording a clinician's
+   * screen, which is exactly the leak `disable_session_recording` exists to
+   * prevent.
+   */
+  resolved: boolean;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -40,6 +59,9 @@ export function UserProvider({ children, user: initialUser, hydrate = false }: U
   // for; when a Server Layout passes `user` down, it is already authoritative.
   const willFetch = hydrate && initialUser === undefined;
   const [loading, setLoading] = useState(willFetch);
+  // A provider handed an authoritative `user` prop knows the answer already;
+  // only a hydrating one has to earn it.
+  const [resolved, setResolved] = useState(!willFetch);
 
   useEffect(() => {
     if (!willFetch) return;
@@ -47,7 +69,12 @@ export function UserProvider({ children, user: initialUser, hydrate = false }: U
     fetch("/api/me", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!cancelled && data) setUser(data.user ?? null);
+        if (cancelled || !data) return;
+        setUser(data.user ?? null);
+        // Only a response that actually arrived settles the question. A thrown
+        // fetch or a non-OK status leaves `resolved` false forever, which is
+        // the fail-closed half of the pair documented on `UserContextType`.
+        setResolved(true);
       })
       .catch(() => {})
       .finally(() => {
@@ -60,9 +87,9 @@ export function UserProvider({ children, user: initialUser, hydrate = false }: U
     };
   }, [willFetch]);
 
-  return (
-    <UserContext.Provider value={{ user, loading }}>{children}</UserContext.Provider>
-  );
+  const value = useMemo(() => ({ user, loading, resolved }), [user, loading, resolved]);
+
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 
 /**
@@ -85,9 +112,10 @@ export function useUser() {
  *
  * Use this — not `useUser()` — anywhere a missing user triggers navigation.
  * Redirecting while `loading` is true bounces a valid session to the login page,
- * which returns here and loops.
+ * which returns here and loops. If the safe behaviour instead depends on being
+ * signed IN, gate on `resolved` rather than `!loading` — see `UserContextType`.
  */
-export function useSession(): { user: AppUser; loading: boolean } {
+export function useSession(): UserContextType {
   const context = useContext(UserContext);
   if (context === undefined) {
     throw new Error("useSession must be used within a UserProvider");

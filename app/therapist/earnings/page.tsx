@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useUser } from "@/app/components/UserProvider";
 import { listMyEarningsAction } from "@/app/actions/database";
 import { PLAN_CURRENCY, PLAN_LABELS } from "@/lib/constants";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Wallet, TrendingUp, CheckCircle2, AlertCircle } from "lucide-react";
+
+// PERF: defer the recharts chunk (8.5 MB + d3 transitives) so it isn't pulled
+// into this page's initial bundle. `ssr: false` because recharts measures the
+// DOM to size itself and has nothing to render on the server.
+const EarningsChart = dynamic(() => import("./_components/EarningsChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[260px] items-center justify-center">
+      <div className="w-5 h-5 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
+    </div>
+  ),
+});
 
 /**
  * Earnings, read from the `payout_ledger` accrual ledger.
@@ -171,7 +183,10 @@ export default function EarningsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* Three summary cards, each an icon beside a currency figure. At
+          `grid-cols-3` on a 360px phone that is ~110px per cell, which wraps
+          "KES 12,500" onto two lines behind the icon. Stack below `sm`. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {cards.map((c) => (
           <div
             key={c.label}
@@ -195,31 +210,10 @@ export default function EarningsPage() {
             No completed sessions yet
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <defs>
-                <linearGradient id="earningsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#35858E" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#35858E" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f4" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#a8a29e" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#a8a29e" }} />
-              <Tooltip
-                contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }}
-                // Was a hardcoded "$", on a platform that settles in KES.
-                formatter={(v) => [money(Math.round((v as number) * 100), currency), "Earnings"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="earnings"
-                stroke="#35858E"
-                strokeWidth={2}
-                fill="url(#earningsGrad)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <EarningsChart
+            data={chartData}
+            formatEarnings={(major) => money(Math.round(major * 100), currency)}
+          />
         )}
       </div>
 

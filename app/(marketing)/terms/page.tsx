@@ -1,5 +1,4 @@
-import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
@@ -100,24 +99,10 @@ Email: legal@echohealth.app`,
 
 export default function TermsOfServicePage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
-      {/* Nav */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-xl font-semibold tracking-tight">
-            <span className="text-brand">Echo Psychology </span>
-            <span className="text-slate-700">Group</span>
-          </Link>
-          <Link
-            href="/"
-            className="text-sm font-medium text-slate-500 hover:text-brand transition-colors"
-          >
-            ← Back to home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/terms", label: "Terms of service" }]} />
 
-      <main className="flex-1 mx-auto max-w-4xl px-6 py-16 w-full">
+      <div className="mx-auto w-full max-w-4xl px-6 py-16">
         {/* Header */}
         <div className="mb-12 border-b border-slate-100 pb-10">
           <span className="inline-block rounded-full bg-cream px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-brand mb-6">
@@ -230,9 +215,7 @@ export default function TermsOfServicePage() {
             </section>
           ))}
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </>
   );
 }

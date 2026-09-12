@@ -53,10 +53,45 @@ export async function proxy(request: NextRequest) {
   return authResponse;
 }
 
+/**
+ * ── What this matcher covers, and why it is shaped like this ───────────────
+ *
+ * It cannot be narrowed to just the protected sections: `/auth/*` is served by
+ * THIS FILE rather than by route files, so excluding it would not merely skip a
+ * session check — it would delete `/auth/login`, `/auth/callback` and
+ * `/auth/logout`, i.e. all of login. `/admin`, `/therapist` and `/dashboard`
+ * must stay covered for the same reason they always were.
+ *
+ * What it now excludes is the public marketing surface, enumerated from
+ * `ALL_INDEXABLE_ROUTES` in `lib/navigation.ts` (plus `/cookies`, which is
+ * public but `noindex` and so deliberately absent there). Those routes render
+ * static HTML and have no session to read, yet every request to one was paying
+ * for `auth0.middleware()` — a cookie decrypt and a possible token refresh —
+ * ahead of the response, and the presence of middleware also stops that HTML
+ * being cached by a shared CDN. The image and metadata routes go with them for
+ * the same reason.
+ *
+ * Written out as a literal rather than derived from `ALL_INDEXABLE_ROUTES`
+ * because Next requires the matcher to be statically analysable — it is read
+ * from the compiled module at build time, not evaluated.
+ *
+ * `(?:$|[/.])` after the alternation keeps each entry a whole path segment:
+ * `therapists` must not swallow `/therapist/sessions/1`, and `therapist-jobs`
+ * must not swallow `/therapist`. The `.` is Next's RSC transport form of the
+ * same route (`/pricing.rsc`), which is matched against this pattern too. The
+ * trailing `|$)` excludes the site root, whose remainder after the leading
+ * slash is empty.
+ *
+ * IF YOU ADD A PUBLIC PAGE AND FORGET THIS FILE: nothing breaks. The route
+ * still renders; it just keeps running the Auth0 middleware on every request
+ * and stays uncacheable — today's behaviour, a missed optimisation rather than
+ * a hole. The failure that WOULD matter is the reverse: adding an authenticated
+ * route whose first segment collides with one of these prefixes would exempt it
+ * from the session gate. Nothing here is a prefix of `/admin`, `/therapist` or
+ * `/dashboard`, and new protected sections belong under those.
+ */
 export const config = {
-  // Broad by necessity: /auth/* is served by this proxy rather than by route
-  // files, so it cannot be narrowed to just the protected sections.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|icon.png|apple-icon.png|(?:about|blog|careers|contact|cookies|couples-therapy|crisis|faq|get-started|guides|how-it-works|individual-therapy|online-therapy|organizations|press|pricing|privacy|reviews|teen-therapy|terms|therapist-jobs|therapists|therapy-for)(?:$|[/.])|$).*)",
   ],
 };

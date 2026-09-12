@@ -1,64 +1,133 @@
-// Server Component — interactive children (StatCounter, ProgressBar, etc.) are individually "use client"
-
-import Image from "next/image";
 import Link from "next/link";
 import {
-  Search,
-  CalendarCheck,
-  HeartHandshake,
-  ShieldCheck,
-  Lock,
-  CalendarX2,
-  Infinity as InfinityIcon,
-  Wallet,
-  Check,
   ArrowRight,
+  CalendarCheck,
+  CalendarX2,
+  Check,
+  HeartHandshake,
+  Infinity as InfinityIcon,
+  Lock,
+  Minus,
+  Search,
+  ShieldCheck,
+  Wallet,
 } from "lucide-react";
-import TestimonialCard from "@/app/components/TestimonialCard";
 import PriceTag from "@/app/components/PriceTag";
-import Footer from "@/app/components/Footer";
-import BrandMark from "@/app/components/portal/BrandMark";
-import { PLAN_PRICES, PLAN_SESSIONS, PLAN_PERIOD_LABELS } from "@/lib/constants";
+import JsonLd from "@/app/components/marketing/JsonLd";
+import StickyCta from "@/app/components/marketing/StickyCta";
+import TherapistCard from "@/app/components/marketing/TherapistCard";
+import {
+  CtaButton,
+  FaqList,
+  Section,
+  SectionHeading,
+  Steps,
+  faqJsonLd,
+  type Faq,
+} from "@/app/components/marketing/sections";
+import { sampleTherapists } from "@/lib/directory";
+import { CONDITIONS } from "@/lib/navigation";
+import { pageMetadata, siteUrl, defaultDescription } from "@/lib/seo";
+import {
+  PLAN_CURRENCY,
+  PLAN_PERIOD_LABELS,
+  PLAN_PRICES,
+  PLAN_SESSIONS,
+} from "@/lib/constants";
+
+/**
+ * ## What this page may not say
+ *
+ * An earlier version carried a band of animated counters — "10,000+ people
+ * helped", "500+ licensed therapists", "94% report improvement" — and a chart
+ * of outcome percentages footnoted "based on outcome surveys across 10,000+
+ * Echo Health users". None of those numbers existed anywhere but in this file:
+ * there is no survey table, no aggregation query, and the database has almost
+ * no users. Sitting directly above a price, they were a misleading
+ * representation under the Consumer Protection Act 2012 (Kenya) s.12–13.
+ *
+ * They are not coming back in a different shape. Every number on this page is
+ * either read from `lib/constants.ts` or is a fact the code enforces. Where a
+ * competitor would put a live counter, this page puts the terms of the offer,
+ * which are more persuasive anyway because they are checkable.
+ *
+ * The one place a real count appears is the therapist strip, which reads the
+ * actual directory and renders nothing if it is empty.
+ */
+export const metadata = pageMetadata({
+  title: "Online therapy with licensed therapists in Kenya",
+  description: defaultDescription,
+  path: "/",
+  absoluteTitle: true,
+});
+
+/** Five minutes, matching `/therapists` — the strip below reads the same rows. */
+export const revalidate = 300;
 
 /* ─── Data ─────────────────────────────────────────── */
 
-const steps = [
+/**
+ * The three hero cards.
+ *
+ * This is the page's primary CTA and it is deliberately a segmentation choice
+ * rather than a button: "Individual / Couples / Teen" is the intake quiz's
+ * first question, so answering it here means arriving at `/get-started`
+ * already one step in. `?for=` is read and validated by `IntakeQuiz`.
+ *
+ * It also does the job a "who is this for" section would otherwise need a
+ * whole scroll-length to do — a visitor sorts themselves in one tap.
+ */
+const AUDIENCES = [
+  {
+    href: "/get-started?for=self",
+    title: "Individual",
+    body: "For myself",
+    className: "bg-brand-700 hover:bg-brand-800",
+  },
+  {
+    href: "/get-started?for=couple",
+    title: "Couples",
+    body: "For me and my partner",
+    className: "bg-brand-800 hover:bg-brand-900",
+  },
+  {
+    href: "/get-started?for=teen",
+    title: "Teen",
+    body: "For my child, aged 13–17",
+    className: "bg-brand-900 hover:bg-brand-950",
+  },
+] as const;
+
+const STEPS = [
   {
     icon: Search,
     title: "Tell us what you need",
-    body: "Answer a short questionnaire about your goals, preferences, and schedule. Takes under 3 minutes.",
+    body: "A short questionnaire about what you want to work on, who you'd feel comfortable with, and when you can meet. About three minutes.",
   },
   {
     icon: CalendarCheck,
-    title: "Get matched instantly",
-    body: "We surface licensed therapists whose approach, availability, and specialties fit you best.",
+    title: "Meet your therapist",
+    body: "We introduce you to a licensed therapist whose focus and availability fit what you told us. Not the right fit? Switching is free.",
   },
   {
     icon: HeartHandshake,
-    title: "Start your first session",
-    body: "Connect via video, phone, or chat — on your terms, from wherever feels most comfortable.",
+    title: "Start when you're ready",
+    body: "Fifty minutes by video, phone or messaging — from wherever you feel most yourself. Reschedule up to 24 hours ahead.",
   },
 ];
 
 /**
- * How the offer works, stated as facts rather than as statistics.
+ * The terms of the offer, standing where a competitor puts social proof.
  *
- * This replaced a band of animated counters — "10,000+ people helped",
- * "500+ licensed therapists", "94% report improvement" — and a chart of
- * outcome percentages footnoted "based on outcome surveys across 10,000+ Echo
- * Health users". None of those numbers existed anywhere but in the JSX: there
- * is no survey table, no aggregation query, no seed data, and the database has
- * almost no users. Sitting directly above a price, they were a misleading
- * representation under the Consumer Protection Act 2012 (Kenya) s.12–13.
- *
- * Everything below is enforced in code, so it stays true without anyone having
- * to remember to check it.
+ * Every one of these is enforced somewhere in the code — one-time payment in
+ * `lib/constants.ts`, credit expiry in the booking logic, the 24-hour window
+ * in cancellation — so they stay true without anyone remembering to check.
  */
-const guarantees = [
+const GUARANTEES = [
   {
     icon: Wallet,
     title: "Pay once",
-    body: "One-time payment for a bundle of sessions. No subscription, no auto-renewal, nothing to cancel.",
+    body: "A one-time payment for a bundle of sessions. No subscription, no auto-renewal, nothing to cancel.",
   },
   {
     icon: InfinityIcon,
@@ -68,7 +137,7 @@ const guarantees = [
   {
     icon: CalendarX2,
     title: "Reschedule freely",
-    body: "Cancel a booking at least 24 hours ahead and the credit goes straight back to your account.",
+    body: "Cancel at least 24 hours ahead and the credit goes straight back to your account.",
   },
   {
     icon: Lock,
@@ -77,266 +146,207 @@ const guarantees = [
   },
 ];
 
-const therapists = [
-  {
-    name: "Dr. Amara Osei",
-    title: "Licensed Clinical Psychologist",
-    specialties: ["Anxiety", "Trauma", "CBT"],
-    experience: "12 yrs exp.",
-    photo:
-      "https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?w=400&q=80&fit=crop&crop=face",
-  },
-  {
-    name: "Marcus Rivera, LCSW",
-    title: "Licensed Clinical Social Worker",
-    specialties: ["Depression", "Grief", "Relationships"],
-    experience: "9 yrs exp.",
-    photo:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80&fit=crop&crop=face",
-  },
-  {
-    name: "Dr. Priya Nair",
-    title: "Marriage & Family Therapist",
-    specialties: ["Couples", "Family", "Life transitions"],
-    experience: "15 yrs exp.",
-    photo:
-      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&q=80&fit=crop&crop=face",
-  },
-];
-
-const testimonials = [
-  {
-    quote:
-      "I was skeptical about online therapy, but Echo Health matched me with someone who genuinely gets me. I haven't felt this clear-headed in years.",
-    name: "Jamie L.",
-    detail: "Using Echo Health for 6 months",
-    initials: "JL",
-    color: "bg-brand-600",
-  },
-  {
-    quote:
-      "The matching process was shockingly accurate. My therapist specialises in exactly what I was struggling with, and the video sessions fit perfectly into my schedule.",
-    name: "Devon M.",
-    detail: "Anxiety & stress management",
-    initials: "DM",
-    color: "bg-brand-800",
-  },
-  {
-    quote:
-      "After years of putting off therapy because of cost and logistics, Echo Health removed every single barrier. I wish I'd started sooner.",
-    name: "Rosa K.",
-    detail: "Individual & couples therapy",
-    initials: "RK",
-    color: "bg-stone-600",
-  },
-];
-
 /**
- * Public pricing. These MUST match `PLAN_PRICES` / `PLAN_SESSIONS` exactly —
- * this is the page a customer forms their expectation from.
+ * Echo against seeing someone in person.
  *
- * It previously advertised "/ week" on every plan and "2 sessions per week" on
- * Plus, which described a weekly subscription that does not exist: these are
- * one-time bundles of 1 or 2 sessions. Someone reading it could reasonably have
- * believed KES 2,000 bought them a session every week.
- *
- * `id` matches the keys in `PLAN_PRICES` because it travels: every CTA below
- * carries it to /signup, and it survives all the way to /checkout. Without it
- * the section was decorative — clicking "Couples" dropped you on /onboarding
- * with "Plus" pre-selected and no memory of the choice you had just made.
+ * Two rows are losses, and they stay. A comparison table that wins every row
+ * is an advertisement and reads as one; a table that concedes the two things
+ * in-person therapy genuinely does better is the reason a reader believes the
+ * other ten. It is also simply true: there is no way to sit in a room with
+ * someone over a video call, and a platform cannot prescribe.
  */
-const plans = [
+const COMPARISON: readonly {
+  readonly feature: string;
+  readonly echo: boolean;
+  readonly inPerson: boolean | "sometimes";
+}[] = [
+  { feature: "Licensed, credential-checked therapist", echo: true, inPerson: true },
+  { feature: "Sitting in the same room", echo: false, inPerson: true },
+  { feature: "Can prescribe medication", echo: false, inPerson: "sometimes" },
+  { feature: "Sessions from anywhere with a signal", echo: true, inPerson: false },
+  { feature: "Evening and weekend availability", echo: true, inPerson: "sometimes" },
+  { feature: "Messaging between sessions", echo: true, inPerson: false },
+  { feature: "Switch therapists at no cost", echo: true, inPerson: false },
+  { feature: "No travel across town to get there", echo: true, inPerson: false },
+  { feature: "Pay per session, nothing recurring", echo: true, inPerson: "sometimes" },
+  { feature: "Price known before you book", echo: true, inPerson: false },
+];
+
+const PLANS = [
   {
     id: "individual",
     name: "Individual",
-    price: PLAN_PRICES.individual,
-    sessions: PLAN_SESSIONS.individual,
-    period: PLAN_PERIOD_LABELS.individual,
     description: "One session with a licensed therapist. Book another whenever you need it.",
     features: [
-      "One 50-min video or phone session",
+      "One 50-minute video or phone session",
       "Secure in-app messaging with your therapist",
-      "Therapist matching within 24 h",
+      "Matched with a therapist within 24 hours",
       "Progress tracking dashboard",
     ],
     highlighted: false,
-    cta: "Get started",
   },
   {
     id: "plus",
     name: "Plus",
-    price: PLAN_PRICES.plus,
-    sessions: PLAN_SESSIONS.plus,
-    period: PLAN_PERIOD_LABELS.plus,
-    description: "Two sessions plus therapy materials — the best value per session.",
+    description: "Two sessions plus therapy materials — the lowest cost per session.",
     features: [
-      "Two 50-min video or phone sessions",
-      "Therapy materials & worksheets",
-      "Priority therapist matching",
-      "Secure in-app messaging with your therapist",
-      "Progress tracking dashboard",
+      "Two 50-minute video or phone sessions",
+      "Therapy worksheets and guided exercises",
+      "Everything in Individual",
+      "Lowest cost per session of any plan",
     ],
     highlighted: true,
-    cta: "Get started",
   },
   {
     id: "couples",
     name: "Couples",
-    price: PLAN_PRICES.couples,
-    sessions: PLAN_SESSIONS.couples,
-    period: PLAN_PERIOD_LABELS.couples,
     description: "Two joint sessions for you and your partner, with shared resources.",
     features: [
-      "Two 50-min joint sessions for both partners",
-      "Couples resource library & exercises",
-      "Shared progress insights",
-      "Specialised couples therapists",
+      "Two 50-minute sessions with both partners on the call",
+      "Couples worksheets and shared exercises",
+      "Matched with a therapist who works with couples",
+      "Everything in Individual, for both of you",
     ],
     highlighted: false,
-    cta: "Get started",
+  },
+] as const;
+
+const money = (amount: number) =>
+  new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: PLAN_CURRENCY,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+/**
+ * The home-page FAQ.
+ *
+ * Pricing is answered here rather than being held back for the pricing page —
+ * "how much is it" is the question people leave over, and making them navigate
+ * for it costs more than the click it saves.
+ */
+const FAQS: readonly Faq[] = [
+  {
+    q: "How much does therapy on Echo cost?",
+    a: `Sessions start at ${money(PLAN_PRICES.individual)} for one 50-minute session. The Plus bundle is ${money(PLAN_PRICES.plus)} for two sessions, and Couples is ${money(PLAN_PRICES.couples)} for two joint sessions. Every plan is a one-time payment — there is no subscription and nothing renews. Pay with M-Pesa, card or bank transfer.`,
+  },
+  {
+    q: "Who are the therapists?",
+    a: "Independently licensed mental-health practitioners registered in Kenya. We check every practitioner's credentials before their profile appears on the site, and nobody is listed until that check passes.",
+  },
+  {
+    q: "Is Echo Health right for me?",
+    a: "Echo suits people who want to talk to a licensed therapist regularly and privately. It is not right if you are in immediate danger, need medication prescribed or managed, need an official diagnosis for a legal or insurance purpose, or have been ordered into therapy by a court — we cannot do any of those things. If you need help right now, call 999 or see our crisis page.",
+  },
+  {
+    q: "How long until I'm matched?",
+    a: "We aim to introduce you to a therapist within 24 hours of sign-up. If nobody suitable is free in that window, we will tell you rather than match you with someone who is not a good fit.",
+  },
+  {
+    q: "What if my therapist isn't the right fit?",
+    a: "Tell us and we will match you with someone else. There is no charge to switch and any unused session credits stay with you — the fit between you and your therapist is the part of therapy that most predicts whether it helps.",
+  },
+  {
+    q: "Can I use Echo from outside Kenya?",
+    a: "You can, and many people do. Be aware that our therapists are licensed in Kenya, sessions are scheduled in East Africa Time, and prices are charged in Kenyan shillings.",
+  },
+  {
+    q: "Is what I say private?",
+    a: "Sessions and messages are encrypted in transit and visible only to you and your therapist. Your therapist keeps clinical notes that you cannot see and that we do not show to other clients or to our support team. The limits are the usual ones any therapist would explain in a first session — where there is a serious risk to your safety or someone else's.",
   },
 ];
 
-/**
- * Hero trust strip.
- *
- * The first badge used to read "HIPAA compliant". HIPAA is a United States
- * statute and has no application to a Kenyan service — the instrument that
- * actually governs this data is the Data Protection Act 2019 (Kenya). Claiming
- * compliance with the wrong regime is worse than claiming none: it is both
- * false and unverifiable. These describe the protections that exist instead of
- * naming a regime.
- *
- * "Available 7 days a week" and "Unlimited messaging" went with it — the first
- * depends entirely on individual therapist availability, and neither is
- * enforced anywhere in the product.
- */
-const trust = [
-  { icon: ShieldCheck, label: "Licence-verified therapists" },
-  { icon: Lock, label: "Encrypted in transit" },
-  { icon: CalendarCheck, label: "Book around your schedule" },
-];
-
-/* ─── Pieces ───────────────────────────────────────── */
-
-function SectionHeading({
-  eyebrow,
-  title,
-  body,
-}: {
-  readonly eyebrow: string;
-  readonly title: string;
-  readonly body?: string;
-}) {
-  return (
-    <div className="mx-auto max-w-2xl text-center">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">{eyebrow}</p>
-      <h2 className="mt-3 font-display text-3xl tracking-tight text-stone-900 sm:text-5xl">{title}</h2>
-      {body && <p className="mx-auto mt-5 max-w-xl leading-7 text-stone-600">{body}</p>}
-    </div>
-  );
-}
-
 /* ─── Page ─────────────────────────────────────────── */
 
-export default function Home() {
+export default async function Home() {
+  /* Real rows, or the section does not render. The strip this replaced showed
+     three invented clinicians over stock photographs — including one whose
+     photo also appeared on /about under a different name and job title. */
+  const therapists = await sampleTherapists(3);
+
   return (
-    <div className="flex flex-col flex-1 font-sans bg-white">
+    <>
+      <JsonLd data={faqJsonLd(FAQS)} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          serviceType: "Online psychotherapy",
+          provider: { "@type": "MedicalOrganization", name: "Echo Health", url: siteUrl },
+          areaServed: { "@type": "Country", name: "Kenya" },
+          /* `offers` carries the real figures from `lib/constants.ts`, so a
+             price change cannot leave stale structured data behind. */
+          offers: PLANS.map((p) => ({
+            "@type": "Offer",
+            name: p.name,
+            price: PLAN_PRICES[p.id],
+            priceCurrency: PLAN_CURRENCY,
+            url: `${siteUrl}/pricing`,
+            description: p.description,
+          })),
+        }}
+      />
 
-      {/* ── Nav ──────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 w-full border-b border-stone-200/60 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <BrandMark
-            size="sm"
-            name={
-              <>
-                <span className="text-brand-700">Echo Psychology</span>
-                <span className="hidden text-stone-700 sm:inline"> Group</span>
-              </>
-            }
-          />
-          <nav className="hidden items-center gap-8 text-sm font-medium text-stone-600 md:flex">
-            <a href="#how" className="transition-colors hover:text-stone-900">How it works</a>
-            <a href="#therapists" className="transition-colors hover:text-stone-900">Therapists</a>
-            <a href="#pricing" className="transition-colors hover:text-stone-900">Pricing</a>
-          </nav>
-          {/* "Sign in" used to be `hidden sm:inline`, so a returning client on
-              a phone had no way to sign in from the home page. */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <Link href="/signin" className="rounded-full px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-100 hover:text-stone-900">
-              Sign in
-            </Link>
-            <Link href="/signup" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700">
-              Get started
-            </Link>
-          </div>
-        </div>
-      </header>
+      {/* ── Hero ─────────────────────────────────── */}
+      <section
+        className="curve-down bg-hero-soft px-4 pb-24 pt-16 sm:px-6 sm:pt-24"
+        style={{ "--curve-to": "var(--surface)" } as React.CSSProperties}
+      >
+        <div className="mx-auto max-w-4xl text-center">
+          <h1 className="font-display text-[2.75rem] leading-[1.06] tracking-tight text-stone-900 sm:text-6xl lg:text-7xl">
+            You deserve to be heard.
+          </h1>
+          <p className="mx-auto mt-6 max-w-xl text-[17px] leading-8 text-stone-600 sm:text-lg">
+            Talk to a licensed therapist by video, phone or message — booked
+            around your week, from wherever you feel most yourself.
+          </p>
 
-      <main className="flex flex-col flex-1">
+          <p className="mt-12 text-sm font-semibold text-stone-700">
+            Who is this therapy for?
+          </p>
+          <ul className="mx-auto mt-4 grid max-w-3xl gap-3 sm:grid-cols-3">
+            {AUDIENCES.map((a) => (
+              <li key={a.href}>
+                <Link
+                  href={a.href}
+                  className={`group flex min-h-[5.5rem] w-full flex-col justify-center rounded-2xl px-6 py-5 text-left text-white transition-colors sm:min-h-[9rem] ${a.className}`}
+                >
+                  <span className="font-display text-2xl tracking-tight sm:text-3xl">{a.title}</span>
+                  <span className="mt-1 flex items-center gap-1.5 text-sm text-white/80">
+                    {a.body}
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
 
-        {/* ── Hero ─────────────────────────────────── */}
-        <section className="relative isolate overflow-hidden bg-aurora px-6 pt-20 pb-28 sm:pt-28 sm:pb-36">
-          <Image
-            src="/echo-butterfly.png"
-            alt=""
-            width={500}
-            height={500}
-            preload
-            className="pointer-events-none absolute left-1/2 top-0 -z-10 w-[680px] max-w-none -translate-x-1/2 opacity-[0.06]"
-          />
-          <div className="mx-auto max-w-3xl text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-brand-700 ring-1 ring-inset ring-brand-200 backdrop-blur">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-              Therapy, reimagined
-            </span>
-            <h1 className="mt-8 font-display text-5xl leading-[1.05] tracking-tight text-stone-900 sm:text-7xl">
-              Feel heard.{" "}
-              <br className="hidden sm:block" />
-              <em className="text-brand-600">Heal forward.</em>
-            </h1>
-            <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-stone-600">
-              Connect with licensed therapists who truly listen. Echo Health
-              makes mental wellness personal, flexible, and within reach —
-              whenever you need it.
-            </p>
-            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link
-                href="/signup"
-                className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-900/15 transition-colors hover:bg-brand-700 sm:w-auto"
-              >
-                Match with a therapist
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-              <a
-                href="#how"
-                className="inline-flex w-full items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-stone-800 shadow-sm ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400 sm:w-auto"
-              >
-                Learn how it works
-              </a>
-            </div>
-          </div>
-
-          {/* Trust badges */}
-          <ul className="mx-auto mt-14 flex max-w-3xl flex-wrap items-center justify-center gap-x-8 gap-y-3">
-            {trust.map(({ icon: Icon, label }) => (
+          <ul className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+            {[
+              { icon: ShieldCheck, label: "Licence-verified therapists" },
+              { icon: Lock, label: "Encrypted in transit" },
+              { icon: CalendarCheck, label: "Book around your schedule" },
+            ].map(({ icon: Icon, label }) => (
               <li key={label} className="flex items-center gap-2 text-sm font-medium text-stone-600">
                 <Icon className="h-4 w-4 text-brand-600" strokeWidth={1.8} />
                 {label}
               </li>
             ))}
           </ul>
-        </section>
+        </div>
+      </section>
 
-        {/* ── How the money works ──────────────────── */}
-        <section className="px-4 sm:px-6">
-          <div className="relative mx-auto -mt-12 max-w-6xl overflow-hidden rounded-3xl bg-brand-900 px-6 py-12 text-white shadow-xl shadow-brand-950/10 sm:px-12 sm:py-14">
+      {/* ── The terms of the offer ───────────────── */}
+      <section className="bg-surface px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-20">
+        <div className="mx-auto max-w-7xl">
+          <h2 className="sr-only">What you get</h2>
+          <div className="relative overflow-hidden rounded-3xl bg-brand-900 px-6 py-12 text-white shadow-xl shadow-brand-950/10 sm:px-12 sm:py-14">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_90%_at_100%_0%,oklch(55%_0.1_205/0.4),transparent_70%)]"
             />
             <div className="relative grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-              {guarantees.map(({ icon: Icon, title, body }) => (
+              {GUARANTEES.map(({ icon: Icon, title, body }) => (
                 <div key={title} className="flex flex-col gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15">
                     <Icon className="h-5 w-5 text-brand-200" strokeWidth={1.8} />
@@ -347,229 +357,255 @@ export default function Home() {
               ))}
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ── How it works ─────────────────────────── */}
-        <section id="how" className="px-6 py-24 sm:py-28">
-          <div className="mx-auto max-w-6xl">
-            <SectionHeading
-              eyebrow="Simple process"
-              title="Go from curious to cared-for in minutes"
-              body="No waiting rooms, no referrals, no guesswork. Getting started is easier than you think."
-            />
-            <ol className="mt-16 grid gap-6 md:grid-cols-3">
-              {steps.map((step, i) => (
-                <li
-                  key={step.title}
-                  className="flex flex-col gap-6 rounded-3xl bg-white p-8 shadow-sm ring-1 ring-stone-200/70 transition-shadow hover:shadow-md"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100">
-                      <step.icon className="h-6 w-6" strokeWidth={1.8} />
-                    </span>
-                    <span aria-hidden="true" className="font-display text-4xl text-stone-200">
-                      0{i + 1}
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-stone-900">{step.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-stone-600">{step.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+      {/* ── How it works ─────────────────────────── */}
+      <Section id="how" tone="muted">
+        <SectionHeading
+          eyebrow="How it works"
+          title="From curious to cared for, in three steps"
+          body="No waiting rooms, no referral letter, no guesswork about who to call."
+        />
+        <Steps steps={STEPS} />
+        <div className="mt-12 text-center">
+          <CtaButton href="/how-it-works" variant="secondary">
+            See the whole process
+          </CtaButton>
+        </div>
+      </Section>
+
+      {/* ── Therapists ───────────────────────────── */}
+      {therapists.length > 0 && (
+        <Section id="therapists">
+          <SectionHeading
+            eyebrow="Our team"
+            title="Therapists you can actually look up"
+            body="Every profile is a real clinician whose credentials we checked before listing them. Browse the whole roster — you do not need an account."
+          />
+          <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {therapists.map((t) => (
+              <TherapistCard key={t.id} therapist={t} />
+            ))}
           </div>
-        </section>
-
-        {/* An "Outcomes" section stood here: a "Real results" headline over four
-            progress bars (94% reduced anxiety, 91% feel understood, 78% continue
-            past 3 months, 97% would recommend) footnoted "based on outcome
-            surveys across 10,000+ Echo Health users after 8 weeks". No such
-            survey, aggregation or user base exists — the numbers were literals
-            in this file. Removed rather than rewritten: there is no honest
-            version of a clinical-outcomes claim we have not measured. Restore it
-            the day `sessionFeedback` is actually aggregated. */}
-
-        {/* ── Therapists ───────────────────────────── */}
-        <section id="therapists" className="border-y border-stone-200/60 bg-stone-50 px-6 py-24 sm:py-28">
-          <div className="mx-auto max-w-6xl">
-            <SectionHeading
-              eyebrow="Our team"
-              title="Meet a few of our therapists"
-              body="Every Echo Health therapist is fully licensed, background-checked, and vetted through our rigorous credentialing process."
-            />
-            <div className="mt-16 grid gap-6 md:grid-cols-3">
-              {therapists.map((t) => (
-                <article
-                  key={t.name}
-                  className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/70 transition-shadow hover:shadow-lg"
-                >
-                  <div className="relative h-64 w-full overflow-hidden bg-stone-100">
-                    <Image
-                      src={t.photo}
-                      alt={`Photo of ${t.name}`}
-                      fill
-                      loading="lazy"
-                      className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                    />
-                  </div>
-                  <div className="flex flex-1 flex-col gap-4 p-6">
-                    <div>
-                      <h3 className="font-semibold text-stone-900">{t.name}</h3>
-                      <p className="mt-0.5 text-sm text-stone-500">{t.title} · {t.experience}</p>
-                    </div>
-                    <div className="mt-auto flex flex-wrap gap-2">
-                      {t.specialties.map((s) => (
-                        <span key={s} className="rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-800 ring-1 ring-inset ring-brand-100">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="mt-12 text-center">
-              {/* Pointed at `#get-started`, an id that does not exist on this
-                  page — the button did nothing. Sends visitors to pricing, the
-                  next real step, since browsing the full roster requires an
-                  account. */}
-              <a
-                href="#pricing"
-                className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3 text-sm font-semibold text-stone-800 shadow-sm ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400"
-              >
-                See plans &amp; get matched
-                <ArrowRight className="h-4 w-4" />
-              </a>
-            </div>
+          <div className="mt-12 text-center">
+            <CtaButton href="/therapists" variant="secondary">
+              Browse all therapists
+            </CtaButton>
           </div>
-        </section>
+        </Section>
+      )}
 
-        {/* ── Testimonials ─────────────────────────── */}
-        <section className="px-6 py-24 sm:py-28">
-          <div className="mx-auto max-w-6xl">
-            <SectionHeading eyebrow="Stories" title="Heard from the people who matter most" />
-            <div className="mt-16 grid gap-6 md:grid-cols-3">
-              {testimonials.map((t) => (
-                <TestimonialCard key={t.name} {...t} />
+      {/* ── Comparison ───────────────────────────── */}
+      <Section tone="muted">
+        <SectionHeading
+          eyebrow="Honestly"
+          title="Echo Health vs. seeing someone in person"
+          body="Two rows here go the other way. Online therapy is not better at everything, and you should know which parts before you pay for it."
+        />
+        <div className="mx-auto mt-12 max-w-3xl overflow-x-auto">
+          <table className="w-full min-w-[30rem] border-collapse text-left">
+            <caption className="sr-only">
+              Comparison of Echo Health and in-person therapy across ten features
+            </caption>
+            <thead>
+              <tr className="border-b border-stone-300">
+                <th scope="col" className="py-4 pr-4 text-sm font-semibold text-stone-900">
+                  <span className="sr-only">Feature</span>
+                </th>
+                <th scope="col" className="w-28 py-4 text-center text-sm font-semibold text-brand-700">
+                  Echo Health
+                </th>
+                <th scope="col" className="w-28 py-4 text-center text-sm font-semibold text-stone-600">
+                  In person
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON.map(({ feature, echo, inPerson }) => (
+                <tr key={feature} className="border-b border-stone-200">
+                  <th scope="row" className="py-4 pr-4 text-[15px] font-normal text-stone-700">
+                    {feature}
+                  </th>
+                  <td className="py-4 text-center">
+                    <Mark on={echo} />
+                  </td>
+                  <td className="py-4 text-center">
+                    <Mark on={inPerson} />
+                  </td>
+                </tr>
               ))}
-            </div>
-          </div>
-        </section>
+            </tbody>
+          </table>
+        </div>
+      </Section>
 
-        {/* ── Pricing ──────────────────────────────── */}
-        <section id="pricing" className="border-t border-stone-200/60 bg-stone-50 px-6 py-24 sm:py-28">
-          <div className="mx-auto max-w-5xl">
-            <SectionHeading
-              eyebrow="Pricing"
-              title="Simple, transparent plans"
-              body="One-time payment — no subscription and no auto-renewal. Your session credits never expire. Pay with M-Pesa, card, or bank transfer."
-            />
-            {/* Three-up only from `md`. At the old `sm` breakpoint (640px) each
-                card had roughly 145px of content width, which is not enough for
-                a plan price at any weight that reads as a headline. The extra
-                row gap on mobile is for the "Most popular" badge, which hangs
-                above its card and clipped the card stacked above it. */}
-            <div className="mt-16 grid items-stretch gap-x-6 gap-y-10 md:grid-cols-3 md:gap-6">
-              {plans.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`relative flex flex-col rounded-3xl p-8 transition-shadow ${
-                    plan.highlighted
-                      ? "bg-brand-900 text-white shadow-xl shadow-brand-950/20"
-                      : "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200 hover:shadow-md"
-                  }`}
-                >
-                  {plan.highlighted && (
-                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-sage px-4 py-1 text-xs font-bold uppercase tracking-widest text-brand-950 shadow">
-                      Most popular
-                    </span>
-                  )}
-                  <div className="mb-6">
-                    <h3 className={`text-lg font-semibold ${plan.highlighted ? "text-white" : "text-stone-900"}`}>
-                      {plan.name}
-                    </h3>
-                    <p className={`mt-1 text-sm leading-6 ${plan.highlighted ? "text-brand-100/80" : "text-stone-500"}`}>
-                      {plan.description}
-                    </p>
-                  </div>
-                  <div className="mb-8">
-                    <PriceTag
-                      amount={plan.price}
-                      period={plan.period}
-                      priceClass={plan.highlighted ? "text-white" : "text-stone-900"}
-                      periodClass={plan.highlighted ? "text-brand-100/70" : "text-stone-500"}
-                    />
-                  </div>
-                  <ul className="mb-8 flex flex-1 flex-col gap-3">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-3 text-sm">
-                        <span
-                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                            plan.highlighted ? "bg-white/10 text-brand-200" : "bg-brand-50 text-brand-700"
-                          }`}
-                        >
-                          <Check className="h-3 w-3" strokeWidth={3} />
-                        </span>
-                        <span className={plan.highlighted ? "text-white/85" : "text-stone-600"}>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {/* Carries the choice the visitor just made. `?plan=` survives
-                      sign-up, /post-login and /role-select, and lands as the
-                      pre-selected plan on /onboarding — so picking "Couples"
-                      here means never being asked again. */}
-                  <Link
-                    href={`/signup?plan=${plan.id}`}
-                    className={`block rounded-full py-3 text-center text-sm font-semibold transition-colors ${
-                      plan.highlighted ? "bg-white text-brand-900 hover:bg-brand-50" : "bg-brand text-white hover:bg-brand-700"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Link>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── CTA Banner ───────────────────────────── */}
-        <section className="bg-stone-50 px-4 pb-24 sm:px-6">
-          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-brand-gradient px-6 py-16 text-center sm:px-12 sm:py-20">
-            <Image
-              src="/echo-butterfly.png"
-              alt=""
-              width={500}
-              height={500}
-              className="pointer-events-none absolute -bottom-28 -right-20 w-[440px] opacity-10 brightness-0 invert"
-            />
-            <div className="relative mx-auto max-w-2xl">
-              <h2 className="font-display text-3xl tracking-tight text-white sm:text-5xl">
-                Your first step starts here.
-              </h2>
-              {/* Was "Thousands of people have already taken control of their
-                  mental health with Echo Health" — the same unevidenced volume
-                  claim as the counters above, in prose. The CTA also said "free to
-                  start", which it is not: the cheapest way in is a paid session. */}
-              <p className="mx-auto mt-4 max-w-lg leading-7 text-white">
-                Answer a few questions, meet a licensed therapist, and pay only for
-                the sessions you book. Today can be your day one.
-              </p>
+      {/* ── Conditions ───────────────────────────── */}
+      <Section>
+        <SectionHeading
+          eyebrow="What we help with"
+          title="Start where it actually hurts"
+          body="Each of these has a page explaining what therapy for it involves and what a first session is like."
+        />
+        <ul className="mx-auto mt-12 flex max-w-4xl flex-wrap justify-center gap-2.5">
+          {CONDITIONS.map((c) => (
+            <li key={c.slug}>
               <Link
-                href="/signup"
-                className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-brand-800 shadow-lg transition-colors hover:bg-brand-50"
+                href={`/therapy-for/${c.slug}`}
+                className="inline-flex min-h-11 items-center rounded-full bg-surface px-5 text-sm font-medium text-stone-700 shadow-sm ring-1 ring-inset ring-stone-200 transition-colors hover:text-brand-700 hover:ring-stone-300"
               >
-                Match with a therapist
-                <ArrowRight className="h-4 w-4" />
+                {c.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      {/* ── Pricing ──────────────────────────────── */}
+      <Section id="pricing" tone="muted">
+        <SectionHeading
+          eyebrow="Pricing"
+          title="One payment. No subscription."
+          body="Session credits never expire, and nothing renews on its own. Pay with M-Pesa, card or bank transfer."
+        />
+        {/* Three-up only from `md`. At 640px each card had ~145px of content
+            width, which is not enough for a price at any weight that reads as
+            a headline. The extra row gap on mobile is for the "Most popular"
+            badge, which hangs above its card and clipped the card above it. */}
+        <div className="mt-14 grid items-stretch gap-x-6 gap-y-10 md:grid-cols-3 md:gap-6">
+          {PLANS.map((plan) => (
+            <div
+              key={plan.id}
+              className={`relative flex flex-col rounded-3xl p-8 transition-shadow ${
+                plan.highlighted
+                  ? "bg-brand-900 text-white shadow-xl shadow-brand-950/20"
+                  : "bg-surface text-stone-900 shadow-sm ring-1 ring-stone-200 hover:shadow-md"
+              }`}
+            >
+              {plan.highlighted && (
+                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-sage px-4 py-1 text-xs font-bold uppercase tracking-widest text-brand-950 shadow">
+                  Most popular
+                </span>
+              )}
+              <h3 className={`text-lg font-semibold ${plan.highlighted ? "text-white" : "text-stone-900"}`}>
+                {plan.name}
+              </h3>
+              <p className={`mt-1 text-sm leading-6 ${plan.highlighted ? "text-brand-100/80" : "text-stone-500"}`}>
+                {plan.description}
+              </p>
+              <div className="mb-8 mt-6">
+                <PriceTag
+                  amount={PLAN_PRICES[plan.id]}
+                  period={PLAN_PERIOD_LABELS[plan.id]}
+                  priceClass={plan.highlighted ? "text-white" : "text-stone-900"}
+                  periodClass={plan.highlighted ? "text-brand-100/70" : "text-stone-500"}
+                />
+                <p className={`mt-2 text-xs ${plan.highlighted ? "text-brand-100/70" : "text-stone-500"}`}>
+                  {PLAN_SESSIONS[plan.id]}{" "}
+                  {PLAN_SESSIONS[plan.id] === 1 ? "session" : "sessions"}, paid once
+                </p>
+              </div>
+              <ul className="mb-8 flex flex-1 flex-col gap-3">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-3 text-sm">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                        plan.highlighted ? "bg-white/10 text-brand-200" : "bg-brand-50 text-brand-700"
+                      }`}
+                    >
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </span>
+                    <span className={plan.highlighted ? "text-white/85" : "text-stone-600"}>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* `?plan=` survives sign-up, /post-login and /role-select and
+                  lands pre-selected on /onboarding — so picking Couples here
+                  means never being asked again. */}
+              <Link
+                href={`/get-started?for=${plan.id === "couples" ? "couple" : "self"}`}
+                className={`flex min-h-12 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                  plan.highlighted
+                    ? "bg-white text-brand-900 hover:bg-brand-50"
+                    : "bg-brand text-white hover:bg-brand-700"
+                }`}
+              >
+                Get started
               </Link>
             </div>
+          ))}
+        </div>
+        <p className="mt-10 text-center text-sm text-stone-600">
+          <Link href="/pricing" className="font-semibold text-brand-700 underline underline-offset-4">
+            Compare the plans in full
+          </Link>
+        </p>
+      </Section>
+
+      {/* ── FAQ ──────────────────────────────────── */}
+      <Section>
+        <div className="mx-auto max-w-3xl">
+          <SectionHeading eyebrow="Questions" title="The things people ask first" />
+          <FaqList faqs={FAQS} />
+          <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <CtaButton href="/faq" variant="secondary">
+              More questions
+            </CtaButton>
+            <CtaButton href="/get-started">Get started</CtaButton>
           </div>
-        </section>
+        </div>
+      </Section>
 
-      </main>
+      {/* ── Closing ──────────────────────────────── */}
+      <section className="bg-stone-50 px-4 pb-20 sm:px-6 sm:pb-24">
+        <div className="relative mx-auto max-w-7xl overflow-hidden rounded-3xl bg-brand-gradient px-6 py-14 text-center sm:px-12 sm:py-20">
+          <div className="relative mx-auto max-w-2xl">
+            <h2 className="font-display text-3xl tracking-tight text-white sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1]">
+              Today can be day one.
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-[17px] leading-8 text-white/90">
+              Answer a few questions, meet a licensed therapist, and pay only
+              for the sessions you book.
+            </p>
+            <CtaButton href="/get-started" variant="onDark" className="mt-9">
+              Match with a therapist
+            </CtaButton>
+          </div>
+        </div>
+      </section>
 
-      <Footer />
-    </div>
+      <StickyCta />
+    </>
+  );
+}
+
+/**
+ * A comparison cell.
+ *
+ * The mark is `aria-hidden` and paired with visually hidden text, because a
+ * screen reader announcing "check" in a table of ten rows conveys nothing
+ * about which column it was in.
+ */
+function Mark({ on }: { readonly on: boolean | "sometimes" }) {
+  if (on === "sometimes") {
+    return (
+      <>
+        <Minus className="mx-auto h-5 w-5 text-stone-400" strokeWidth={2.5} aria-hidden="true" />
+        <span className="sr-only">Sometimes</span>
+      </>
+    );
+  }
+  return on ? (
+    <>
+      <Check className="mx-auto h-5 w-5 text-brand-600" strokeWidth={3} aria-hidden="true" />
+      <span className="sr-only">Yes</span>
+    </>
+  ) : (
+    <>
+      <span aria-hidden="true" className="mx-auto block h-5 w-5 text-lg leading-5 text-stone-300">
+        ×
+      </span>
+      <span className="sr-only">No</span>
+    </>
   );
 }

@@ -1,6 +1,5 @@
-import { ArrowLeft, MessageCircle, Building2, Stethoscope, Mail } from "lucide-react";
-import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import { MessageCircle, Building2, Stethoscope, Mail } from "lucide-react";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
@@ -43,20 +42,10 @@ const contacts = [
 
 export default function ContactPage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-slate-50 min-h-screen">
-      <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
-          >
-            <ArrowLeft size={16} />
-            Back to Home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/contact", label: "Contact" }]} />
 
-      <main className="flex-1 px-6 py-24">
+      <div className="flex-1 bg-slate-50 px-6 py-24">
         <div className="mx-auto max-w-5xl text-center mb-16">
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 tracking-tight mb-6">
             Get in touch
@@ -85,9 +74,7 @@ export default function ContactPage() {
             </div>
           ))}
         </div>
-      </main>
-      
-      <Footer />
-    </div>
+      </div>
+    </>
   );
 }

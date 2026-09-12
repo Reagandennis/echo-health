@@ -99,7 +99,13 @@ export default function SessionsPage() {
             <ChevronRight size={18} className="text-stone-600" />
           </button>
         </div>
-        <div className="grid grid-cols-7 gap-2">
+        {/* A week is seven columns and stays seven columns — collapsing it to
+            one would stop being a calendar. Seven cells wide enough to hold a
+            session time need ~350px, and the card's content box is ~272px on a
+            360px phone, so the row scrolls sideways instead of crushing every
+            day to an unreadable sliver. */}
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-7 gap-2 min-w-[22rem]">
           {weekDays.map((d) => {
             const isToday = d.toDateString() === today.toDateString();
             const daySessions = sessionsForDay(d);
@@ -118,6 +124,7 @@ export default function SessionsPage() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
 

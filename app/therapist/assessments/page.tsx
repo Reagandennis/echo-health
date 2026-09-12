@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useUser } from "@/app/components/UserProvider";
 import { getTherapistByUserIdAction, listAllMoodLogsAction } from "@/app/actions/database";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { ClipboardList, TrendingUp, Loader2 } from "lucide-react";
+import { ClipboardList, TrendingUp } from "lucide-react";
+
+// PERF: defer the recharts chunk (8.5 MB + d3 transitives) so it isn't pulled
+// into this page's initial bundle. `ssr: false` because recharts measures the
+// DOM to size itself and has nothing to render on the server.
+const MoodBarChart = dynamic(() => import("./_components/MoodBarChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[260px] items-center justify-center">
+      <div className="w-5 h-5 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
+    </div>
+  ),
+});
 
 interface MoodLog { $id: string; score: number; note?: string; userId: string; createdAt: string; }
 
@@ -96,15 +108,7 @@ export default function AssessmentsPage() {
           {chartData.length === 0 ? (
             <div className="py-12 text-center text-sm text-stone-400">No mood data logged yet</div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f4" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#a8a29e" }} />
-                <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: "#a8a29e" }} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }} />
-                <Bar dataKey="score" fill="#35858E" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <MoodBarChart data={chartData} />
           )}
         </div>
       )}

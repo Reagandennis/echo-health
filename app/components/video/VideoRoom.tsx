@@ -54,7 +54,10 @@ export default function VideoRoom({ sessionId, userId, role, onLeave }: VideoRoo
 
   if (!isJoined) {
     return (
-      <div className="flex flex-col items-center justify-center h-[500px] bg-stone-900 rounded-3xl overflow-hidden relative">
+      // `h-[60vh]` on a phone: a fixed 500px pre-join panel pushed the "Join
+      // Session" button off a 360×640 screen once the page header and the
+      // browser's own chrome were accounted for.
+      <div className="flex flex-col items-center justify-center h-[60vh] sm:h-[500px] bg-stone-900 rounded-3xl overflow-hidden relative">
         {localStream ? (
           <video
             ref={localVideoRef}
@@ -84,7 +87,10 @@ export default function VideoRoom({ sessionId, userId, role, onLeave }: VideoRoo
   }
 
   return (
-    <div className="relative w-full h-[600px] bg-stone-900 rounded-3xl overflow-hidden shadow-2xl border border-stone-800">
+    // Same reason as the pre-join panel above, and it matters more here: the
+    // in-call controls (mute, camera, leave) sit at the bottom of this box, so
+    // a fixed 600px stage put "leave the session" below the fold on a phone.
+    <div className="relative w-full h-[60vh] sm:h-[600px] bg-stone-900 rounded-3xl overflow-hidden shadow-2xl border border-stone-800">
       {/* Remote Video (Full Screen) */}
       {remoteStream ? (
         <video

@@ -22,7 +22,10 @@ export default async function NoShowsPage() {
         description="Clients with repeated non-attendance patterns."
         breadcrumbs={[{ label: "Sessions", href: "/admin/sessions" }, { label: "No-Shows" }]}
       />
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      {/* Each card carries an icon, a full-sentence label and a figure; at
+          `grid-cols-3` on a 360px phone "No-Shows This Month" wraps to four
+          lines beside a 36px icon. Stack below `sm`. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
           { label: "No-Shows This Month", value: "8", icon: AlertTriangle, color: "bg-rose-100 text-rose-700" },
           { label: "Late Cancellations", value: "12", icon: TrendingDown, color: "bg-amber-100 text-amber-700" },

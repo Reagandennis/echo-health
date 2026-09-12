@@ -87,9 +87,12 @@ function MoodModal({
         {/* Emoji grid */}
         <div className="grid grid-cols-5 gap-2 mb-5">
           {MOOD_EMOJIS.map(({ score: s, emoji, label }) => (
+            // `min-h-11`: five across a phone-width modal made these ~40px tall,
+            // under the 44px touch minimum — on the one control this whole
+            // screen exists for.
             <button type="button" key={s} onClick={() => setScore(s)}
               title={label}
-              className={`flex flex-col items-center p-2 rounded-xl transition-all ${score === s ? "bg-brand/10 scale-110 ring-2 ring-brand" : "hover:bg-cream"}`}>
+              className={`flex min-h-11 flex-col items-center justify-center p-2 rounded-xl transition-all ${score === s ? "bg-brand/10 scale-110 ring-2 ring-brand" : "hover:bg-cream"}`}>
               <span className="text-2xl">{emoji}</span>
               <span className="text-[9px] text-stone-500 mt-0.5">{s}</span>
             </button>

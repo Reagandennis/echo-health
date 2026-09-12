@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
@@ -294,24 +294,10 @@ Your continued use of the Platform after the effective date of any change consti
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="min-h-screen bg-white">
-      {/* Nav */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-xl font-semibold tracking-tight">
-            <span className="text-brand">Echo Psychology </span>
-            <span className="text-slate-700">Group</span>
-          </Link>
-          <Link
-            href="/"
-            className="text-sm font-medium text-slate-500 hover:text-brand transition-colors"
-          >
-            ← Back to home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/privacy", label: "Privacy policy" }]} />
 
-      <main className="mx-auto max-w-4xl px-6 py-16">
+      <div className="mx-auto max-w-4xl px-6 py-16">
         {/* Header */}
         <div className="mb-12 border-b border-slate-100 pb-10">
           <span className="inline-block rounded-full bg-cream px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-brand mb-6">
@@ -464,25 +450,7 @@ export default function PrivacyPolicyPage() {
             Contact Privacy Team
           </a>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-100 mt-16 py-8 text-center text-xs text-slate-400">
-        <p>
-          © {new Date().getFullYear()} Echo Health, Inc. All rights reserved.
-        </p>
-        <div className="flex justify-center gap-6 mt-3">
-          <Link href="/privacy" className="hover:text-brand transition-colors">
-            Privacy Policy
-          </Link>
-          <Link href="/terms" className="hover:text-brand transition-colors">
-            Terms of Service
-          </Link>
-          <Link href="/" className="hover:text-brand transition-colors">
-            Back to Home
-          </Link>
-        </div>
-      </footer>
-    </div>
+      </div>
+    </>
   );
 }

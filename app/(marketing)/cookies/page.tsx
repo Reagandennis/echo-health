@@ -1,5 +1,4 @@
-import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
@@ -15,24 +14,10 @@ const EFFECTIVE_DATE = "May 1, 2026";
 
 export default function CookieSettingsPage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-white min-h-screen">
-      {/* Nav */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-xl font-semibold tracking-tight">
-            <span className="text-brand">Echo Psychology </span>
-            <span className="text-slate-700">Group</span>
-          </Link>
-          <Link
-            href="/"
-            className="text-sm font-medium text-slate-500 hover:text-brand transition-colors"
-          >
-            ← Back to home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/cookies", label: "Cookie settings" }]} />
 
-      <main className="flex-1 mx-auto max-w-3xl px-6 py-16 w-full">
+      <div className="mx-auto w-full max-w-3xl px-6 py-16">
         {/* Header */}
         <div className="mb-12 border-b border-slate-100 pb-10">
           <span className="inline-block rounded-full bg-cream px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-brand mb-6">
@@ -50,17 +35,22 @@ export default function CookieSettingsPage() {
           </p>
         </div>
 
-        {/* Settings Toggles */}
+        {/* Settings Toggles
+            Each category is a top-level section of this page, so these are h2s.
+            They were h3s under an h1 with no h2 anywhere on the page, which is
+            a skipped level: a screen-reader user navigating by heading jumped
+            from the page title straight into a subsection with nothing to say
+            what it was a subsection of. */}
         <div className="space-y-8">
-          
+
           {/* Strictly Necessary */}
           <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
                   Strictly Necessary Cookies
                   <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded uppercase tracking-wider font-bold">Required</span>
-                </h3>
+                </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   These cookies are essential for the platform to function securely. They enable core features such as logging in, remembering your session, and preventing fraudulent activity. Because they are required for security and core functionality, they cannot be disabled.
                 </p>
@@ -77,9 +67,9 @@ export default function CookieSettingsPage() {
           <div className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-brand/30 transition-colors">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">
                   Analytics & Performance
-                </h3>
+                </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   These cookies help us understand how visitors interact with our platform by collecting and reporting information anonymously. They allow us to count visits and traffic sources so we can measure and improve the performance of our site.
                 </p>
@@ -95,9 +85,9 @@ export default function CookieSettingsPage() {
           <div className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-brand/30 transition-colors">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">
                   Functional Cookies
-                </h3>
+                </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   These cookies enable the platform to provide enhanced functionality and personalization. They may be set by us or by third-party providers whose services we have added to our pages (e.g., video players or live chat).
                 </p>
@@ -113,9 +103,9 @@ export default function CookieSettingsPage() {
           <div className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-brand/30 transition-colors">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">
                   Targeting & Advertising
-                </h3>
+                </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   We <strong className="text-slate-700">do not</strong> use third-party advertising cookies on pages where protected health information (PHI) is accessible. We may use these cookies on public marketing pages to deliver relevant advertisements on other websites.
                 </p>
@@ -139,9 +129,7 @@ export default function CookieSettingsPage() {
         <div className="mt-16 border-t border-slate-100 pt-8 text-sm text-slate-500 text-center">
           For more information about how we handle your data, please read our <a href="/privacy" className="text-brand hover:underline font-semibold">Privacy Policy</a>.
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </>
   );
 }

@@ -232,12 +232,29 @@ export default function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    /*
+     * `bottom-24` below `lg`, not `bottom-6`.
+     *
+     * This widget mounts on `/dashboard` (ChatWidgetWrapper only excludes the
+     * therapist and admin portals), where `ClientNav` renders a fixed tab bar
+     * across the bottom on every width under `lg`. A 56px FAB at `bottom-6`
+     * landed squarely on the fifth tab — "More" — which is the only way to
+     * reach Goals, Resources, Billing and Settings on a phone. Hiding the
+     * widget on /dashboard would be the wrong trade: signed-in clients are the
+     * people most likely to need support.
+     */
+    <div className="fixed bottom-24 lg:bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       {/* Chat panel */}
       {open && (
         <div
-          className="w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-brand/10 flex flex-col overflow-hidden"
-          style={{ maxHeight: "min(520px, calc(100vh - 120px))" }}
+          /*
+           * `w-[min(22rem,…)]` rather than a fixed `w-80`: the panel is pinned
+           * `right-6`, so a 320px panel leaves a 16px gutter at 360px and runs
+           * off the left edge of anything narrower. Same expression as
+           * NotificationBell, which had already been fixed this way.
+           */
+          className="w-[min(22rem,calc(100vw-3rem))] sm:w-96 bg-white rounded-2xl shadow-2xl border border-brand/10 flex flex-col overflow-hidden"
+          style={{ maxHeight: "min(520px, calc(100dvh - 180px))" }}
         >
           {/* Header */}
           <div className="bg-brand px-5 py-4 flex items-center justify-between shrink-0">
@@ -349,9 +366,11 @@ export default function ChatWidget() {
                   onClick={() => { handleSend().catch(() => null); }}
                   disabled={!input.trim() || sending}
                   aria-label="Send message"
-                  className="w-8 h-8 rounded-full bg-brand flex items-center justify-center hover:bg-brand/90 transition-colors disabled:opacity-40 shrink-0"
+                  // 44px, not 32px: this is the widget's primary action and the
+                  // only way to send from a touch keyboard that has no Enter.
+                  className="w-11 h-11 rounded-full bg-brand flex items-center justify-center hover:bg-brand/90 transition-colors disabled:opacity-40 shrink-0"
                 >
-                  <Send size={13} className="text-white" />
+                  <Send size={15} className="text-white" />
                 </button>
               </div>
             </>

@@ -32,12 +32,23 @@ export default function SiteHeader() {
   const headerRef = useRef<HTMLElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* Route change closes everything. Without this, tapping a link in the mobile
-     drawer navigates underneath a drawer that stays open on top of it. */
-  useEffect(() => {
+  /*
+   * Route change closes everything. Without it, tapping a link in the mobile
+   * drawer navigates underneath a drawer that stays open on top of the new
+   * page.
+   *
+   * Adjusted during render rather than in an effect. React re-runs this
+   * component immediately with the new state before touching the DOM, so the
+   * drawer never paints open on the new route — an effect would let one frame
+   * of the old state through, and `react-hooks/set-state-in-effect` flags it
+   * for exactly that reason.
+   */
+  const [renderedPath, setRenderedPath] = useState(pathname);
+  if (renderedPath !== pathname) {
+    setRenderedPath(pathname);
     setOpenMenu(null);
     setDrawerOpen(false);
-  }, [pathname]);
+  }
 
   useEffect(() => {
     if (!openMenu && !drawerOpen) return;

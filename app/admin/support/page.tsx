@@ -34,7 +34,9 @@ export default async function SupportTicketsPage() {
         }
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      {/* Four counters at `grid-cols-4` give ~76px per cell on a 360px phone,
+          which breaks "In Progress" across three lines. Two up, then four. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {[
           { label: "Open", value: TICKETS.filter(t => t.status === "open").length, color: "bg-rose-50 text-rose-700" },
           { label: "In Progress", value: TICKETS.filter(t => t.status === "in-progress").length, color: "bg-amber-50 text-amber-700" },

@@ -1,6 +1,6 @@
-import { ArrowLeft, Plus, MessageCircle } from "lucide-react";
-import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import { Plus, MessageCircle } from "lucide-react";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
+import JsonLd from "@/app/components/marketing/JsonLd";
 import { pageMetadata } from "@/lib/seo";
 import {
   PLAN_PRICES,
@@ -119,24 +119,14 @@ const faqJsonLd = {
 
 export default function FAQPage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-cream min-h-screen">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
-      />
-      <header className="sticky top-0 z-50 w-full border-b border-cream bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-4xl items-center px-6 py-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-medium text-brand hover:opacity-80 transition-opacity"
-          >
-            <ArrowLeft size={16} />
-            Back to Home
-          </Link>
-        </div>
-      </header>
+    <>
+      {/* Serialised through `JsonLd` rather than a hand-rolled script tag: it
+          escapes `<` in the answer strings, which would otherwise close the
+          element early the day someone writes one into an answer. */}
+      <JsonLd data={faqJsonLd} />
+      <Breadcrumbs trail={[{ href: "/faq", label: "FAQ" }]} />
 
-      <main className="flex-1 px-6 py-20">
+      <div className="bg-cream px-6 py-20">
         <div className="mx-auto max-w-3xl">
           <div className="mb-16">
             <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 tracking-tight">
@@ -180,7 +170,9 @@ export default function FAQPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm mb-6">
               <MessageCircle className="h-8 w-8 text-brand" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800">Still have questions?</h3>
+            {/* h2, not h3: this is a sibling of the category sections above,
+                not a child of the last one. */}
+            <h2 className="text-2xl font-bold text-slate-800">Still have questions?</h2>
             <p className="mt-2 text-slate-500 mb-8 max-w-md mx-auto">
               Our support team is here to help you navigate your journey. We typically respond within a few hours.
             </p>
@@ -192,8 +184,7 @@ export default function FAQPage() {
             </a>
           </div>
         </div>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </>
   );
 }

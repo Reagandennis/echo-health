@@ -154,11 +154,13 @@ export default async function UsersListPage() {
           <p className="text-xs text-stone-500">
             Showing {profiles.length} client{profiles.length === 1 ? "" : "s"}
           </p>
-          <div className="flex gap-1">
+          {/* 32px at a 4px gutter put five targets inside 180px — under the
+              44px minimum, and this is the page's only pagination. */}
+          <div className="flex gap-2">
             {["←", "1", "2", "3", "→"].map((p) => (
               <button
                 key={p}
-                className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                className={`min-h-11 min-w-11 rounded-lg text-xs font-medium transition-colors ${
                   p === "1"
                     ? "bg-teal-600 text-white"
                     : "text-stone-500 hover:bg-stone-100"

@@ -100,7 +100,11 @@ export default function MessagesPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-stone-900 mb-6">Messages</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[70vh]">
+      {/* The columns stack correctly below `md`, but `h-[70vh]` did not: the two
+          panes then shared 70vh, ~35vh each, under `overflow-hidden` — a
+          conversation list and a thread both clipped to a third of a screen.
+          Stacked panes size to their content and the page scrolls instead. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-auto md:h-[70vh]">
         {/* Sidebar */}
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-stone-100">

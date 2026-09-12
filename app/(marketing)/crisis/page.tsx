@@ -1,6 +1,6 @@
-import { AlertTriangle, Phone, MessageSquare, ArrowLeft, Globe, ExternalLink } from "lucide-react";
+import { AlertTriangle, Phone, MessageSquare, Globe, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import Footer from "@/app/components/Footer";
+import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
 import { pageMetadata } from "@/lib/seo";
 import { CRISIS_REGIONS, CRISIS_DIRECTORY_URL, type CrisisService } from "@/lib/constants";
 
@@ -75,20 +75,10 @@ function ServiceCard({ service }: { service: CrisisService }) {
 
 export default function CrisisPage() {
   return (
-    <div className="flex flex-col flex-1 font-sans bg-slate-50 min-h-screen">
-      <header className="sticky top-0 z-50 w-full bg-white border-b border-slate-200">
-        <div className="mx-auto flex max-w-4xl items-center px-6 py-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
-          >
-            <ArrowLeft size={16} />
-            Back to Home
-          </Link>
-        </div>
-      </header>
+    <>
+      <Breadcrumbs trail={[{ href: "/crisis", label: "Crisis support" }]} />
 
-      <main className="flex-1 px-6 py-16">
+      <div className="flex-1 bg-slate-50 px-6 py-16">
         <div className="mx-auto max-w-3xl">
           {/* No number in the headline. Echo serves clients worldwide and there
               is no emergency number that works everywhere — 911, 999 and 112 all
@@ -160,8 +150,7 @@ export default function CrisisPage() {
             — we will correct it immediately.
           </p>
         </div>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </>
   );
 }

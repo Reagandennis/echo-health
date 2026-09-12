@@ -117,7 +117,11 @@ export default function ClientDetailPage() {
             {profile.goal && <span className="text-xs font-semibold bg-brand/5 text-brand px-3 py-1 rounded-full">Goal: {profile.goal}</span>}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-8 px-8 py-4 bg-stone-50 rounded-2xl border border-stone-100">
+        {/* The stat strip sits inside a `p-8` card inside a `p-6` page, so on a
+            360px phone `gap-8 px-8` left roughly 40px per cell — narrower than
+            the two-digit numbers it has to hold. Padding and gutter only open
+            up once there is room for them. */}
+        <div className="grid grid-cols-3 gap-3 px-3 py-4 sm:gap-8 sm:px-8 bg-stone-50 rounded-2xl border border-stone-100">
           <div className="text-center">
             <p className="text-2xl font-bold text-stone-900">{sessions.length}</p>
             <p className="text-[10px] font-bold text-stone-400 uppercase">Sessions</p>

@@ -66,6 +66,22 @@ export default function IntakeQuiz() {
    * this component behind a Suspense boundary, and the value is only ever
    * needed in the browser.
    */
+  /*
+   * `react-hooks/set-state-in-effect` is disabled here deliberately, and this
+   * is the one place in the component where that is defensible.
+   *
+   * The rule's advice — derive it during render, or set state from a
+   * subscription callback — cannot apply: `sessionStorage` and
+   * `window.location` do not exist while this renders on the server, and a
+   * lazy `useState` initialiser that read them would produce a first client
+   * render that disagrees with the server HTML. That is a hydration mismatch,
+   * which is a worse bug than one extra render.
+   *
+   * Reading a value out of an external store on mount is the case effects are
+   * actually for. It runs once, and the render it triggers happens before the
+   * user can have interacted with anything.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect -- see the note above */
   useEffect(() => {
     let restored: Answers = {};
     try {
@@ -86,6 +102,7 @@ export default function IntakeQuiz() {
 
     if (Object.keys(restored).length > 0) setAnswers(restored);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const persist = useCallback((next: Answers) => {
     setAnswers(next);

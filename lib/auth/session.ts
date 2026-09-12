@@ -87,6 +87,26 @@ export interface SessionUser {
  * session is a local cookie decrypt with no network round-trip — so a `null`
  * here means "no valid session", never "the auth provider was unreachable".
  */
+/**
+ * One line per process, not one per request.
+ *
+ * An unconfigured provider fails on every call, and `getLoggedInUser` is
+ * called many times per page render — `cache()` dedupes within a request but
+ * not across them. Logging each would bury everything else.
+ */
+let warnedAboutProvider = false;
+
+function logAuthProviderFailure(error: unknown): void {
+  if (warnedAboutProvider) return;
+  warnedAboutProvider = true;
+  console.error(
+    "[auth] Could not read a session: the identity provider is unavailable or " +
+      "not configured. Treating every request as signed out. Check AUTH0_DOMAIN, " +
+      "AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET and AUTH0_SECRET. " +
+      `Underlying error: ${error instanceof Error ? error.message : String(error)}`
+  );
+}
+
 export const getLoggedInUser = cache(async (): Promise<SessionUser | null> => {
   /*
    * Local personas, checked before Auth0.
@@ -107,7 +127,32 @@ export const getLoggedInUser = cache(async (): Promise<SessionUser | null> => {
     if (devUser) return devUser;
   }
 
-  const session = await auth0.getSession();
+  /*
+   * A provider that cannot answer means "no session", not an exception.
+   *
+   * `auth0.getSession()` THROWS when the SDK is unconfigured
+   * (`invalid_configuration`) or its domain will not resolve. This function is
+   * called from ~89 places including `/api/me`, which `UserProvider` probes on
+   * every page load — so an unguarded throw turned a missing `AUTH0_CLIENT_ID`
+   * into a 500 on that route for every visitor, signed in or not.
+   *
+   * Returning null is the honest answer and it fails CLOSED: every role guard
+   * is `labels?.includes(...)`, so no session means no access. The distinction
+   * the rest of the app relies on — that `null` means "no valid session" and
+   * never "provider unreachable" — is preserved for the case that matters,
+   * because a provider we cannot reach cannot have told us anyone is signed
+   * in. What we must not do is let it become a 500.
+   *
+   * Logged once per process; see `logAuthProviderFailure`.
+   */
+  let session: Awaited<ReturnType<typeof auth0.getSession>> = null;
+  try {
+    session = await auth0.getSession();
+  } catch (error) {
+    logAuthProviderFailure(error);
+    return null;
+  }
+
   const user = session?.user;
 
   if (!user?.sub) return null;

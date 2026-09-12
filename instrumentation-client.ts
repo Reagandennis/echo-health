@@ -45,10 +45,32 @@ async function initPostHog() {
    * is a no-op instead of an error. Running locally without analytics is a
    * supported state, not a degraded one.
    */
-  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  /*
+   * Both names are accepted, and that is not laziness.
+   *
+   * PostHog's own Next.js docs use `NEXT_PUBLIC_POSTHOG_KEY`, which is what
+   * this repo documents and what `.env.example` lists. PostHog's *dashboard*
+   * calls the value a "Project API key", so it is genuinely easy to put it in
+   * an env var named after the label rather than after the doc — which is
+   * exactly what happened here: `.env` had
+   * `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` set to a valid `phc_…` token, the code
+   * read `NEXT_PUBLIC_POSTHOG_KEY`, and analytics was silently off with a
+   * perfectly plausible-looking configuration.
+   *
+   * The cost of a mismatch here is asymmetric: the app works fine and you
+   * simply have no data, which is the failure this codebase has been bitten by
+   * before (see the `@unwired` note in `lib/analytics/events.ts`, where three
+   * dashboards read a flat zero for months). Accepting both names costs one
+   * `??` and removes a class of silent outage.
+   */
+  const key =
+    process.env.NEXT_PUBLIC_POSTHOG_KEY ?? process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
   if (!key) {
     if (!isProd) {
-      console.info("[analytics] NEXT_PUBLIC_POSTHOG_KEY is unset — PostHog is disabled.");
+      console.info(
+        "[analytics] Neither NEXT_PUBLIC_POSTHOG_KEY nor " +
+          "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is set — PostHog is disabled."
+      );
     }
     return;
   }

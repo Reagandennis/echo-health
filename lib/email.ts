@@ -28,9 +28,31 @@ function getResend(): Resend | null {
   return cached;
 }
 
+/**
+ * Domains that are definitely not verified with anyone.
+ *
+ * The check below used to be `SENDER_EMAIL !== RESEND_TEST_SENDER`, which let
+ * a placeholder through: `.env` shipped `noreply@example.com`, that is not the
+ * test sender, so `isEmailDeliverable()` returned **true** while Resend
+ * refused every single send with a 403 for an unverified domain.
+ *
+ * That is the worst version of this failure. `sendKyc*Email` swallows
+ * transport errors on purpose — the KYC decision is already committed and
+ * throwing would make a finished review look failed — so the mail silently
+ * vanished while every guard in this file reported healthy.
+ */
+const PLACEHOLDER_DOMAINS = ["example.com", "example.org", "example.net", "localhost", "test"];
+
+function isPlaceholderSender(address: string): boolean {
+  const domain = address.split("@")[1]?.toLowerCase() ?? "";
+  return PLACEHOLDER_DOMAINS.includes(domain);
+}
+
 /** Whether outbound mail can reach a recipient who is not the account owner. */
 export function isEmailDeliverable(): boolean {
-  return Boolean(process.env.RESEND_API_KEY) && SENDER_EMAIL !== RESEND_TEST_SENDER;
+  if (!process.env.RESEND_API_KEY) return false;
+  if (SENDER_EMAIL === RESEND_TEST_SENDER) return false;
+  return !isPlaceholderSender(SENDER_EMAIL);
 }
 
 let warnedAboutSender = false;
@@ -43,14 +65,26 @@ let warnedAboutSender = false;
  * Once per process is enough to be seen in logs without drowning them.
  */
 function warnIfUndeliverable(recipient: string) {
-  if (SENDER_EMAIL !== RESEND_TEST_SENDER || warnedAboutSender) return;
+  if (warnedAboutSender || isEmailDeliverable()) return;
   warnedAboutSender = true;
+
+  if (SENDER_EMAIL === RESEND_TEST_SENDER) {
+    console.warn(
+      `[email] SMTP_SENDER_EMAIL is unset, so mail is being sent from ` +
+        `${RESEND_TEST_SENDER}. Resend only delivers from that address to the API ` +
+        `key owner's own account, so this send to ${recipient} will almost ` +
+        `certainly be refused. Set SMTP_SENDER_EMAIL to an address on a domain ` +
+        `verified in your Resend account.`
+    );
+    return;
+  }
+
   console.warn(
-    `[email] SMTP_SENDER_EMAIL is unset, so mail is being sent from ` +
-      `${RESEND_TEST_SENDER}. Resend only delivers from that address to the API ` +
-      `key owner's own account, so this send to ${recipient} will almost ` +
-      `certainly be refused. Set SMTP_SENDER_EMAIL to an address on a domain ` +
-      `verified in your Resend account.`
+    `[email] SMTP_SENDER_EMAIL is "${SENDER_EMAIL}", whose domain is a ` +
+      `placeholder and cannot be verified with Resend. This send to ${recipient} ` +
+      `will be refused with a 403, and because KYC mail swallows transport ` +
+      `errors the failure would otherwise be silent. Set it to an address on a ` +
+      `domain you have verified.`
   );
 }
 

@@ -20,16 +20,79 @@ const PROTECTED_PREFIXES = ["/admin", "/therapist", "/dashboard"];
  * As before, role-based access (admin/therapist) is enforced in each section's
  * Server Component layout, not here — this stays a cheap cookie check.
  */
-export async function proxy(request: NextRequest) {
-  // Must run first: it both serves the /auth/* routes and refreshes the session.
-  const authResponse = await auth0.middleware(request);
+/**
+ * Log an identity-provider failure once per process rather than per request.
+ *
+ * A misconfigured provider fails on every single request that reaches this
+ * file, which is most of them. Logging each one turns one fact into a flood
+ * that buries whatever else is in the log.
+ */
+let warnedAboutAuthProvider = false;
 
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  /*
+   * ── The identity provider must not be able to 500 the whole pipeline ─────
+   *
+   * `auth0.middleware()` THROWS when the SDK is not configured —
+   * `invalid_configuration`, or `domain_resolution_error` if the domain cannot
+   * be resolved. It used to be called unguarded on the first line of this
+   * function, which meant a missing `AUTH0_CLIENT_ID` took down **every path
+   * this matcher covers**: all of `/api/*`, all three portals, and — least
+   * obviously and most damagingly — `/ingest/*`, the reverse proxy that exists
+   * so browser analytics can dodge ad-blockers. Removing the Auth0 keys from
+   * `.env` produced a site where the marketing pages rendered perfectly (they
+   * are excluded from the matcher) and literally everything else returned 500.
+   *
+   * The public surface staying up while the whole authenticated surface and
+   * all telemetry is down is the worst possible shape for this failure,
+   * because it looks fine from the outside.
+   *
+   * So: a provider that cannot answer degrades to "no session" rather than an
+   * exception. Routes that need a session still refuse — see below — but
+   * everything that does not need one is unaffected. This is also just correct
+   * for a provider OUTAGE, not only a misconfiguration: Auth0 being down
+   * should not stop analytics or the support chat.
+   */
+  let authResponse: NextResponse;
+  let authProviderAvailable = true;
+
+  try {
+    // Serves the /auth/* routes and refreshes the session cookie.
+    authResponse = await auth0.middleware(request);
+  } catch (error) {
+    authProviderAvailable = false;
+    authResponse = NextResponse.next();
+
+    if (!warnedAboutAuthProvider) {
+      warnedAboutAuthProvider = true;
+      console.error(
+        "[proxy] The Auth0 SDK could not initialise, so no session can be read " +
+          "or refreshed. Sign-in is unavailable and protected routes will " +
+          "redirect. Check AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET " +
+          "and AUTH0_SECRET. Public pages, /api and /ingest are unaffected. " +
+          `Underlying error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 
   // The SDK owns /auth/* end to end. Note the trailing slash: a bare "/auth"
   // prefix would also swallow sibling routes like /auth-redirect and silently
   // exempt them from the session check below.
   if (pathname === "/auth" || pathname.startsWith("/auth/")) {
+    /*
+     * These routes ARE the SDK, so there is nothing to serve without it. A 503
+     * with a readable body beats the generic 500 an unguarded throw produced —
+     * this is the one place where "the identity provider is not configured" is
+     * the honest answer to the request rather than an internal error.
+     */
+    if (!authProviderAvailable) {
+      return new NextResponse(
+        "Sign-in is unavailable: the identity provider is not configured on this deployment.",
+        { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }
+      );
+    }
     return authResponse;
   }
 
@@ -57,7 +120,10 @@ export async function proxy(request: NextRequest) {
       if (persona) return authResponse;
     }
 
-    const session = await auth0.getSession(request);
+    /* `getSession` throws for the same reasons `middleware` did, so it is only
+       consulted when the provider actually came up. An unavailable provider
+       means no session, which falls through to the redirect below. */
+    const session = authProviderAvailable ? await auth0.getSession(request) : null;
 
     if (!session) {
       const loginUrl = new URL("/auth/login", request.url);

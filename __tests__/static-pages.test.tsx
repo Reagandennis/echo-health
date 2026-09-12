@@ -24,8 +24,18 @@ describe("static public pages", () => {
   it("renders the privacy policy with compliance metadata", () => {
     render(<PrivacyPolicyPage />);
 
-    expect(screen.getByRole("heading", { name: "Privacy Policy" })).toBeInTheDocument();
-    expect(screen.getByText("Last Updated: May 1, 2026")).toBeInTheDocument();
+    /*
+     * Sentence case, and the date is now a `<dl>` rather than a run-on string.
+     *
+     * The heading was asserted as "Privacy Policy" and the date as the literal
+     * "Last Updated: May 1, 2026". Both were rewritten when the document moved
+     * onto the shared `LegalDoc` shell: headings across the site are sentence
+     * case ("Terms of service", "Cookie settings", "Find a therapist"), and the
+     * dates became a definition list so "Effective" and "Last updated" are
+     * separately labelled rather than concatenated into one sentence.
+     */
+    expect(screen.getByRole("heading", { name: "Privacy policy" })).toBeInTheDocument();
+    expect(screen.getByText("Last updated")).toBeInTheDocument();
     /*
      * Was `getByText(/HIPAA Compliant/)` plus a table-of-contents link to a
      * `#hipaa` section.
@@ -41,16 +51,45 @@ describe("static public pages", () => {
      * regime that actually governs the service, and the section stating the
      * data-subject rights it grants.
      */
-    expect(screen.getByText(/Kenya DPA 2019 aligned/)).toBeInTheDocument();
+    /*
+     * The assurance-chip row is gone with the rewrite — it described the legal
+     * regime in three words above a document that now spends thirteen sections
+     * on it, and a chip is a weaker place to make that claim than a governed-by
+     * sentence in the opening. So this asserts the sentence instead.
+     */
+    /* `getAllByText` throughout this block: several of these phrases appear
+       both in the table of contents and in the section itself, or in the
+       opening summary and again in the section that expands it. Asserting
+       uniqueness would be asserting something about the layout, not about the
+       disclosure being present. */
+    expect(screen.getAllByText(/Data Protection Act 2019/).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("link", { name: /Your Rights Under the Data Protection Act/i })
-    ).toHaveAttribute("href", "#your-rights");
-    // Guard against the US text creeping back in wholesale.
+      screen.getByRole("link", { name: /Your rights, and how they actually work here/i })
+    ).toHaveAttribute("href", "#rights");
+
+    /*
+     * Guards against the US text creeping back in wholesale. Kept, and worth
+     * keeping: it is the assertion that would have caught the original policy
+     * claiming covered-entity status under a statute that does not apply.
+     */
     expect(screen.queryByText(/HIPAA/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/CCPA/)).not.toBeInTheDocument();
+
+    /*
+     * The three disclosures this document exists to make, and which nothing
+     * else in the suite covers: that messages are scanned, that the processor
+     * receiving your IP is named, and that erasure has real limits. Each was
+     * absent from the previous version.
+     */
+    expect(screen.getAllByText(/Automated safety scanning/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/ipapi\.co/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Clinical notes/).length).toBeGreaterThan(0);
   });
 
   it("exports privacy page metadata", () => {
-    expect(metadata.title).toBe("Privacy Policy");
-    expect(metadata.description).toContain("Echo Health's comprehensive Privacy Policy");
+    expect(metadata.title).toBe("Privacy policy");
+    /* The old description claimed compliance with HIPAA, GDPR and CCPA. */
+    expect(metadata.description).toContain("Data Protection Act 2019");
+    expect(metadata.description).not.toMatch(/HIPAA|CCPA/);
   });
 });

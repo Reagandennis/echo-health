@@ -1,140 +1,275 @@
+import Link from "next/link";
 import Breadcrumbs from "@/app/components/marketing/Breadcrumbs";
+import LegalDoc, { type LegalSection } from "@/app/components/marketing/LegalDoc";
 import { pageMetadata, legalEntityName } from "@/lib/seo";
+import {
+  PLAN_SESSIONS,
+  PROMO_DISCOUNT_PERCENT,
+  formatKes,
+  PLAN_PRICES,
+} from "@/lib/constants";
 
 /**
- * The public terms of service.
+ * ── Terms of service ───────────────────────────────────────────────────────
  *
- * ── What was corrected here, and why ────────────────────────────────────────
- * Swept alongside /privacy, which had been a United States healthcare policy
- * with a second company's product spliced into it. This file was in far better
- * shape — no HIPAA, no CCPA, no arbitration clause naming a US forum, no USD,
- * and §5 had already been corrected to Kenyan Shillings and one-time bundles.
- * The one false statement was the contracting party: both §1 and §10 named
- * "Echo Health, Inc.", a US corporate form. The registered entity is declared
- * once in `lib/seo.ts` as `legalEntityName`, and is now interpolated from there
- * so the contract and the footer copyright cannot drift apart. **Verify that
- * string against the certificate of incorporation before relying on it** — a
- * contract that names a party which does not exist binds nobody.
+ * ## The gap this fills
  *
- * ── WHAT IS MISSING, and was deliberately NOT invented ──────────────────────
- * These are gaps, not oversights. Writing them would have meant drafting novel
- * legal terms, which is not something to do from a code editor:
+ * The previous version had **no governing-law or jurisdiction clause at all**
+ * — the single biggest hole in either legal document, flagged in review. A
+ * contract that does not say which law governs it leaves that to be argued
+ * from scratch, and for a Kenyan company with clients in thirteen countries
+ * that is the one clause you cannot omit. Section 12 states it.
  *
- *   • **No governing-law or jurisdiction clause.** /privacy now states Kenyan
- *     law and Kenyan courts; these Terms say nothing at all, so the agreement
- *     they form has no stated forum. This is the largest gap on the page.
- *   • **No dispute-resolution or complaints route** — nothing tells a user how
- *     to raise a complaint about a therapist, or where it goes.
- *   • **§5 references "our Refund Policy". There is no such page.** The route
- *     does not exist and nothing links to one.
- *   • **§4's "13-17" age band is a US COPPA artifact.** Kenyan law treats
- *     everyone under 18 as a child requiring verifiable parental consent; the
- *     13 floor comes from a statute that does not apply here.
- *   • **§8 and §9 are US-style blanket disclaimers in capitals.** Kenya's
- *     Consumer Protection Act 2012 limits how far a supplier can exclude
- *     liability to a consumer, so parts of them may simply be unenforceable.
- *     They were left as found rather than narrowed by guesswork.
- *   • No intellectual-property or content-licence terms, and no clause
- *     covering what happens to session credits on termination (§7 terminates
- *     accounts "at any time, for any reason" and is silent on paid-for
- *     credits, which §5 says do not expire).
+ * Also fixed: §5 referenced a "Refund Policy" that does not exist as a route,
+ * so the refund terms are now stated here rather than pointing nowhere.
  *
- * NOT LEGALLY REVIEWED. A Kenyan practitioner needs to close the above.
+ * ## Commercial terms are read from `lib/constants.ts`, never typed
+ *
+ * Every figure — prices, session counts, the promo percentage — comes from the
+ * same module the checkout charges from. A terms page quoting a different
+ * number from the one billed is a dispute, not a typo, and this repo has
+ * already been bitten by prose prices drifting from the source of truth.
+ *
+ * ## What I did NOT write, deliberately
+ *
+ * Sections 9 and 10 describe limits WITHOUT purporting to exclude rights that
+ * cannot be excluded. The previous version was a block-capitals US-style
+ * blanket disclaimer, which Kenya's Consumer Protection Act 2012 may render
+ * partly unenforceable — and an unenforceable disclaimer is worse than a
+ * narrower one, because it invites a court to strike the lot. There is no
+ * monetary liability cap, no indemnity and no arbitration clause here, because
+ * inventing those is drafting a legal position rather than describing a
+ * product.
+ *
+ * ## Still needs a Kenyan commercial lawyer
+ *
+ *   • Confirmation of the governing-law and jurisdiction wording in §12, and
+ *     whether a consumer in the EU/UK retains a right to their local forum.
+ *   • Whether §9/§10 are adequate, and what liability cap is appropriate.
+ *   • The interaction between §7 termination and §5's "credits never expire" —
+ *     §7 now says paid credits survive termination by us, which is the honest
+ *     reading of §5 but needs confirming as a contractual commitment.
+ *   • Whether the 13–17 consent model in §4 satisfies Kenyan law on minors.
+ *   • An IP / user-content licence clause, which is absent.
+ *   • Confirmation that `legalEntityName` is the contracting entity.
  */
 
 export const metadata = pageMetadata({
-  title: "Terms of Service",
+  title: "Terms of service",
   description:
-    "Echo Health's Terms of Service: what you agree to when you book a session, how session credits and cancellations work, and the limits of the service.",
+    "What you agree to when you book therapy on Echo Health: what the service is and is not, how credits and cancellations work, refunds, and the governing law.",
   path: "/terms",
 });
 
-const LAST_UPDATED = "May 1, 2026";
-const EFFECTIVE_DATE = "May 1, 2026";
+const LAST_UPDATED = "12 September 2026";
+const EFFECTIVE_DATE = "12 September 2026";
 
-const sections = [
+const INTRO = [
+  `These terms are the agreement between you and ${legalEntityName}, operating as Echo Health, when you use this site or book a session. We have tried to write them in language you can actually read, and to put the things that most often surprise people near the top rather than in the last section.`,
+
+  `**The four that matter most.**\nEcho is not an emergency service. Your therapist is licensed in Kenya and probably not where you are. You are charged in Kenyan shillings. And you are buying a fixed number of sessions outright, not a subscription.`,
+];
+
+const SECTIONS: readonly LegalSection[] = [
   {
-    id: "overview",
-    title: "1. Acceptance of Terms",
-    content: `By accessing or using the Echo Health website, mobile application, or services (collectively, the "Platform"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, you may not access or use the Platform.
-    
-These Terms constitute a legally binding agreement between you and ${legalEntityName} ("Echo Health," "we," "us," or "our"), which operates the Platform from Kenya.`,
+    id: "emergencies",
+    title: "1. Echo is not for emergencies",
+    content: `**This section comes first because it is the one that could matter most.**
+
+Echo Health is **not** an emergency or crisis service. Nobody monitors the platform for urgent messages. A message sent at 2am is read when your therapist next works.
+
+If you or someone else is in immediate danger, contact your **local emergency number**. Our [crisis page](/crisis) lists verified helplines by region, and [findahelpline.com](https://findahelpline.com) will find one wherever you are. We deliberately do not print a single emergency number on every page, because we serve thirteen countries and publishing one we have not verified for your country would be worse than publishing none.
+
+By using Echo you accept that it is not a substitute for emergency care, for inpatient treatment, or for a crisis line.`,
   },
   {
-    id: "not-medical-emergency",
-    title: "2. Not for Medical Emergencies",
-    content: `**IF YOU ARE EXPERIENCING A MEDICAL EMERGENCY, ARE IN DANGER, OR ARE FEELING SUICIDAL, CALL YOUR LOCAL EMERGENCY NUMBER IMMEDIATELY OR GO TO THE NEAREST EMERGENCY ROOM.** In Kenya that is 999, 112 or 911; in the United States it is 911.
+    id: "what-it-is",
+    title: "2. What the service is, and what it is not",
+    content: `Echo Health is a platform that connects you with an independently licensed mental-health practitioner for therapy delivered by video, phone or written message. We provide the platform, the matching, the scheduling and the payment rail. **Your therapist provides the clinical care**, in their own professional capacity, under their own licence and their own professional indemnity cover.
 
-Echo Health is not a suicide prevention lifeline, and our therapists cannot provide emergency psychiatric or medical care. Our Platform is not designed for crisis situations. Please use our Crisis Support page for immediate resources.`,
+**What we cannot do.** Plainly, because each of these sends a proportion of people to the wrong service:
+
+- **We cannot prescribe or manage medication.** Not anywhere, including in Kenya.
+- **We cannot provide a formal diagnosis**, or a letter, report or assessment that an insurer, employer, school, immigration authority or court will accept.
+- **We cannot fulfil court-ordered or mandated therapy.**
+- **We cannot offer the therapy your local health system or insurance will reimburse**, because your therapist is not registered in your country — see section 3.
+- **We do not provide inpatient, emergency or psychiatric care.**
+
+If you need any of those, a locally registered practitioner is the right choice and we would rather tell you now.`,
   },
   {
-    id: "services",
-    title: "3. Nature of Services",
-    content: `Echo Health provides a technology platform that connects users with independent, licensed mental health professionals ("Providers"). 
+    id: "licensing",
+    title: "3. Where your therapist is licensed",
+    content: `**Read this before you pay if you are outside Kenya, which most of our clients are.**
 
-**We do not provide healthcare services.** Echo Health itself does not provide medical advice, diagnosis, or treatment. The Providers on our platform are independent contractors who exercise their own independent professional judgment. Your relationship with your Provider is strictly between you and the Provider.`,
+Echo's practitioners hold current licences to practise in **Kenya**. We verify those credentials before a profile appears in our directory. They are qualified clinicians.
+
+They are **not** registered with a regulator in your country unless you are also in Kenya. For ordinary talking therapy that changes nothing about the quality of the work. It matters in specific situations, and those are the ones in section 2.
+
+It also means that a complaint about your therapist's professional conduct goes to their **Kenyan** regulator and to us — not to a professional body where you live. Section 11 explains how to raise one.
+
+**Sessions are scheduled in East Africa Time (GMT+3).** Depending where you are, the overlap with your therapist's working hours may be narrow. The [country pages](/online-therapy) set out the actual time difference and which parts of your day are realistic. If none of them work for you, this is not the right service, and you should establish that before buying.`,
   },
   {
     id: "eligibility",
-    title: "4. Eligibility & Accounts",
-    content: `To use the Platform, you must:
-- Be at least 18 years old (or have verifiable parental/guardian consent if between 13-17).
-- Reside in a jurisdiction where we operate.
-- Provide accurate, current, and complete information during registration.
+    title: "4. Who can use Echo",
+    content: `**Adults.** You must be 18 or over to open an account for yourself, and you must have the legal capacity to enter into this agreement.
 
-You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must notify us immediately of any unauthorised use.`,
+**13 to 17 year-olds.** Therapy is available, but the account must be opened by a **parent or legal guardian**, who enters into these terms on the young person's behalf and provides consent for their care. A young person cannot sign themselves up — our questionnaire stops and explains why, and points to helplines that do not require a parent's permission.
+
+**Under 13s.** Echo is not available, in any circumstances.
+
+**Your account is yours alone.** Keep your sign-in details private, do not share your account, and tell us promptly if you believe someone else has access to it. Couples therapy is the one exception: both partners take part in the same session, joined from the same device, because the video service connects two participants and will refuse a third.
+
+You are responsible for the accuracy of what you tell us. Therapy depends on it, and so does matching you with someone appropriate.`,
   },
   {
     id: "payments",
-    // Retitled from "Payments & Subscriptions". Echo Health sells one-time
-    // session bundles; there is no subscription product, and the section
-    // opened by referring to "your selected subscription plan" — a term of
-    // art that describes recurring billing we do not operate. A contract that
-    // contradicts the thing being sold is unenforceable in the parts that
-    // matter and misleading in the rest.
-    title: "5. Payments",
-    content: `**Fees:** You agree to pay the fee for the session bundle you select. All fees are listed on our Pricing page and are charged in Kenyan Shillings.
+    title: "5. Prices, credits and refunds",
+    content: `**You are buying sessions, not a subscription.**
+Each plan is a **one-time payment** for a fixed number of 50-minute sessions. Nothing renews. There is no card kept on file charging you monthly and nothing to remember to cancel.
 
-**One-time purchases:** Session bundles are one-time purchases. Nothing auto-renews, there is no recurring billing and there is no subscription to cancel. Session credits do not expire, and cancelling a booking at least 24 hours ahead returns the credit to your account. You can review your purchase history in your Account Settings.
+**Prices.**
+- Individual — ${formatKes(PLAN_PRICES.individual)} for ${PLAN_SESSIONS.individual} session.
+- Plus — ${formatKes(PLAN_PRICES.plus)} for ${PLAN_SESSIONS.plus} sessions.
+- Couples — ${formatKes(PLAN_PRICES.couples)} for ${PLAN_SESSIONS.couples} joint sessions.
 
-**Switching therapists:** There is no charge to be matched with a different therapist, and doing so does not affect any session credits you hold.
+**You are charged in Kenyan shillings.**
+Always, whatever your own currency. Where prices are shown we also display an approximate amount in your local currency for browsing, with the exact shilling figure you will be charged alongside it. **Your bank sets the exchange rate** and may add its own cross-border fee, so the amount on your statement can differ slightly from the converted figure we showed. That difference is your bank's; we add no margin of our own.
 
-**Refunds:** All payments are generally non-refundable, except as required by law or as explicitly stated in our Refund Policy. If you cancel a session with less than 24 hours' notice, you may be charged a cancellation fee.`,
+**Credits never expire.**
+Sessions you have paid for stay in your account until you use them, however long that takes.
+
+**Cancelling and rescheduling.**
+Cancel or move a session at least **24 hours** before it starts and the credit returns to your account, ready to rebook. Inside 24 hours the credit is spent, because your therapist has held that time for you and cannot fill it.
+
+**Refunds.**
+- **Unused credits** can be refunded to the original payment method. [Ask us](/contact) and we will process it.
+- **Sessions you have attended** are not refundable.
+- **If we cannot match you** with a suitable therapist, you get a full refund.
+- Nothing here affects any refund right you have under the consumer law that applies to you — see section 10.
+
+**Promotional codes.**
+Where we offer one it is worth ${PROMO_DISCOUNT_PERCENT}% off a plan, applied before you pay. You will never be charged the full amount and refunded the difference. One code per purchase unless we say otherwise.
+
+**Switching therapists is free**, and your unused credits follow you.`,
   },
   {
     id: "acceptable-use",
-    title: "6. Acceptable Use",
-    content: `You agree not to:
-- Use the Platform for any illegal purpose, or in violation of Kenyan law or any other law that applies to you.
-- Harass, abuse, or harm another person, including Providers.
-- Impersonate any person or entity or misrepresent your affiliation.
-- Interfere with or disrupt the operation of the Platform or the servers or networks used to make the Platform available.
-- Attempt to gain unauthorised access to the Platform or other users' accounts.`,
+    title: "6. How you agree to behave",
+    content: `Therapy needs a safe space for both people in it. So:
+
+- Do not abuse, threaten, harass or discriminate against your therapist or our staff.
+- Do not record a session without your therapist's express consent. Sessions are not recorded by us and recording without consent may be unlawful where you are.
+- Do not impersonate anyone, or provide false information about who you are or your age.
+- Do not use Echo for anything unlawful, or to arrange anything unlawful.
+- Do not attempt to access another person's records, probe or attack the platform, or use automated means to scrape it.
+- Do not resell, republish or commercially exploit the platform or its content.
+
+**A therapist may end a session** where they judge that continuing would be unsafe or clinically inappropriate, and we may suspend or close an account for a serious or repeated breach of this section. Where we do, section 7 applies to anything you have paid for.`,
+  },
+  {
+    id: "your-therapist",
+    title: "7. The therapeutic relationship",
+    content: `Your therapist exercises independent professional judgement. They decide how to work with you, whether they are the right clinician for what you need, and — within the limits they will explain — what stays confidential.
+
+**Confidentiality and its limits.** What you discuss is confidential. Your therapist will explain the exceptions at the outset; broadly, they arise where there is a serious and imminent risk to your safety or someone else's, or where the law requires disclosure. That judgement belongs to your clinician, not to our software.
+
+**Automated safety scanning.** Messages you send are checked against a fixed word list, and a high-risk result files an internal safety alert. It is crude, produces frequent false positives, and is described in full in section 3 of the [privacy policy](/privacy). It is not a monitoring service and it does not make Echo an emergency service — see section 1.
+
+**Clinical notes** are your therapist's professional record. You do not have access to them through the platform.
+
+**No guarantee of outcome.** Therapy helps a great many people and we believe in it, but nobody can promise a particular result, and we do not. What we commit to is that your therapist is licensed, credential-checked, and that switching is free if the fit is wrong.`,
   },
   {
     id: "termination",
-    title: "7. Termination",
-    content: `We reserve the right to suspend or terminate your account and your access to the Platform at any time, for any reason, without notice or liability. You may terminate your account at any time through your Account Settings. Upon termination, you remain liable for any outstanding fees.`,
+    title: "8. Ending the relationship",
+    content: `**You can stop at any time.** There is no notice period, no exit fee and nothing to cancel, because there is no subscription. Unused credits can be refunded under section 5.
+
+**We may suspend or close your account** for a serious or repeated breach of section 6, where we are legally required to, or where continuing to provide the service would be unsafe.
+
+**What happens to what you have paid for.** If we close your account for a reason other than your breach of section 6, we refund your unused credits. If we close it for a serious breach, we will still refund unused credits unless the law permits us to withhold them — we are not going to keep money for sessions we will not now deliver.
+
+**If we discontinue the service** we will give you reasonable notice, help you complete sessions in progress or find another practitioner, and refund anything unused.
+
+Section 4 of the [privacy policy](/privacy) explains what happens to your records, and which of them are retained regardless.`,
   },
   {
-    id: "disclaimer",
-    title: "8. Disclaimers",
-    content: `THE PLATFORM IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED. ECHO HEALTH EXPLICITLY DISCLAIMS ALL WARRANTIES, INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+    id: "platform",
+    title: "9. The platform itself",
+    content: `We work to keep Echo available and functioning, but we do not promise it will be uninterrupted or error-free. It depends on things outside our control — your internet connection, your device, and third-party services including our authentication, payment and video providers.
 
-We do not guarantee that the Platform will be uninterrupted, secure, or error-free, or that any Provider will meet your specific needs.`,
+**Video quality depends on your connection.** If it is poor, a phone session needs far less bandwidth and the therapy is no worse for it.
+
+**Planned maintenance** will be announced where we reasonably can. **Unplanned outages** we will fix as quickly as we can, and if one causes you to miss a session, the credit goes back to your account.
+
+We may change, add to or remove features. Where a change materially reduces something you have paid for, we will tell you and offer a refund of the affected credits.
+
+**Content on this site** — the guides, articles and condition pages — is general information, not clinical advice about you, and does not create a therapeutic relationship. Do not use it to decide whether to change or stop treatment; talk to a clinician.`,
   },
   {
     id: "liability",
-    title: "9. Limitation of Liability",
-    content: `TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL ECHO HEALTH BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR USE, ARISING OUT OF OR IN CONNECTION WITH THE PLATFORM OR THESE TERMS, WHETHER BASED ON WARRANTY, CONTRACT, TORT, OR ANY OTHER LEGAL THEORY.`,
+    title: "10. Responsibility and your consumer rights",
+    content: `**What we are responsible for.** Providing the platform with reasonable care and skill, verifying that the practitioners in our directory are licensed, handling your information as set out in the [privacy policy](/privacy), and charging you only what we said we would.
+
+**What your therapist is responsible for.** The clinical care itself. They practise independently, under their own licence and their own professional indemnity cover, and are responsible for their own professional conduct. We are not a medical provider and do not supervise clinical decisions.
+
+**What we are not responsible for.** Loss arising from your internet connection or device; from a third-party provider's outage; from information you gave us that was inaccurate; or from your use of general content on this site as though it were advice about you.
+
+**Rights that cannot be excluded are not excluded.**
+This section does not limit anything that cannot lawfully be limited — including liability for death or personal injury caused by negligence, for fraud, and any right you have under the consumer-protection law that applies to you, such as Kenya's **Consumer Protection Act 2012**. If any part of this section is found unenforceable where you are, the rest continues to apply.
+
+We would rather state a narrower limit that holds than a sweeping one that a court strikes out entirely.`,
   },
   {
-    id: "contact",
-    title: "10. Contact Information",
-    content: `If you have any questions about these Terms, please contact us at:
+    id: "complaints",
+    title: "11. Complaints",
+    content: `**Something about your care.** [Contact us](/contact) directly rather than leaving it in session feedback. A complaint about a clinician reaches a person the same day, and you can ask to be matched with someone else at the same time.
 
-${legalEntityName}
-Email: legal@echohealth.app`,
+**Something about your therapist's professional conduct.** Tell us, and you may also raise it with their regulator in Kenya. We will tell you who that is and give you their details — we will not put ourselves between you and a regulator.
+
+**Something about billing.** Contact us with the payment reference and we will investigate.
+
+**Something about your data.** Section 13 of the [privacy policy](/privacy), which also explains your right to complain to Kenya's Office of the Data Protection Commissioner.
+
+We aim to acknowledge every complaint promptly and to tell you what we are doing about it. If we get something wrong we would rather hear it from you than not.`,
+  },
+  {
+    id: "governing-law",
+    title: "12. Governing law and jurisdiction",
+    content: `These terms, and any dispute or claim arising out of them or out of your use of Echo Health, are governed by the **laws of Kenya**.
+
+The courts of Kenya have jurisdiction over any such dispute. ${legalEntityName} is established in Kenya, the service is delivered from Kenya, the practitioners are licensed in Kenya, and payment settles in Kenyan shillings.
+
+**If you are a consumer outside Kenya**, this does not deprive you of the protection of any mandatory consumer law of the country where you live, or of any right you have to bring proceedings there where that right cannot be excluded by agreement.
+
+Before going to court, please [talk to us](/contact). Most things are resolvable, and we would like the chance.`,
+  },
+  {
+    id: "changes",
+    title: "13. Changes to these terms",
+    content: `We will update these terms as the service changes, and the dates at the top will change with them.
+
+**For a material change** — anything affecting what you are buying, what it costs, or your rights under sections 5, 10 or 12 — we will tell you directly and give you reasonable notice before it takes effect. Continuing to use Echo after that notice means you accept the new terms. If you do not, you can stop and take a refund of unused credits under section 5.
+
+A change will never apply retrospectively to credits you have already bought.
+
+Previous versions are available on request.`,
+  },
+  {
+    id: "general",
+    title: "14. The rest",
+    content: `**Entire agreement.** These terms and the [privacy policy](/privacy) are the whole agreement between us about the service.
+
+**Severability.** If any provision is found unenforceable, the rest continues in force.
+
+**No waiver.** If we do not enforce something immediately, we have not given up the right to enforce it later.
+
+**Assignment.** You may not transfer your account or these terms to anyone else. We may transfer them as part of a reorganisation or sale of the business, and will tell you if that happens.
+
+**No third-party rights**, other than your therapist's rights in respect of section 6.
+
+**Contact.** ${legalEntityName}, trading as Echo Health. Reach us through the [contact page](/contact).`,
   },
 ];
 
@@ -142,121 +277,45 @@ export default function TermsOfServicePage() {
   return (
     <>
       <Breadcrumbs trail={[{ href: "/terms", label: "Terms of service" }]} />
-
-      <div className="mx-auto w-full max-w-4xl px-6 py-16">
-        {/* Header */}
-        <div className="mb-12 border-b border-slate-100 pb-10">
-          <span className="inline-block rounded-full bg-cream px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-brand mb-6">
-            Legal
-          </span>
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 leading-tight">
-            Terms of Service
-          </h1>
-          <div className="mt-4 flex flex-wrap gap-6 text-sm text-slate-400">
-            <span>Last Updated: {LAST_UPDATED}</span>
-            <span>Effective Date: {EFFECTIVE_DATE}</span>
+      <LegalDoc
+        title="Terms of service"
+        lastUpdated={LAST_UPDATED}
+        effectiveDate={EFFECTIVE_DATE}
+        intro={INTRO}
+        sections={SECTIONS}
+        footer={
+          <div className="rounded-3xl bg-stone-50 p-6 sm:p-8">
+            <h2 className="font-display text-xl tracking-tight text-stone-900">
+              Anything here you would want clarified?
+            </h2>
+            <p className="mt-3 text-[15px] leading-7 text-stone-600">
+              Ask before you buy rather than after. We would much rather answer
+              a question about section 3 or section 5 now than process a refund
+              later.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/contact"
+                className="inline-flex min-h-11 items-center rounded-full bg-brand px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+              >
+                Contact us
+              </Link>
+              <Link
+                href="/privacy"
+                className="inline-flex min-h-11 items-center rounded-full bg-surface px-6 text-sm font-semibold text-stone-800 ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400"
+              >
+                Privacy policy
+              </Link>
+              <Link
+                href="/pricing"
+                className="inline-flex min-h-11 items-center rounded-full bg-surface px-6 text-sm font-semibold text-stone-800 ring-1 ring-inset ring-stone-300 transition hover:ring-stone-400"
+              >
+                See the prices
+              </Link>
+            </div>
           </div>
-          <p className="mt-6 text-base leading-7 text-slate-500 max-w-2xl">
-            Please read these Terms of Service carefully before using Echo Health. 
-            By using our platform, you agree to be bound by these rules.
-          </p>
-        </div>
-
-        {/* Table of contents */}
-        <nav
-          aria-label="Table of contents"
-          className="mb-12 rounded-2xl border border-slate-100 bg-slate-50 p-6"
-        >
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">
-            Table of Contents
-          </h2>
-          <ol className="grid sm:grid-cols-2 gap-x-8 gap-y-2">
-            {sections.map((s) => (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  className="text-sm text-slate-600 hover:text-brand transition-colors"
-                >
-                  {s.title}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </nav>
-
-        {/* Sections */}
-        <div className="space-y-14">
-          {sections.map((section) => (
-            <section key={section.id} id={section.id} className="scroll-mt-24">
-              <h2 className="text-xl font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">
-                {section.title}
-              </h2>
-              <div className="prose prose-slate prose-sm max-w-none">
-                {section.content.split("\n\n").map((paragraph, i) => {
-                  if (paragraph.startsWith("**") && paragraph.includes("**\n")) {
-                    // Bold heading paragraph
-                    const [heading, ...rest] = paragraph.split("\n");
-                    return (
-                      <div key={i} className="mb-4">
-                        <p className="font-semibold text-slate-700 mb-1">
-                          {heading.replace(/\*\*/g, "")}
-                        </p>
-                        {rest.length > 0 && (
-                          <p className="text-slate-500 leading-7">
-                            {rest.join(" ")}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  }
-                  if (paragraph.startsWith("- ")) {
-                    const items = paragraph
-                      .split("\n")
-                      .filter((l) => l.startsWith("- "));
-                    return (
-                      <ul key={i} className="list-disc list-inside space-y-2 mb-4 text-slate-500">
-                        {items.map((item, j) => {
-                          const text = item.slice(2);
-                          // Handle **bold**: text inline
-                          const parts = text.split(/(\*\*[^*]+\*\*)/g);
-                          return (
-                            <li key={j} className="leading-7">
-                              {parts.map((p, k) =>
-                                p.startsWith("**") ? (
-                                  <strong key={k} className="text-slate-700 font-semibold">
-                                    {p.replace(/\*\*/g, "")}
-                                  </strong>
-                                ) : (
-                                  p
-                                )
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    );
-                  }
-                  // Inline bold handling
-                  const parts = paragraph.split(/(\*\*[^*]+\*\*)/g);
-                  return (
-                    <p key={i} className="text-slate-500 leading-7 mb-4">
-                      {parts.map((p, k) =>
-                        p.startsWith("**") ? (
-                          <strong key={k} className="text-slate-700 font-semibold">
-                            {p.replace(/\*\*/g, "")}
-                          </strong>
-                        ) : (
-                          p
-                        )
-                      )}
-                    </p>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-      </div>
+        }
+      />
     </>
   );
 }

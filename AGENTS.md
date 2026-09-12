@@ -293,6 +293,20 @@ This surface has twice accumulated claims nothing could back up, and both sweeps
 - **No testimonials.** See the long note at the top of `app/(marketing)/reviews/page.tsx`. Beyond having nothing real to publish, session feedback is written to a therapist, not for publication, and consent obtained from someone currently in your care is not freely given.
 - **No control that does nothing.** `/cookies` shipped four toggles and a Save button with no handler and no storage; `/blog` and `/guides` shipped cards whose every link was `href="#"`. A dead control is worse than an absent one, and a consent control that discards consent is a misrepresentation.
 
+#### `/privacy` and `/terms` are written from the code, and still need counsel
+
+Both render through `app/components/marketing/LegalDoc.tsx` (shared shell, tiny `**bold**` + `[link](/href)` grammar) and both carry a file-header comment listing **what a Kenyan lawyer still has to confirm**. Read that comment before editing either one.
+
+The reason they live in the repo rather than in a template is that most of a privacy policy is a description of processing, and only the code knows what the processing is. Three things were found by reading it and had been disclosed nowhere:
+
+- **`lib/useCurrency.ts` sends the visitor's IP to `ipapi.co`** to guess their currency, on public pages, with or without an account. It is now named as a processor.
+- **The risk scanner is automated processing of message content.** `sendMessageAction` runs `analyzeRisk` and files a `risk_alerts` row on `high`. Privacy §3 describes it *including* how crude it is.
+- **There is no account-deletion mechanism anywhere**, and `app/admin/compliance/gdpr/page.tsx` is a hardcoded list of four invented data-subject requests — the same failure as the old admin risk pages. So privacy §4 describes a manual email process and states the two erasure limits that are real, both enforced by `ON DELETE RESTRICT`: clinical notes and financial records.
+
+Retention (§7) mirrors the actual foreign keys; commercial terms (§5) read every figure from `lib/constants.ts` via `formatKes`. **Do not type a price into either document.**
+
+Terms §12 is the governing-law clause, which previously **did not exist at all** — the biggest gap in either file. §9/§10 deliberately do not purport to exclude non-excludable consumer rights, and contain no liability cap, indemnity or arbitration clause, because inventing those is drafting a legal position rather than describing a product.
+
 #### The intake funnel
 
 `/get-started` renders `IntakeQuiz` — one question per screen, answers held in component state and `sessionStorage`, nothing submitted until sign-up. The home page's three hero cards are the quiz's first question and pass `?for=self|couple|teen`, which the quiz validates and uses to skip question one.

@@ -16,10 +16,10 @@ export default async function TherapistFeedbackPage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
 
-  const t = await getTherapist(id);
+  // Independent lookups in separate transactions, so they can overlap.
+  const [t, feedback] = await Promise.all([getTherapist(id), listTherapistFeedback(id)]);
   if (!t) notFound();
 
-  const feedback = await listTherapistFeedback(id);
 
   const avgRating = feedback.length
     ? feedback.reduce((a, f) => a + f.rating, 0) / feedback.length

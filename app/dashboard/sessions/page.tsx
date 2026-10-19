@@ -13,12 +13,10 @@ import {
 import { useUser } from "@/app/components/UserProvider";
 import { useRealtime } from "@/hooks/useRealtime";
 import {
-  createSessionAction, 
-  listPatientSessionsAction, 
+  createSessionAction,
+  listPatientSessionsAction,
   updateTherapySessionAction,
-  listTherapistsAction,
-  getProfileByUserIdAction,
-  getSessionCreditsAction
+  getClientSessionsPageAction,
 } from "@/app/actions/database";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -366,15 +364,14 @@ export default function SessionsPage() {
     if (!user) return;
     (async () => {
       try {
-        const profile = await getProfileByUserIdAction(user.$id);
-        const [creditData, sess, therapistList] = await Promise.all([
-          getSessionCreditsAction().catch(() => ({ entitled: 0, used: 0, remaining: 0 })),
-          listPatientSessionsAction(user.$id).catch(() => [] as TherapySession[]),
-          listTherapistsAction(profile?.therapistId).catch(() => [] as Therapist[]),
-        ]);
-        setCredits(creditData);
-        applySessions(sess as TherapySession[]);
-        setTherapists(therapistList);
+        // One round trip instead of four (profile, then credits + sessions +
+        // therapists). See "Page aggregates" in app/actions/database.ts.
+        const data = await getClientSessionsPageAction();
+        setCredits(data.credits);
+        applySessions(data.sessions as TherapySession[]);
+        setTherapists(data.therapists as Therapist[]);
+      } catch {
+        // Leave the empty defaults.
       } finally {
         setLoading(false);
       }

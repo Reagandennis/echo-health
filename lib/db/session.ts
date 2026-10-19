@@ -31,10 +31,13 @@ export async function withUser<T>(
      * the caller silently receives zero rows. It fails safe rather than leaking,
      * but it fails.
      *
-     * The extra round-trip is real (~230ms against this Azure instance) and is
-     * the price of correctness here. To claw it back, reduce the latency (move
-     * the database closer) rather than the ordering guarantee.
+     * The extra round-trip is real and is the price of correctness here. It
+     * was ~230ms against the original Azure instance; against the local
+     * Postgres production now runs on it is well under a millisecond, which is
+     * the right way to claw it back — reduce the latency, never the ordering
+     * guarantee.
      */
+
     await tx.execute(
       raw`SELECT set_config('app.user_id', ${user.$id}, true),
                  set_config('app.user_roles', ${user.labels.join(",")}, true),

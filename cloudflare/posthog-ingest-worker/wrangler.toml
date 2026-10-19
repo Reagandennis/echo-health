@@ -1,0 +1,10 @@
+name = "echo-posthog-ingest"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Intercepts the analytics path at the edge so it never reaches the origin VM.
+# The Next.js `/ingest/*` rewrites remain as the fallback.
+routes = [
+  { pattern = "echopsychology.com/ingest/*", zone_name = "echopsychology.com" },
+  { pattern = "www.echopsychology.com/ingest/*", zone_name = "echopsychology.com" },
+]

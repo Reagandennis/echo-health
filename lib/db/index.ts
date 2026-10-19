@@ -68,36 +68,54 @@ const globalForDb = globalThis as unknown as {
 };
 
 /**
- * Pool sizing is dictated by the server, not by throughput appetite.
+ * Pool sizing is dictated by the server, not by throughput appetite — so it
+ * is read from `DB_POOL_MAX`, because the server differs per deployment.
  *
- * This Azure tier reports `max_connections = 50`, of which 10 are
- * `superuser_reserved` and ~16 are already held by Azure's own processes —
- * leaving roughly 24 for the application. Budget per app instance:
+ * The DEFAULT of 5 is sized for the Azure Flexible Server tier this app first
+ * ran on: `max_connections = 50`, 10 `superuser_reserved`, ~16 held by Azure's
+ * own processes, leaving roughly 24 for the application. Budget per instance:
  *
  *   5 (this pool) + 1 (the LISTEN/NOTIFY connection in lib/db/events.ts) = 6
  *
- * which allows ~3 instances with headroom. Raise `max` only after raising the
- * tier, or connections will be refused under load rather than queued.
+ * which allows ~3 instances with headroom on that tier.
+ *
+ * Production now runs a single instance against a LOCAL Postgres 17 on the
+ * same VM (`max_connections = 100`), where that default is the wrong
+ * constraint: a client portal page fires several Server Actions in parallel,
+ * each needing its own transaction, so five connections made concurrent users
+ * queue on the pool for no reason. That deployment sets `DB_POOL_MAX=20` in
+ * `.env.local`. Raise it only in step with the server's `max_connections`,
+ * remembering the LISTEN connection and any migration runner also count.
  */
+function poolMaxFromEnv(): number {
+  const raw = process.env.DB_POOL_MAX;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 200) return parsed;
+  if (raw) {
+    console.warn(`[db] Ignoring DB_POOL_MAX=${JSON.stringify(raw)}; using the default of 5.`);
+  }
+  return 5;
+}
+
 const sql =
   globalForDb.__echoSql ??
   postgres(connectionString, {
     ssl: sslFromConnectionString(connectionString),
-    max: 5,
+    max: poolMaxFromEnv(),
+
 
     /**
      * Keep connections warm for 10 minutes.
      *
      * This was 20s, which is a sensible default on a local network and a serious
-     * mistake here. Round-trip time to this Azure instance is ~230ms, so a fresh
-     * connection — TCP plus TLS handshake — costs ~1.7 SECONDS. At 20s, anyone
-     * clicking through the admin or therapist menus at human pace found the pool
-     * empty on nearly every navigation and paid that reconnect each time.
-     *
-     * The cost of holding connections is the server's limit (~24 usable), and at
-     * `max: 5` per instance that is affordable. Latency is the scarce resource
-     * here, not connections.
+     * mistake against a remote database: round-trip time to the Azure instance
+     * was ~230ms, so a fresh connection — TCP plus TLS handshake — cost ~1.7
+     * SECONDS, and anyone clicking through the admin or therapist menus at human
+     * pace found the pool empty on nearly every navigation. On the local
+     * Postgres the reconnect is cheap, but holding warm connections costs
+     * nothing there either, so the setting stays.
      */
+
     idle_timeout: 600,
 
     // Generous: the handshake alone is ~1.7s on this link, so a tight timeout

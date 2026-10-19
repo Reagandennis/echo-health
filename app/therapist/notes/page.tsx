@@ -7,13 +7,11 @@ import {
   Clock, User, AlertCircle
 } from "lucide-react";
 import { useUser } from "@/app/components/UserProvider";
-import { 
-  getTherapistByUserIdAction, 
-  listClinicalNotesAction, 
-  listProfilesAction,
+import {
   createClinicalNoteAction,
   updateClinicalNoteAction,
-  deleteClinicalNoteAction
+  deleteClinicalNoteAction,
+  getTherapistNotesPageAction,
 } from "@/app/actions/database";
 import type { ClinicalNote, Profile } from "@/lib/types/documents";
 
@@ -48,15 +46,12 @@ export default function ClinicalNotesPage() {
     if (!user) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction();
-        if (therapist) {
-          setTherapistId(therapist.$id);
-          const [notesRes, clientsRes] = await Promise.all([
-            listClinicalNotesAction(therapist.$id),
-            listProfilesAction()
-          ]);
-          setNotes(notesRes);
-          setClients(clientsRes as unknown as Profile[]);
+        // One round trip instead of three (therapist row, then notes + clients).
+        const data = await getTherapistNotesPageAction();
+        if (data.therapist) {
+          setTherapistId(data.therapist.$id);
+          setNotes(data.notes as ClinicalNote[]);
+          setClients(data.clients as unknown as Profile[]);
         }
       } catch (error) {
         console.error("Failed to load notes data:", error);

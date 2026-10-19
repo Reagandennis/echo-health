@@ -6,12 +6,11 @@ import {
   Plus, X, BookOpen, Pencil, Trash2,
 } from "lucide-react";
 import {
-  listMoodLogsAction,
   createMoodLogAction,
-  listJournalEntriesAction,
   createJournalEntryAction,
   updateJournalEntryAction,
-  deleteJournalEntryAction
+  deleteJournalEntryAction,
+  getClientProgressAction,
 } from "@/app/actions/database";
 import type { MoodLog, JournalEntry } from "@/lib/types/documents";
 import { MOOD_EMOJIS, MOOD_TAGS } from "@/lib/constants";
@@ -205,12 +204,11 @@ export default function ProgressPage() {
     if (!user) return;
     (async () => {
       try {
-        const [moods, entries] = await Promise.all([
-          listMoodLogsAction(user.$id, 30).catch(() => [] as MoodLog[]),
-          listJournalEntriesAction(20).catch(() => [] as JournalEntry[]),
-        ]);
-        setMoodLogs(moods);
-        setJournal(entries);
+        const data = await getClientProgressAction();
+        setMoodLogs(data.moodLogs as MoodLog[]);
+        setJournal(data.journal as JournalEntry[]);
+      } catch {
+        // Leave the empty defaults.
       } finally {
         setLoading(false);
       }

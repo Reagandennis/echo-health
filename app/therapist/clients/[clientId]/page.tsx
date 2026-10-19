@@ -3,13 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useUser } from "@/app/components/UserProvider";
-import { 
-  getProfileByUserIdAction, 
-  listGoalsAction, 
-  listMoodLogsAction, 
-  listPatientSessionsAction, 
-  listClinicalNotesAction,
-  getTherapistByUserIdAction
+import {
+  getTherapistClientPageAction,
 } from "@/app/actions/database";
 import { 
   User, Target, FileText, ShieldAlert, Clock, ArrowLeft, 
@@ -44,28 +39,28 @@ export default function ClientDetailPage() {
     if (!clientId || !user?.$id) return;
     (async () => {
       try {
-        const therapist = await getTherapistByUserIdAction();
-        if (!therapist) return;
+        // One round trip instead of six. See "Page aggregates" in
+        // app/actions/database.ts; authorization is unchanged.
+        const data = await getTherapistClientPageAction(clientId);
+        if (!data) {
+          setLoading(false);
+          return;
+        }
+        const pProf = data.profile as unknown as Profile | null;
+        const mList = data.moodLogs as unknown as MoodLog[];
+        const nList = data.notes as unknown as ClinicalNote[];
 
-        const [pProf, gList, mList, sList, nList] = await Promise.all([
-          getProfileByUserIdAction(clientId),
-          listGoalsAction(clientId),
-          listMoodLogsAction(clientId, 30),
-          listPatientSessionsAction(clientId),
-          listClinicalNotesAction(therapist.$id, clientId),
-        ]);
-        
-        setProfile(pProf as unknown as Profile);
-        setGoals(gList as unknown as Goal[]);
-        setMoods(mList as unknown as MoodLog[]);
-        setSessions(sList as unknown as Session[]);
-        setNotes(nList as unknown as ClinicalNote[]);
+        setProfile(pProf);
+        setGoals(data.goals as unknown as Goal[]);
+        setMoods(mList);
+        setSessions(data.sessions as unknown as Session[]);
+        setNotes(nList);
 
         // Analyze Risk
         const allText = [
           pProf?.goal ?? "",
-          ...(mList as unknown as MoodLog[]).map(m => m.note ?? ""),
-          ...(nList as unknown as ClinicalNote[]).map(n => n.content)
+          ...mList.map(m => m.note ?? ""),
+          ...nList.map(n => n.content)
         ].join(" ");
         setRiskLevel(analyzeRisk(allText));
 

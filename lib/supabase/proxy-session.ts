@@ -18,12 +18,35 @@ import { supabaseConfig } from "./env";
  * token expires — roughly an hour in — and then everyone is signed out with no
  * error logged anywhere. That is a bad afternoon.
  *
- * ## Why `getUser()` and not `getSession()`
+ * ## Why `getClaims()` here, while `getLoggedInUser()` keeps `getUser()`
  *
- * Calling `getUser()` is what actually triggers the refresh, because it
- * validates the token against the Auth server and the client rotates it when
- * it is close to expiry. `getSession()` only decodes the cookie locally, so it
- * would never refresh anything.
+ * This function answers one question — "is there a session to refresh and
+ * gate on?" — and it runs on EVERY covered request: every portal navigation,
+ * every Server Action POST, every `/api/*` call. It used to call `getUser()`,
+ * a ~100 ms network round trip to the Auth server, and then the layout or
+ * action that handled the request called `getUser()` AGAIN through
+ * `getLoggedInUser()`. Two round trips for one answer.
+ *
+ * `getClaims()` verifies the JWT's signature locally against the project's
+ * published JWKS (fetched once and cached ten minutes per process) and checks
+ * its expiry, so a forged or tampered cookie is still rejected here. It loads
+ * the session the same way `getUser()` does, so an expiring token is still
+ * refreshed and the rotated cookies still written — the pair described above
+ * is intact.
+ *
+ * What it does NOT do is ask the Auth server whether the session has been
+ * revoked since the token was issued. That is deliberate and safe HERE
+ * because this is a presence gate, not an authorization decision: every
+ * authorization decision still goes through `getLoggedInUser()`, which still
+ * calls `getUser()` and still fails closed. A revoked-but-unexpired token
+ * passes this gate and is then refused by the layout or action behind it,
+ * exactly as before. `getSession()` would be wrong here for the reason the
+ * session helper gives: it believes the cookie without checking anything.
+ *
+ * Precondition: the project signs tokens with an asymmetric key (ES256 is
+ * published at `/auth/v1/.well-known/jwks.json`). With a legacy HS256 key the
+ * SDK silently falls back to a `getUser()` round trip — correct, just no
+ * faster.
  */
 export async function refreshSupabaseSession(
   request: NextRequest
@@ -64,8 +87,8 @@ export async function refreshSupabaseSession(
   });
 
   try {
-    const { data, error } = await supabase.auth.getUser();
-    return { response, hasSession: Boolean(data.user) && !error, available: true };
+    const { data, error } = await supabase.auth.getClaims();
+    return { response, hasSession: Boolean(data?.claims) && !error, available: true };
   } catch {
     /*
      * Supabase unreachable. Reported as available:false so the caller can tell

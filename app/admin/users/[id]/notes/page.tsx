@@ -20,10 +20,17 @@ export default async function ClientNotesPage({
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
 
-  const client = await getProfileByUserId(id);
+  // Independent lookups in separate transactions, so they can overlap. The
+  // notes query is wasted when the client does not exist, but a 404 is the
+  // rare path and the common one no longer waits twice.
+  const [client, visibleNotes] = await Promise.all([
+    getProfileByUserId(id),
+    listAdminVisibleNotes(id),
+  ]);
   if (!client) notFound();
 
-  const { notes, privateCount } = await listAdminVisibleNotes(id);
+  const { notes, privateCount } = visibleNotes;
+
 
   return (
     <div>

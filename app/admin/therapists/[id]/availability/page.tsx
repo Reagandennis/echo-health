@@ -40,10 +40,13 @@ export default async function TherapistAvailabilityPage({
   const user = await getLoggedInUser();
   if (!user || !user.labels?.includes("admin")) redirect("/dashboard");
   const { id } = await params;
-  const t = await getTherapist(id);
+  // Independent lookups in separate transactions, so they can overlap.
+  const [t, availability] = await Promise.all([
+    getTherapist(id),
+    getTherapistAvailabilityAction(id),
+  ]);
   if (!t) notFound();
 
-  const availability = await getTherapistAvailabilityAction(id);
 
   const timezone = availability?.timezone ?? "Africa/Nairobi";
   const zoneNow = formatZoneNow(timezone);

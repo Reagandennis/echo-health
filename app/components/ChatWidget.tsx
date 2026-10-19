@@ -76,15 +76,16 @@ export default function ChatWidget() {
     if (stage !== "chat" || user) return;
 
     fetchHistory();
-
-    const intervalId = window.setInterval(() => {
-      fetchHistory();
-    }, 10000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    /*
+     * No polling interval here any more. This used to refetch history every
+     * 10 s for every anonymous visitor with the chat open — on top of the
+     * `useRealtime` subscription below, which already refetches on every
+     * `chat_messages` change and reconnects by itself if the stream drops.
+     * The poll added one request per visitor every 10 s through the proxy
+     * and the database for nothing the stream did not already deliver.
+     */
   }, [stage, user, email]);
+
 
   // Pulse every 12 s when closed so the user notices the widget
   useEffect(() => {

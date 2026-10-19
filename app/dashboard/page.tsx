@@ -11,12 +11,7 @@ import type { TherapySession, MoodLog, Goal } from "@/lib/types/documents";
 import { MOOD_EMOJIS } from "@/lib/constants";
 import { useUser } from "@/app/components/UserProvider";
 import {
-  listPatientSessionsAction,
-  listMoodLogsAction,
-  listGoalsAction,
-  getTherapistAction,
-  getProfileByUserIdAction,
-  getSessionCreditsAction
+  getClientHomeAction,
 } from "@/app/actions/database";
 
 function MoodSparkline({ logs }: { readonly logs: MoodLog[] }) {
@@ -67,29 +62,16 @@ export default function DashboardHome() {
 
     (async () => {
       try {
-        const [creditData, sess, moods, goalList, profile] = await Promise.all([
-          getSessionCreditsAction().catch(() => ({ entitled: 0, used: 0, remaining: 0 })),
-          listPatientSessionsAction(user.$id).catch(() => [] as TherapySession[]),
-          listMoodLogsAction(user.$id, 7).catch(() => [] as MoodLog[]),
-          listGoalsAction(user.$id).catch(() => [] as Goal[]),
-          getProfileByUserIdAction(user.$id).catch(() => null),
-        ]);
-        setCredits(creditData);
-        setSessions(sess);
-        setMoodLogs(moods);
-        setGoals(goalList);
-
-        const tid = profile?.therapistId || sess[0]?.therapistId;
-        if (tid) {
-          try {
-            const t = await getTherapistAction(tid);
-            setTherapistName(t.name);
-          } catch {
-            setTherapistName(null);
-          }
-        } else {
-          setTherapistName(null);
-        }
+        // One round trip for the whole page. See the "Page aggregates" note
+        // in app/actions/database.ts for why this is not six calls.
+        const data = await getClientHomeAction();
+        setCredits(data.credits);
+        setSessions(data.sessions as TherapySession[]);
+        setMoodLogs(data.moodLogs as MoodLog[]);
+        setGoals(data.goals as Goal[]);
+        setTherapistName(data.therapist?.name ?? null);
+      } catch {
+        // Leave the empty defaults; the page renders them as "nothing yet".
       } finally {
         setLoading(false);
       }

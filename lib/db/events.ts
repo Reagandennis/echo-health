@@ -4,9 +4,13 @@ import postgres from "postgres";
  * Realtime change feed — the replacement for Appwrite's realtime subscriptions.
  *
  * ONE Postgres LISTEN connection per Node process, fanning out to many browser
- * clients in memory. This is not an optimisation: the Azure tier permits ~24
- * application connections in total, so a connection-per-subscriber design would
- * exhaust the server at ~24 concurrent users and start refusing logins.
+ * clients in memory. This is not an optimisation: the Azure tier this first ran
+ * on permitted ~24 application connections in total, so a connection-per-
+ * subscriber design would have exhausted the server at ~24 concurrent users and
+ * started refusing logins. The local Postgres production now uses allows 100,
+ * which is still nowhere near "one per open browser tab" — keep the single
+ * connection.
+
  *
  * Payloads carry identifiers only (see migration 0002). Subscribers receive a
  * "something you care about changed" signal and refetch through the normal

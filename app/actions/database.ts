@@ -985,31 +985,7 @@ export async function getSessionCreditsAction(): Promise<{
 }> {
   const user = await requireUser();
 
-  return withUser(user, async (tx) => {
-    const paid = await tx
-      .select({ plan: payments.plan })
-      .from(payments)
-      .where(and(eq(payments.userId, user.$id), eq(payments.status, "success")));
-
-    const entitled = paid.reduce((sum, p) => sum + (PLAN_SESSIONS[p.plan] ?? 0), 0);
-
-    const [booked] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(therapySessions)
-      .where(
-        and(
-          eq(therapySessions.patientId, user.$id),
-          // Cancelled sessions release their credit — same rule as booking.
-          sql`${therapySessions.status} <> 'cancelled'`
-        )
-      );
-
-    return {
-      entitled,
-      used: booked.count,
-      remaining: Math.max(0, entitled - booked.count),
-    };
-  });
+  return withUser(user, (tx) => selectSessionCredits(tx, user.$id));
 }
 
 export async function createSessionAction(data: SessionInput): Promise<Doc> {
@@ -1248,14 +1224,7 @@ export async function listPatientSessionsAction(
 
   return withUser(user, async (tx) => {
     await requirePatientAccess(tx, patientId);
-
-    const rows = await tx
-      .select()
-      .from(therapySessions)
-      .where(eq(therapySessions.patientId, patientId))
-      .orderBy(desc(therapySessions.scheduledAt));
-
-    return toDocs(rows);
+    return selectPatientSessions(tx, patientId);
   });
 }
 
@@ -1285,20 +1254,9 @@ export async function listMoodLogsAction(
 ): Promise<Doc[]> {
   const user = await requireUser();
 
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
   return withUser(user, async (tx) => {
     await requirePatientAccess(tx, userId);
-
-    const rows = await tx
-      .select()
-      .from(moodLogs)
-      .where(and(eq(moodLogs.userId, userId), gte(moodLogs.createdAt, since)))
-      .orderBy(asc(moodLogs.createdAt))
-      .limit(days);
-
-    return toDocs(rows);
+    return selectMoodLogs(tx, userId, days);
   });
 }
 
@@ -1308,14 +1266,7 @@ export async function listGoalsAction(userId: string): Promise<Doc[]> {
 
   return withUser(user, async (tx) => {
     await requirePatientAccess(tx, userId);
-
-    const rows = await tx
-      .select()
-      .from(goals)
-      .where(eq(goals.userId, userId))
-      .orderBy(desc(goals.createdAt));
-
-    return toDocs(rows);
+    return selectGoals(tx, userId);
   });
 }
 
@@ -1596,15 +1547,7 @@ export async function listMyEarningsAction(): Promise<{
 export async function getTherapistByUserIdAction(): Promise<Doc> {
   const user = await requireUser();
 
-  return withUser(user, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(therapists)
-      .where(eq(therapists.userId, user.$id))
-      .limit(1);
-
-    return row ? toDoc(row) : null;
-  });
+  return withUser(user, (tx) => selectOwnTherapistDoc(tx, user.$id));
 }
 
 /**
@@ -1623,15 +1566,7 @@ export async function listTherapistsAction(
   // A supplied-but-malformed id must not silently widen to "every therapist".
   if (therapistId && !isUuid(therapistId)) return [];
 
-  return withUser(user, async (tx) => {
-    const rows = await tx
-      .select()
-      .from(therapists)
-      .where(therapistId ? eq(therapists.id, therapistId) : undefined)
-      .limit(100);
-
-    return toDocs(rows);
-  });
+  return withUser(user, (tx) => selectTherapists(tx, therapistId));
 }
 
 /** Single directory entry. Readable by any authenticated user. */
@@ -1640,14 +1575,9 @@ export async function getTherapistAction(therapistId: string): Promise<Doc> {
   if (!isUuid(therapistId)) throw new Error("Not found");
 
   return withUser(user, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(therapists)
-      .where(eq(therapists.id, therapistId))
-      .limit(1);
+    const row = await selectTherapistById(tx, therapistId);
     if (!row) throw new Error("Not found");
-
-    return toDoc(row);
+    return row;
   });
 }
 
@@ -2137,15 +2067,7 @@ export async function resolveRiskAlertAction(id: string): Promise<Doc> {
 export async function listProfilesAction(): Promise<Doc[]> {
   const user = await requireStaff();
 
-  return withUser(user, async (tx) => {
-    const rows = await tx
-      .select()
-      .from(profiles)
-      .orderBy(desc(profiles.createdAt))
-      .limit(100);
-
-    return toDocs(rows);
-  });
+  return withUser(user, (tx) => selectProfiles(tx));
 }
 
 /** Clinical notes authored under a therapist row. Caller must own it, or be admin. */
@@ -2157,21 +2079,7 @@ export async function listClinicalNotesAction(
 
   return withUser(user, async (tx) => {
     await requireTherapistDocAccess(tx, therapistId);
-
-    const rows = await tx
-      .select()
-      .from(clinicalNotes)
-      .where(
-        patientId
-          ? and(
-              eq(clinicalNotes.therapistId, therapistId),
-              eq(clinicalNotes.patientId, patientId)
-            )
-          : eq(clinicalNotes.therapistId, therapistId)
-      )
-      .orderBy(desc(clinicalNotes.createdAt));
-
-    return toDocs(rows);
+    return selectClinicalNotes(tx, therapistId, patientId);
   });
 }
 
@@ -2429,15 +2337,7 @@ export async function getProfileByUserIdAction(userId: string): Promise<Doc> {
     throw new Error("Forbidden");
   }
 
-  return withUser(user, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(profiles)
-      .where(eq(profiles.userId, userId))
-      .limit(1);
-
-    return row ? toDoc(row) : null;
-  });
+  return withUser(user, (tx) => selectProfileByUserId(tx, userId));
 }
 
 /** `userId` is forced to the caller — a mood log is always logged for oneself. */
@@ -2478,16 +2378,7 @@ export async function createMoodLogAction(
 export async function listJournalEntriesAction(limit = 20): Promise<Doc[]> {
   const user = await requireUser();
 
-  return withUser(user, async (tx) => {
-    const rows = await tx
-      .select()
-      .from(journalEntries)
-      .where(eq(journalEntries.userId, user.$id))
-      .orderBy(desc(journalEntries.createdAt))
-      .limit(limit);
-
-    return toDocs(rows);
-  });
+  return withUser(user, (tx) => selectJournalEntries(tx, user.$id, limit));
 }
 
 /** `userId` is forced to the caller. */
@@ -3135,5 +3026,295 @@ export async function createRiskAlertAction(data: {
       .returning();
 
     return toDoc(row);
+  });
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Table-level reads shared by the single-purpose actions above and the page
+ * aggregates below.
+ *
+ * These take a `tx` and NO user, and they do no authorization. The caller has
+ * already established who is asking (`requireUser` / `requireStaff`) and, where
+ * the rows belong to someone else, whether they may see them
+ * (`requirePatientAccess`, `requireTherapistDocAccess`). RLS still applies
+ * underneath because `tx` came from `withUser`. Do not export these.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+async function selectSessionCredits(
+  tx: Tx,
+  userId: string
+): Promise<{ entitled: number; used: number; remaining: number }> {
+  const paid = await tx
+    .select({ plan: payments.plan })
+    .from(payments)
+    .where(and(eq(payments.userId, userId), eq(payments.status, "success")));
+
+  const entitled = paid.reduce((sum, p) => sum + (PLAN_SESSIONS[p.plan] ?? 0), 0);
+
+  const [booked] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(therapySessions)
+    .where(
+      and(
+        eq(therapySessions.patientId, userId),
+        // Cancelled sessions release their credit — same rule as booking.
+        sql`${therapySessions.status} <> 'cancelled'`
+      )
+    );
+
+  return {
+    entitled,
+    used: booked.count,
+    remaining: Math.max(0, entitled - booked.count),
+  };
+}
+
+async function selectPatientSessions(tx: Tx, patientId: string): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(therapySessions)
+    .where(eq(therapySessions.patientId, patientId))
+    .orderBy(desc(therapySessions.scheduledAt));
+  return toDocs(rows);
+}
+
+async function selectMoodLogs(tx: Tx, userId: string, days: number): Promise<Doc[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const rows = await tx
+    .select()
+    .from(moodLogs)
+    .where(and(eq(moodLogs.userId, userId), gte(moodLogs.createdAt, since)))
+    .orderBy(asc(moodLogs.createdAt))
+    .limit(days);
+  return toDocs(rows);
+}
+
+async function selectGoals(tx: Tx, userId: string): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(goals)
+    .where(eq(goals.userId, userId))
+    .orderBy(desc(goals.createdAt));
+  return toDocs(rows);
+}
+
+async function selectProfileByUserId(tx: Tx, userId: string): Promise<Doc> {
+  const [row] = await tx
+    .select()
+    .from(profiles)
+    .where(eq(profiles.userId, userId))
+    .limit(1);
+  return row ? toDoc(row) : null;
+}
+
+async function selectProfiles(tx: Tx): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(profiles)
+    .orderBy(desc(profiles.createdAt))
+    .limit(100);
+  return toDocs(rows);
+}
+
+async function selectOwnTherapistDoc(tx: Tx, userId: string): Promise<Doc> {
+  const [row] = await tx
+    .select()
+    .from(therapists)
+    .where(eq(therapists.userId, userId))
+    .limit(1);
+  return row ? toDoc(row) : null;
+}
+
+/** `null` when there is no such row; the caller decides whether that is an error. */
+async function selectTherapistById(tx: Tx, therapistId: string): Promise<Doc> {
+  const [row] = await tx
+    .select()
+    .from(therapists)
+    .where(eq(therapists.id, therapistId))
+    .limit(1);
+  return row ? toDoc(row) : null;
+}
+
+async function selectTherapists(tx: Tx, therapistId?: string): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(therapists)
+    .where(therapistId ? eq(therapists.id, therapistId) : undefined)
+    .limit(100);
+  return toDocs(rows);
+}
+
+async function selectJournalEntries(tx: Tx, userId: string, limit: number): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(journalEntries)
+    .where(eq(journalEntries.userId, userId))
+    .orderBy(desc(journalEntries.createdAt))
+    .limit(limit);
+  return toDocs(rows);
+}
+
+async function selectClinicalNotes(
+  tx: Tx,
+  therapistId: string,
+  patientId?: string
+): Promise<Doc[]> {
+  const rows = await tx
+    .select()
+    .from(clinicalNotes)
+    .where(
+      patientId
+        ? and(
+            eq(clinicalNotes.therapistId, therapistId),
+            eq(clinicalNotes.patientId, patientId)
+          )
+        : eq(clinicalNotes.therapistId, therapistId)
+    )
+    .orderBy(desc(clinicalNotes.createdAt));
+  return toDocs(rows);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Page aggregates: ONE Server Action per portal page load.
+ *
+ * Every Server Action is its own HTTP request through `proxy.ts`, its own
+ * session validation (a network round trip to the auth provider) and its own
+ * `withUser` transaction. The client dashboard fired six of them on mount, the
+ * sessions page five, the therapist client page six — so a single page view
+ * cost a dozen auth round trips and as many pooled connections, and under
+ * concurrent users the pool was the queue. Each aggregate below does one
+ * session check and one transaction and returns everything the page used to
+ * fetch separately.
+ *
+ * Authorization is the SAME as the single-purpose actions it replaces, applied
+ * once: the client aggregates are keyed on the caller's own id, so the
+ * self/admin/treating-therapist check collapses to "is the caller"; the
+ * therapist aggregates run `requireStaff` / `requirePatientAccess` exactly as
+ * the individual actions did. Queries inside one transaction are sequential,
+ * not `Promise.all` — they share one connection (see `app/admin/_lib/queries`).
+ *
+ * The single-purpose actions stay: pages still use them for mutations and for
+ * the realtime refetch of one list.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** `/dashboard` — credits, sessions, a week of mood, goals, and the assigned therapist's name. */
+export async function getClientHomeAction(): Promise<{
+  credits: { entitled: number; used: number; remaining: number };
+  sessions: Doc[];
+  moodLogs: Doc[];
+  goals: Doc[];
+  profile: Doc;
+  therapist: Doc;
+}> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const credits = await selectSessionCredits(tx, user.$id);
+    const sessions = await selectPatientSessions(tx, user.$id);
+    const moodLogs = await selectMoodLogs(tx, user.$id, 7);
+    const goalList = await selectGoals(tx, user.$id);
+    const profile = await selectProfileByUserId(tx, user.$id);
+
+    // Same resolution the page did: the assigned therapist, else whoever ran
+    // the most recent session.
+    const therapistId: unknown = profile?.therapistId || sessions[0]?.therapistId;
+    const therapist = isUuid(therapistId) ? await selectTherapistById(tx, therapistId) : null;
+
+    return { credits, sessions, moodLogs, goals: goalList, profile, therapist };
+  });
+}
+
+/** `/dashboard/sessions` — credits, sessions, and the bookable therapist(s). */
+export async function getClientSessionsPageAction(): Promise<{
+  credits: { entitled: number; used: number; remaining: number };
+  sessions: Doc[];
+  therapists: Doc[];
+  profile: Doc;
+}> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const profile = await selectProfileByUserId(tx, user.$id);
+    const credits = await selectSessionCredits(tx, user.$id);
+    const sessions = await selectPatientSessions(tx, user.$id);
+    // An assigned therapist narrows the list to them; otherwise the directory.
+    const assigned: unknown = profile?.therapistId;
+    const therapistList = await selectTherapists(tx, isUuid(assigned) ? assigned : undefined);
+
+    return { credits, sessions, therapists: therapistList, profile };
+  });
+}
+
+/** `/dashboard/progress` — a month of mood and the latest journal entries. */
+export async function getClientProgressAction(): Promise<{
+  moodLogs: Doc[];
+  journal: Doc[];
+}> {
+  const user = await requireUser();
+
+  return withUser(user, async (tx) => {
+    const moods = await selectMoodLogs(tx, user.$id, 30);
+    const journal = await selectJournalEntries(tx, user.$id, 20);
+    return { moodLogs: moods, journal };
+  });
+}
+
+/**
+ * `/therapist/notes` — the caller's therapist row, their notes, and the client
+ * list. `requireStaff` because the client list was behind `listProfilesAction`,
+ * which requires it; `therapist` is null for an admin without a therapist row,
+ * and the page renders nothing in that case as it always did.
+ */
+export async function getTherapistNotesPageAction(): Promise<{
+  therapist: Doc;
+  notes: Doc[];
+  clients: Doc[];
+}> {
+  const user = await requireStaff();
+
+  return withUser(user, async (tx) => {
+    const therapist = await selectOwnTherapistDoc(tx, user.$id);
+    if (!therapist) return { therapist: null, notes: [], clients: [] };
+
+    const notes = await selectClinicalNotes(tx, therapist.$id);
+    const clients = await selectProfiles(tx);
+    return { therapist, notes, clients };
+  });
+}
+
+/**
+ * `/therapist/clients/[clientId]` — everything the detail page shows.
+ *
+ * `requirePatientAccess` is the strictest of the checks the five replaced
+ * actions applied (self, admin, or *treating* therapist), and it was already
+ * the effective one: the goals and sessions calls enforced it, and the page
+ * failed as a whole if any call did. Notes are scoped to the caller's own
+ * therapist row, so ownership is implied rather than re-checked.
+ */
+export async function getTherapistClientPageAction(clientId: string): Promise<{
+  therapist: Doc;
+  profile: Doc;
+  goals: Doc[];
+  moodLogs: Doc[];
+  sessions: Doc[];
+  notes: Doc[];
+} | null> {
+  const user = await requireUser();
+  if (typeof clientId !== "string" || !clientId) throw new Error("Not found");
+
+  return withUser(user, async (tx) => {
+    const therapist = await selectOwnTherapistDoc(tx, user.$id);
+    if (!therapist) return null;
+
+    await requirePatientAccess(tx, clientId);
+
+    const profile = await selectProfileByUserId(tx, clientId);
+    const goalList = await selectGoals(tx, clientId);
+    const moods = await selectMoodLogs(tx, clientId, 30);
+    const sessions = await selectPatientSessions(tx, clientId);
+    const notes = await selectClinicalNotes(tx, therapist.$id, clientId);
+
+    return { therapist, profile, goals: goalList, moodLogs: moods, sessions, notes };
   });
 }

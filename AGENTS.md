@@ -134,7 +134,10 @@ So `getLoggedInUser()` reads `app_metadata.roles` into `labels`, `lib/supabase/m
 
 #### ⚠️ `getUser()`, not `getSession()`
 
-`getSession()` decodes the cookie and returns whatever is in it — fine for "probably signed in", **not** fine for an authorisation decision, because the cookie is attacker-supplied. `getLoggedInUser()` and the proxy both call `getUser()`, which validates the JWT against the Auth server. The cost is a network round trip, which is a real change from Auth0's local cookie decrypt — so unlike before, `null` *can* mean "provider unreachable". It fails closed: no session means no `labels` means no access.
+`getSession()` decodes the cookie and returns whatever is in it — fine for "probably signed in", **not** fine for an authorisation decision, because the cookie is attacker-supplied. `getLoggedInUser()` calls `getUser()`, which validates the JWT against the Auth server. The cost is a network round trip (~100 ms from the production VM), which is a real change from Auth0's local cookie decrypt — so unlike before, `null` *can* mean "provider unreachable". It fails closed: no session means no `labels` means no access.
+
+The **proxy** (`lib/supabase/proxy-session.ts`) calls `getClaims()` instead: it verifies the JWT signature locally against the project's JWKS and still triggers the refresh, but does not ask the Auth server about revocation. That is acceptable there because the proxy is a *presence* gate — every authorisation decision still goes through `getLoggedInUser()` behind it. It halves the auth round trips per Server Action. It depends on the project signing with an asymmetric key (ES256 is published at `/auth/v1/.well-known/jwks.json`); with a legacy HS256 key the SDK falls back to `getUser()` and nothing is lost but the saving. Moving `getLoggedInUser()` itself to `getClaims()` would remove the remaining round trip at the price of revocation and role changes taking effect only at token expiry (up to an hour) — a deliberate security decision, not a refactor.
+
 
 #### ⚠️ The proxy's session refresh is half of a pair
 
@@ -172,6 +175,9 @@ migrations, not the snapshot, are the source of truth.
 
 - `lib/db/schema.ts` mirrors the database for Drizzle's types. Because of the snapshot drift above, keep it in sync BY HAND and express the actual change as custom SQL: `npm run db:generate -- --name=<name>`, then `npm run db:migrate`.
 - `lib/db/index.ts` exports `db` and the raw `sql` client. **The app connects as `echo_app`, not the migration admin** — this is load-bearing: `echo_admin` owns the tables and has `rolbypassrls = true`, so connecting as it silently disables every policy.
+- **Pool size is `DB_POOL_MAX`, default 5.** The default and the comments about a ~230 ms round trip and a ~24-connection ceiling describe the Azure Flexible Server tier this first ran on. **Production now runs on one VM with a local Postgres 17** (`max_connections = 100`) behind a Cloudflare Tunnel, and that deployment sets `DB_POOL_MAX=20` in `.env.local` — a client portal page runs several Server Actions in parallel, each in its own transaction, and five connections made concurrent users queue on the pool. Raise it only in step with the server's `max_connections`.
+- **One Server Action per portal page load, not one per card.** Every Server Action is a separate HTTP request through `proxy.ts`, a separate session validation (a network round trip to Supabase) and a separate `withUser` transaction. The client dashboard used to fire six on mount. The "Page aggregates" section at the bottom of `app/actions/database.ts` has one action per busy page (`getClientHomeAction`, `getClientSessionsPageAction`, `getClientProgressAction`, `getTherapistNotesPageAction`, `getTherapistClientPageAction`) built from un-exported table-level `select*` helpers that the single-purpose actions also use. Authorization inside an aggregate is the same check the individual actions made, applied once. Add a page's reads to an aggregate rather than adding a seventh parallel call.
+
 - **Every query must run inside `withUser()` / `withCurrentUser()` / `withAnonymous()` from `lib/db/session.ts`, using the `tx` handle — never the bare `db` export.** These open a transaction and set `app.user_id` / `app.user_roles`, which is what the RLS policies read. A query issued outside one carries no identity, so every ownership predicate fails closed and returns zero rows. Transaction-local (`set_config(..., true)`) is mandatory, because pooled connections are reused across requests and a session-scoped setting would leak one user's identity into the next.
 - `lib/types/documents.ts` derives the UI row types from the Drizzle schema. Don't hand-write row interfaces.
 - Timestamps are real `timestamptz` and come back as `Date`. They were ISO strings under Appwrite, so watch for `.localeCompare` and `JSON.parse` on what are now `Date` and `jsonb` values.
@@ -280,6 +286,8 @@ Keep `HIGH_RISK_KEYWORDS` / `MODERATE_RISK_KEYWORDS` as the source of truth; the
 - **Identity is derived server-side, never trusted from the body.** Authenticated users get their real `name`/`email` via `getLoggedInUser()`; anonymous visitors get the (untrusted) values they typed on the gate form, ACL-scoped to admin-only reads.
 - Messages are written with the **admin client** (the browser SDK has no session) and stored across `chatMessages` / `chatSessions` collections. A `text === "heartbeat"` message is an online-presence ping, not a real message (`role: "system"`).
 - Sibling routes: `history/` (fetch a thread), `offline/` (capture a message when no agent is online), `reply/` (agent → visitor). Risk scanning runs here via `analyzeRisk`.
+- The widget refetches history from the `useRealtime` subscription on `chat_messages`, not from a timer. It used to also poll `history/` every 10 s per open visitor; that was removed because the stream already delivers every change and reconnects on its own. Do not add the poll back as a "fallback".
+
 
 ### Public marketing surface (route group + one nav source)
 
@@ -372,7 +380,12 @@ The palette, fonts and shared surfaces live in `app/globals.css` — read its he
 - **Email** — `lib/email.ts` wraps Resend; `getResend()` returns `null` when `RESEND_API_KEY` is unset, so callers must no-op gracefully (email is optional in dev). HTML-escape interpolated user input.
 - **Plans/currency** — `lib/constants.ts` is the source of truth for plan session allowances, labels and the **published** prices; `lib/pricing.ts` decides the **charged** amount (see "Pricing" above); `lib/useCurrency.ts` is a client hook for locale/currency display only.
 
+## Cloudflare (`cloudflare/`, `cloudflared/`)
+
+The origin is one VM reachable only through a Cloudflare Tunnel. Two things on the Cloudflare side are performance-critical and live outside the code, so `cloudflare/README.md` documents them: a **Cache Rule for the public marketing paths** (Cloudflare does not cache HTML unless told to, so without it every visitor crosses the tunnel for pages Next already serves with `s-maxage`), and the **`/ingest/*` PostHog proxy as a Worker** (`cloudflare/posthog-ingest-worker/`), which keeps every visitor's analytics traffic off the VM. The Next.js `/ingest` rewrites stay as the fallback. When you add a public page, add it to the Cache Rule's path list as well as to `lib/navigation.ts` and the `proxy.ts` matcher.
+
 ## Operational scripts (`scripts/`)
+
 
 - `auth0-roles-action.js` — **not application code and not imported anywhere.** It is the source of the Auth0 post-login Action that injects the roles and `user_metadata` claims, and it must be pasted into the Auth0 dashboard by hand. Without it deployed, every role check evaluates to `false` and admins are locked out.
 
@@ -410,6 +423,8 @@ deployment that still could not sign anyone in.
 - `NEXT_PUBLIC_POSTHOG_KEY` *or* `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` — either name is accepted; analytics is simply off when neither is set. `NEXT_PUBLIC_POSTHOG_HOST` defaults sensibly.
 - `RESEND_API_KEY` — unset means `getResend()` returns null and callers no-op. Email is optional in dev.
 - `REDIS_URL` — unset falls back to the in-memory rate limiter.
+- `DB_POOL_MAX` — the `postgres` pool size per instance; default 5 (sized for the original Azure tier). See the data-layer note above before raising it.
+
 - `TRUST_EDGE_COUNTRY_HEADER` — set to exactly `"true"` **only** when the deployment is behind an edge that sets `cf-ipcountry` / `x-vercel-ip-country` and origin requests cannot bypass it. Unset means every visitor pays the standard price, which is the safe default.
 - `DEV_AUTH_ENABLED` — the `/dev-login` opt-in. Never set it on anything reachable from the internet.
 - `APP_BASE_URL` — **survived the Auth0 removal and still matters.** It no longer builds callback URLs for an identity provider, but it is the Paystack callback origin in `app/api/payments/initialize/route.ts` and the base for every link in a transactional email (`lib/email.ts`, which falls back to `NEXT_PUBLIC_SITE_URL` and then to `https://echohealth.app`). Unset in production and payment callbacks follow the request origin, which is wrong behind a proxy, and email links can point at the wrong host.
